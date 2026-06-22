@@ -3,13 +3,22 @@ import ChevronLeftIcon from "@/components/images/ChevronLeftIcon";
 import GoogleIcon from "@/components/images/GoogleIcon";
 import SearchGradient from "@/components/reusable/SearchGradient";
 import TopScrollComponent from "@/components/reusable/TopScrollComponent";
-import { useSignIn } from "@clerk/clerk-expo";
+import { useSignIn, useOAuth } from "@clerk/clerk-expo";
 import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
 import React, { useState } from "react";
-import { Alert, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import {
+  Alert,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+  Platform,
+} from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Svg, { Path } from "react-native-svg";
+import * as WebBrowser from "expo-web-browser";
+import { OAUTH_REDIRECT_URL } from "@/constants/OAuth";
 
 // Eye icons
 const EyeOffIcon = ({ size = 20, color = "#7A7A7A" }) => (
@@ -30,6 +39,9 @@ const EyeOffIcon = ({ size = 20, color = "#7A7A7A" }) => (
   </Svg>
 );
 
+// Complete OAuth flow in browser
+WebBrowser.maybeCompleteAuthSession();
+
 const LoginScreen = () => {
   const { signIn, setActive, isLoaded } = useSignIn();
   const insets = useSafeAreaInsets();
@@ -39,9 +51,17 @@ const LoginScreen = () => {
   });
   const [isLoading, setIsLoading] = useState(false);
 
+  // OAuth hooks
+  const { startOAuthFlow: startGoogleOAuth } = useOAuth({
+    strategy: "oauth_google",
+  });
+  const { startOAuthFlow: startAppleOAuth } = useOAuth({
+    strategy: "oauth_apple",
+  });
+
   const handleLogin = async () => {
     if (!isLoaded) return;
-    
+
     if (!formData.identifier.trim() || !formData.password.trim()) {
       Alert.alert("Error", "Please fill in all fields");
       return;
@@ -54,19 +74,23 @@ const LoginScreen = () => {
         password: formData.password,
       });
 
-      if (signInAttempt.status === 'complete') {
+      if (signInAttempt.status === "complete") {
         await setActive({ session: signInAttempt.createdSessionId });
         router.replace("/(tabs)");
       } else {
-        Alert.alert("Login Failed", "Sign-in incomplete. Please contact support.");
+        Alert.alert(
+          "Login Failed",
+          "Sign-in incomplete. Please contact support."
+        );
       }
     } catch (err: any) {
-      const errorMessage = err.errors?.[0]?.message || "An error occurred during sign-in.";
-      
+      const errorMessage =
+        err.errors?.[0]?.message || "An error occurred during sign-in.";
+
       // Provide helpful message for development
       if (errorMessage.includes("Invalid authentication credentials")) {
         Alert.alert(
-          "Login Failed", 
+          "Login Failed",
           "Invalid credentials. Try creating a new account first, or use:\n\nEmail: test@animatememories.com\nPassword: TestPassword123!"
         );
       } else {
@@ -78,29 +102,78 @@ const LoginScreen = () => {
   };
 
   const handleGoogleLogin = async () => {
-    Alert.alert(
-      "OAuth Development Mode", 
-      "OAuth sign-in works best on physical devices or in production builds. For development, please use email/password login.\n\nTest credentials:\nEmail: test@example.com\nPassword: password123",
-      [
-        { text: "Use Test Account", onPress: () => {
-          setFormData({ identifier: "test@example.com", password: "password123" });
-        }},
-        { text: "Cancel", style: "cancel" }
-      ]
-    );
+    if (!isLoaded) {
+      Alert.alert(
+        "Error",
+        "Clerk is not loaded yet. Please wait a moment and try again."
+      );
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      const { createdSessionId } = await startGoogleOAuth({
+        redirectUrl: OAUTH_REDIRECT_URL,
+      });
+
+      if (createdSessionId) {
+        await setActive({ session: createdSessionId });
+        router.replace("/(tabs)");
+      } else {
+        // User cancelled or error occurred
+        console.log("OAuth flow cancelled or incomplete");
+      }
+    } catch (err: any) {
+      console.error("Google OAuth error:", err);
+      const errorMessage =
+        err.errors?.[0]?.message ||
+        "Failed to sign in with Google. Please try again.";
+      Alert.alert("Sign In Failed", errorMessage);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handleAppleLogin = async () => {
-    Alert.alert(
-      "OAuth Development Mode", 
-      "OAuth sign-in works best on physical devices or in production builds. For development, please use email/password login.\n\nTest credentials:\nEmail: test@example.com\nPassword: password123",
-      [
-        { text: "Use Test Account", onPress: () => {
-          setFormData({ identifier: "test@example.com", password: "password123" });
-        }},
-        { text: "Cancel", style: "cancel" }
-      ]
-    );
+    if (!isLoaded) {
+      Alert.alert(
+        "Error",
+        "Clerk is not loaded yet. Please wait a moment and try again."
+      );
+      return;
+    }
+
+    // Apple Sign In only works on iOS
+    if (Platform.OS !== "ios") {
+      Alert.alert(
+        "Not Available",
+        "Apple Sign In is only available on iOS devices."
+      );
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      const { createdSessionId } = await startAppleOAuth({
+        redirectUrl: OAUTH_REDIRECT_URL,
+      });
+
+      if (createdSessionId) {
+        await setActive({ session: createdSessionId });
+        router.replace("/(tabs)");
+      } else {
+        // User cancelled or error occurred
+        console.log("OAuth flow cancelled or incomplete");
+      }
+    } catch (err: any) {
+      console.error("Apple OAuth error:", err);
+      const errorMessage =
+        err.errors?.[0]?.message ||
+        "Failed to sign in with Apple. Please try again.";
+      Alert.alert("Sign In Failed", errorMessage);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -126,9 +199,7 @@ const LoginScreen = () => {
         onPress={handleGoogleLogin}
         disabled={isLoading}
       >
-        <View
-          style={styles.socialBtnGradient}
-        >
+        <View style={styles.socialBtnGradient}>
           <GoogleIcon />
           <Text style={styles.socialText}>Log in with Google</Text>
         </View>
@@ -140,9 +211,7 @@ const LoginScreen = () => {
         onPress={handleAppleLogin}
         disabled={isLoading}
       >
-        <View
-          style={styles.socialBtnGradient}
-        >
+        <View style={styles.socialBtnGradient}>
           <AppleIcon color="#808080" />
           <Text style={styles.socialText}>Log in with Apple</Text>
         </View>
@@ -212,7 +281,7 @@ const styles = StyleSheet.create({
   header: {
     paddingHorizontal: 20,
     paddingBottom: 10,
-    alignItems: 'flex-start',
+    alignItems: "flex-start",
   },
   backButton: {
     width: 40,
@@ -242,7 +311,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingVertical: 15,
     justifyContent: "center",
-    backgroundColor: '#fff',
+    backgroundColor: "#fff",
     gap: 10,
   },
   socialText: {
@@ -277,6 +346,6 @@ const styles = StyleSheet.create({
   signupLinkText: {
     color: "#28D4FA",
     fontWeight: "600",
-    textDecorationLine: 'underline'
+    textDecorationLine: "underline",
   },
 });

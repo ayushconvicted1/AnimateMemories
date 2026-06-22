@@ -10,20 +10,23 @@ import {
   ActivityIndicator,
   Alert,
   RefreshControl,
+  Platform,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { BlurView } from "expo-blur";
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { Video, ResizeMode } from "expo-av";
 import { GradientText } from "@/components/ui/GradientText";
 import ScreenWrapper from "@/components/ui/ScreenWrapper";
+import FullScreenVideoViewer from "@/components/ui/FullScreenVideoViewer";
 import SearchIcon from "@/components/images/SearchIcon";
 import FilterIcon from "@/components/images/FilterIcon";
-import { useAuth } from "@/contexts/AuthContext";
+import { useAuth as useAuthContext } from "@/contexts/AuthContext";
+import { useAuth } from "@clerk/clerk-expo";
 import { api } from "@/services/api";
 import { Linking } from "react-native";
 
-const { width: SCREEN_WIDTH } = Dimensions.get("window");
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
 const CONTENT_WIDTH = SCREEN_WIDTH - 32;
 const ITEM_WIDTH = (CONTENT_WIDTH - 12) / 2;
 
@@ -38,14 +41,16 @@ interface GalleryItem {
 }
 
 export default function GalleryScreen() {
-  const { user } = useAuth();
+  const { user } = useAuthContext();
+  const { getToken } = useAuth();
   const [activeTab, setActiveTab] = useState<"Image" | "Videos">("Videos");
   const [galleryItems, setGalleryItems] = useState<GalleryItem[]>([]);
-  const [filteredItems, setFilteredItems] = useState<GalleryItem[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [deletingId, setDeletingId] = useState<number | null>(null);
+  const [selectedVideo, setSelectedVideo] = useState<GalleryItem | null>(null);
+  const [userCredits, setUserCredits] = useState<number | null>(null);
 
   const fetchGallery = useCallback(async () => {
     if (!user) {
@@ -53,16 +58,18 @@ export default function GalleryScreen() {
       return;
     }
 
-    const userEmail = user?.primaryEmailAddress?.emailAddress || user?.emailAddresses?.[0]?.emailAddress;
+    const userEmail =
+      user?.primaryEmailAddress?.emailAddress ||
+      user?.emailAddresses?.[0]?.emailAddress;
     if (!userEmail) {
       setLoading(false);
       return;
     }
 
     try {
-      const result = await api.getGallery(userEmail);
+      const token = await getToken();
+      const result = await api.getGallery(userEmail, token);
       setGalleryItems(result.result || []);
-      setFilteredItems(result.result || []);
     } catch (error) {
       console.error("Error fetching gallery:", error);
       Alert.alert("Error", "Failed to load gallery. Please try again.");
@@ -70,20 +77,40 @@ export default function GalleryScreen() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [user]);
+  }, [user]); // Removed getToken from dependencies
+
+  const fetchUserCredits = useCallback(async () => {
+    if (!user) return;
+    try {
+      const token = await getToken();
+      const result = await api.verifyUser(user, token);
+      setUserCredits(result.result?.credits || 0);
+    } catch (error) {
+      console.error("Error fetching credits:", error);
+      setUserCredits(0);
+    }
+  }, [user]); // Removed getToken from dependencies
 
   useEffect(() => {
-    fetchGallery();
-  }, [fetchGallery]);
+    if (user) {
+      fetchGallery();
+      fetchUserCredits();
+    }
+  }, [user, fetchGallery, fetchUserCredits]);
 
-  useEffect(() => {
-    let filtered = galleryItems;
+  // Use useMemo to prevent flickering - only recalculate when dependencies change
+  const filteredItems = useMemo(() => {
+    let filtered = [...galleryItems];
 
-    // Filter by type
+    // Filter by type - Videos are "Old Photo Animation", Images are everything else
     if (activeTab === "Videos") {
-      filtered = filtered.filter((item) => item.roomType === "Old Photo Animation");
-    } else {
-      filtered = filtered.filter((item) => item.roomType !== "Old Photo Animation");
+      filtered = filtered.filter(
+        (item) => item.roomType === "Old Photo Animation"
+      );
+    } else if (activeTab === "Image") {
+      filtered = filtered.filter(
+        (item) => item.roomType !== "Old Photo Animation"
+      );
     }
 
     // Filter by search term
@@ -95,30 +122,38 @@ export default function GalleryScreen() {
       );
     }
 
-    setFilteredItems(filtered);
+    return filtered;
   }, [activeTab, searchTerm, galleryItems]);
 
   const handleDelete = async (item: GalleryItem) => {
     Alert.alert(
       "Delete Item",
-      `Are you sure you want to delete this ${item.roomType === "Old Photo Animation" ? "video" : "image"}?`,
+      `Are you sure you want to delete this ${
+        item.roomType === "Old Photo Animation" ? "video" : "image"
+      }?`,
       [
         { text: "Cancel", style: "cancel" },
         {
           text: "Delete",
           style: "destructive",
           onPress: async () => {
-            const userEmail = user?.primaryEmailAddress?.emailAddress || user?.emailAddresses?.[0]?.emailAddress;
+            const userEmail =
+              user?.primaryEmailAddress?.emailAddress ||
+              user?.emailAddresses?.[0]?.emailAddress;
             if (!userEmail) return;
 
             setDeletingId(item.id);
             try {
-              await api.deleteImage(userEmail, item.id);
+              const token = await getToken();
+              await api.deleteImage(userEmail, item.id, token);
               setGalleryItems((prev) => prev.filter((i) => i.id !== item.id));
               Alert.alert("Success", "Item deleted successfully");
             } catch (error: any) {
               console.error("Error deleting item:", error);
-              Alert.alert("Error", error.message || "Failed to delete item. Please try again.");
+              Alert.alert(
+                "Error",
+                error.message || "Failed to delete item. Please try again."
+              );
             } finally {
               setDeletingId(null);
             }
@@ -148,14 +183,71 @@ export default function GalleryScreen() {
     fetchGallery();
   }, [fetchGallery]);
 
-  const isVideo = (item: GalleryItem) => item.roomType === "Old Photo Animation";
+  const isVideo = (item: GalleryItem) =>
+    item.roomType === "Old Photo Animation";
 
   const imageCount = galleryItems.filter((item) => !isVideo(item)).length;
   const videoCount = galleryItems.filter((item) => isVideo(item)).length;
   const totalCount = galleryItems.length;
 
+  const handleVideoPress = (item: GalleryItem) => {
+    if (isVideo(item)) {
+      setSelectedVideo(item);
+    }
+  };
+
+  const closeVideoModal = () => {
+    setSelectedVideo(null);
+  };
+
+  const handleDeleteFromModal = async () => {
+    if (!selectedVideo) return;
+
+    Alert.alert("Delete Video", "Are you sure you want to delete this video?", [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Delete",
+        style: "destructive",
+        onPress: async () => {
+          const userEmail =
+            user?.primaryEmailAddress?.emailAddress ||
+            user?.emailAddresses?.[0]?.emailAddress;
+          if (!userEmail) return;
+
+          setDeletingId(selectedVideo.id);
+          try {
+            const token = await getToken();
+            await api.deleteImage(userEmail, selectedVideo.id, token);
+            setGalleryItems((prev) =>
+              prev.filter((i) => i.id !== selectedVideo.id)
+            );
+            Alert.alert("Success", "Video deleted successfully");
+            closeVideoModal();
+          } catch (error: any) {
+            console.error("Error deleting video:", error);
+            Alert.alert(
+              "Error",
+              error.message || "Failed to delete video. Please try again."
+            );
+          } finally {
+            setDeletingId(null);
+          }
+        },
+      },
+    ]);
+  };
+
+  const handleDownloadFromModal = async () => {
+    if (!selectedVideo) return;
+    await handleDownload(selectedVideo);
+  };
+
   const renderItem = ({ item }: { item: GalleryItem }) => (
-    <View style={styles.galleryItem}>
+    <TouchableOpacity
+      style={styles.galleryItem}
+      onPress={() => isVideo(item) && handleVideoPress(item)}
+      activeOpacity={isVideo(item) ? 0.8 : 1}
+    >
       {isVideo(item) ? (
         <Video
           source={{ uri: item.aiImage }}
@@ -174,13 +266,19 @@ export default function GalleryScreen() {
       <View style={styles.itemOverlay}>
         <TouchableOpacity
           style={styles.actionButton}
-          onPress={() => handleDownload(item)}
+          onPress={(e) => {
+            e.stopPropagation();
+            handleDownload(item);
+          }}
         >
           <Text style={styles.actionButtonText}>⬇</Text>
         </TouchableOpacity>
         <TouchableOpacity
           style={[styles.actionButton, styles.deleteButton]}
-          onPress={() => handleDelete(item)}
+          onPress={(e) => {
+            e.stopPropagation();
+            handleDelete(item);
+          }}
           disabled={deletingId === item.id}
         >
           {deletingId === item.id ? (
@@ -195,166 +293,225 @@ export default function GalleryScreen() {
           <Text style={styles.videoBadgeText}>VIDEO</Text>
         </View>
       )}
+    </TouchableOpacity>
+  );
+
+  const renderHeader = useCallback(
+    () => (
+      <>
+        {/* Title Section */}
+        <View style={styles.titleSection}>
+          <GradientText style={styles.mainTitle}>My Gallery</GradientText>
+          <Text style={styles.subtitle}>
+            View and manage all your AI-generated masterpieces in one place
+          </Text>
+        </View>
+
+        {/* Stats Cards */}
+        <View style={styles.statsContainer}>
+          <View style={styles.statCard}>
+            <LinearGradient
+              colors={["rgba(40, 212, 250, 0.15)", "rgba(210, 41, 255, 0.15)"]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.statCardOuter}
+            >
+              <BlurView
+                intensity={40}
+                tint="light"
+                style={styles.statCardInner}
+              >
+                <GradientText style={styles.statNumber}>
+                  {imageCount}
+                </GradientText>
+              </BlurView>
+            </LinearGradient>
+            <Text style={styles.statLabel}>Images</Text>
+          </View>
+          <View style={styles.statCard}>
+            <LinearGradient
+              colors={["rgba(40, 212, 250, 0.15)", "rgba(210, 41, 255, 0.15)"]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.statCardOuter}
+            >
+              <BlurView
+                intensity={40}
+                tint="light"
+                style={styles.statCardInner}
+              >
+                <GradientText style={styles.statNumber}>
+                  {videoCount}
+                </GradientText>
+              </BlurView>
+            </LinearGradient>
+            <Text style={styles.statLabel}>Videos</Text>
+          </View>
+          <View style={styles.statCard}>
+            <LinearGradient
+              colors={["rgba(40, 212, 250, 0.15)", "rgba(210, 41, 255, 0.15)"]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.statCardOuter}
+            >
+              <BlurView
+                intensity={40}
+                tint="light"
+                style={styles.statCardInner}
+              >
+                <GradientText style={styles.statNumber}>
+                  {totalCount}
+                </GradientText>
+              </BlurView>
+            </LinearGradient>
+            <View style={[styles.statLabelContainer, { alignSelf: "center" }]}>
+              <Text style={styles.statLabel}>Total Creations</Text>
+            </View>
+          </View>
+        </View>
+
+        {/* Search and Filter */}
+        <View style={styles.searchSection}>
+          <View style={styles.searchContainer}>
+            <SearchIcon />
+            <TextInput
+              style={styles.searchInput}
+              placeholder="Search"
+              placeholderTextColor="#979797"
+              value={searchTerm}
+              onChangeText={setSearchTerm}
+            />
+          </View>
+          <TouchableOpacity style={styles.filterButton}>
+            <LinearGradient
+              colors={["#28D4FA", "#D229FF"]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.filterButtonGradient}
+            >
+              <FilterIcon />
+            </LinearGradient>
+          </TouchableOpacity>
+        </View>
+
+        {/* Content Type Tabs */}
+        <View style={styles.tabsContainer}>
+          <TouchableOpacity
+            style={[styles.tab, activeTab === "Image" && styles.tabActive]}
+            onPress={() => {
+              console.log("Setting tab to Image, current:", activeTab);
+              setActiveTab("Image");
+            }}
+            activeOpacity={0.7}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          >
+            <Text
+              style={[
+                styles.tabText,
+                activeTab === "Image" && styles.tabTextActive,
+              ]}
+            >
+              Image
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.tab, activeTab === "Videos" && styles.tabActive]}
+            onPress={() => {
+              console.log("Setting tab to Videos, current:", activeTab);
+              setActiveTab("Videos");
+            }}
+            activeOpacity={0.7}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          >
+            <Text
+              style={[
+                styles.tabText,
+                activeTab === "Videos" && styles.tabTextActive,
+              ]}
+            >
+              Videos
+            </Text>
+          </TouchableOpacity>
+        </View>
+      </>
+    ),
+    [activeTab, imageCount, videoCount, totalCount, searchTerm]
+  );
+
+  const renderEmpty = () => (
+    <View style={styles.emptyContainer}>
+      <Text style={styles.emptyText}>
+        {searchTerm
+          ? "No items found matching your search"
+          : "Your gallery is empty. Start creating!"}
+      </Text>
     </View>
   );
 
   return (
-    <ScreenWrapper addBottomPadding={true}>
-      {/* Title Section */}
-      <View style={styles.titleSection}>
-        <GradientText style={styles.mainTitle}>My Gallery</GradientText>
-        <Text style={styles.subtitle}>
-          View and manage all your AI-generated masterpieces in one place
-        </Text>
-      </View>
-
-      {/* Stats Cards */}
-      <View style={styles.statsContainer}>
-        <View style={styles.statCard}>
-          <LinearGradient
-            colors={["rgba(40, 212, 250, 0.15)", "rgba(210, 41, 255, 0.15)"]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={styles.statCardOuter}
-          >
-            <BlurView intensity={40} tint="light" style={styles.statCardInner}>
-              <GradientText style={styles.statNumber}>{imageCount}</GradientText>
-            </BlurView>
-          </LinearGradient>
-          <Text style={styles.statLabel}>Images</Text>
+    <ScreenWrapper
+      addBottomPadding={true}
+      creditsText={
+        userCredits !== null ? `${userCredits} Credits` : "Loading..."
+      }
+      useCustomScroll={true}
+    >
+      {loading ? (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#28D4FA" />
+          <Text style={styles.loadingText}>Loading gallery...</Text>
         </View>
-        <View style={styles.statCard}>
-          <LinearGradient
-            colors={["rgba(40, 212, 250, 0.15)", "rgba(210, 41, 255, 0.15)"]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={styles.statCardOuter}
-          >
-            <BlurView intensity={40} tint="light" style={styles.statCardInner}>
-              <GradientText style={styles.statNumber}>{videoCount}</GradientText>
-            </BlurView>
-          </LinearGradient>
-          <Text style={styles.statLabel}>Videos</Text>
-        </View>
-        <View style={styles.statCard}>
-          <LinearGradient
-            colors={["rgba(40, 212, 250, 0.15)", "rgba(210, 41, 255, 0.15)"]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={styles.statCardOuter}
-          >
-            <BlurView intensity={40} tint="light" style={styles.statCardInner}>
-              <GradientText style={styles.statNumber}>{totalCount}</GradientText>
-            </BlurView>
-          </LinearGradient>
-          <View style={[styles.statLabelContainer, { alignSelf: "center" }]}>
-            <Text style={styles.statLabel}>Total Creations</Text>
-          </View>
-        </View>
-      </View>
+      ) : (
+        <FlatList
+          data={filteredItems}
+          renderItem={renderItem}
+          keyExtractor={(item) => item.id.toString()}
+          numColumns={2}
+          columnWrapperStyle={styles.galleryRow}
+          ListHeaderComponent={renderHeader}
+          ListEmptyComponent={renderEmpty}
+          extraData={activeTab}
+          contentContainerStyle={[
+            styles.galleryContent,
+            filteredItems.length === 0 && styles.emptyContentContainer,
+          ]}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+          }
+          showsVerticalScrollIndicator={false}
+          scrollEventThrottle={16}
+          removeClippedSubviews={false}
+          nestedScrollEnabled={true}
+        />
+      )}
 
-      {/* Search and Filter */}
-      <View style={styles.searchSection}>
-        <View style={styles.searchContainer}>
-          <SearchIcon />
-          <TextInput
-            style={styles.searchInput}
-            placeholder="Search"
-            placeholderTextColor="#979797"
-            value={searchTerm}
-            onChangeText={setSearchTerm}
-          />
-        </View>
-        <TouchableOpacity style={styles.filterButton}>
-          <LinearGradient
-            colors={["#28D4FA", "#D229FF"]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={styles.filterButtonGradient}
-          >
-            <FilterIcon />
-          </LinearGradient>
-        </TouchableOpacity>
-      </View>
-
-      {/* Content Type Tabs */}
-      <View style={styles.tabsContainer}>
-        <TouchableOpacity
-          style={[styles.tab, activeTab === "Image" && styles.tabActive]}
-          onPress={() => setActiveTab("Image")}
-        >
-          <Text
-            style={[
-              styles.tabText,
-              activeTab === "Image" && styles.tabTextActive,
-            ]}
-          >
-            Image
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.tab, activeTab === "Videos" && styles.tabActive]}
-          onPress={() => setActiveTab("Videos")}
-        >
-          <Text
-            style={[
-              styles.tabText,
-              activeTab === "Videos" && styles.tabTextActive,
-            ]}
-          >
-            Videos
-          </Text>
-        </TouchableOpacity>
-      </View>
-
-      {/* Gallery Grid */}
-      <View style={styles.gallerySection}>
-        {loading ? (
-          <View style={styles.loadingContainer}>
-            <ActivityIndicator size="large" color="#28D4FA" />
-            <Text style={styles.loadingText}>Loading gallery...</Text>
-          </View>
-        ) : filteredItems.length === 0 ? (
-          <View style={styles.emptyContainer}>
-            <Text style={styles.emptyText}>
-              {searchTerm
-                ? "No items found matching your search"
-                : "Your gallery is empty. Start creating!"}
-            </Text>
-          </View>
-        ) : (
-          <FlatList
-            data={filteredItems}
-            renderItem={renderItem}
-            keyExtractor={(item) => item.id.toString()}
-            numColumns={2}
-            columnWrapperStyle={styles.galleryRow}
-            scrollEnabled={true}
-            contentContainerStyle={styles.galleryContent}
-            refreshControl={
-              <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-            }
-          />
-        )}
-      </View>
+      {/* Full Screen Video Modal */}
+      <FullScreenVideoViewer
+        visible={selectedVideo !== null}
+        videoUri={selectedVideo?.aiImage || null}
+        onClose={closeVideoModal}
+        onDownload={handleDownloadFromModal}
+        onDelete={handleDeleteFromModal}
+        isDeleting={deletingId === selectedVideo?.id}
+        showDelete={true}
+      />
     </ScreenWrapper>
   );
 }
 
 const styles = StyleSheet.create({
   titleSection: {
-    paddingHorizontal: 16,
     paddingTop: 20,
     paddingBottom: 12,
     alignItems: "center",
   },
   mainTitle: {
-    fontSize: 28,
+    fontSize: 24,
     fontWeight: "700",
     marginBottom: 8,
   },
   subtitle: {
-    fontSize: 20,
+    fontSize: 17,
     fontWeight: "400",
     color: "#000",
     textAlign: "center",
@@ -362,7 +519,6 @@ const styles = StyleSheet.create({
   },
   statsContainer: {
     flexDirection: "row",
-    paddingHorizontal: 16,
     gap: 12,
     marginBottom: 20,
   },
@@ -394,11 +550,11 @@ const styles = StyleSheet.create({
     overflow: "hidden",
   },
   statNumber: {
-    fontSize: 31.71,
+    fontSize: 26,
     fontWeight: "700",
   },
   statLabel: {
-    fontSize: 19.026,
+    fontSize: 15,
     fontWeight: "400",
     color: "#303030",
     textAlign: "center",
@@ -410,7 +566,6 @@ const styles = StyleSheet.create({
   },
   searchSection: {
     flexDirection: "row",
-    paddingHorizontal: 16,
     gap: 12,
     marginBottom: 20,
   },
@@ -427,7 +582,7 @@ const styles = StyleSheet.create({
   },
   searchInput: {
     flex: 1,
-    fontSize: 19.006,
+    fontSize: 15,
     fontWeight: "300",
     color: "#000",
   },
@@ -445,20 +600,19 @@ const styles = StyleSheet.create({
   },
   tabsContainer: {
     flexDirection: "row",
-    paddingHorizontal: 16,
     marginBottom: 20,
     gap: 0,
-    marginHorizontal: "10%",
   },
   tab: {
     flex: 1,
-    paddingVertical: 8,
-    paddingHorizontal: 7.083,
+    paddingVertical: 12,
+    paddingHorizontal: 0,
     borderWidth: 0.354,
     borderColor: "#979797",
     alignItems: "center",
     justifyContent: "center",
-    minHeight: 40,
+    minHeight: 44,
+    backgroundColor: "#fff",
   },
   tabActive: {
     backgroundColor: "#D229FF",
@@ -470,7 +624,7 @@ const styles = StyleSheet.create({
     borderWidth: 0,
   },
   tabText: {
-    fontSize: 20,
+    fontSize: 17,
     fontWeight: "500",
     color: "#979797",
   },
@@ -478,13 +632,17 @@ const styles = StyleSheet.create({
     color: "#fff",
     fontWeight: "600",
   },
-  gallerySection: {
-    paddingHorizontal: 16,
-    marginBottom: 20,
-    minHeight: 200,
+  safeArea: {
+    flex: 1,
+    backgroundColor: "#fff",
   },
   galleryContent: {
-    paddingBottom: 20,
+    paddingBottom: Platform.OS === "ios" ? 105 : 90,
+    paddingHorizontal: 16,
+  },
+  emptyContentContainer: {
+    flexGrow: 1,
+    justifyContent: "center",
   },
   galleryRow: {
     justifyContent: "space-between",
@@ -521,7 +679,7 @@ const styles = StyleSheet.create({
   },
   actionButtonText: {
     color: "#fff",
-    fontSize: 18,
+    fontSize: 15,
   },
   videoBadge: {
     position: "absolute",
@@ -534,7 +692,7 @@ const styles = StyleSheet.create({
   },
   videoBadgeText: {
     color: "#fff",
-    fontSize: 10,
+    fontSize: 9,
     fontWeight: "700",
   },
   loadingContainer: {
@@ -544,7 +702,7 @@ const styles = StyleSheet.create({
   },
   loadingText: {
     marginTop: 12,
-    fontSize: 16,
+    fontSize: 14,
     color: "#979797",
   },
   emptyContainer: {
@@ -553,7 +711,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   emptyText: {
-    fontSize: 18,
+    fontSize: 15,
     color: "#979797",
     textAlign: "center",
   },

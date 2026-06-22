@@ -29,10 +29,33 @@ The mobile app is already configured to use the **same Clerk application** as yo
 2. **Consistent OAuth**: Same Google/Apple login experience
 3. **Secure Architecture**: Secret key stays safely on your server
 
-### 4. Configure Redirect URLs
-In Clerk dashboard, add these redirect URLs:
-- `exp://localhost:8081/auth-callback` (for development)
-- Your production app scheme when deploying
+### ⚠️ Configure Redirect URLs (REQUIRED for OAuth)
+
+**OAuth will not work until you add the redirect URL to your Clerk dashboard:**
+
+1. **Go to Clerk Dashboard**: https://dashboard.clerk.com
+2. **Select your application**
+3. **Navigate to**: **Configure → User & authentication → SSO connections**
+4. **Click on your OAuth provider** (Google or Apple)
+5. **Find "Allowed redirect URLs" or "Authorized redirect URIs"** section
+6. **Add this redirect URL:**
+   ```
+   animatememories://auth-callback
+   ```
+7. **For development with Expo Go** (optional):
+   ```
+   exp://localhost:8081/auth-callback
+   ```
+8. **Save the changes**
+
+**Important**: Add this URL for EACH OAuth provider separately (Google and Apple).
+
+**Without this configuration, you'll see this error:**
+```
+The current redirect url passed in the sign in or sign up request does not match an authorized redirect URI for this instance.
+```
+
+**Note**: The redirect URL is defined in `constants/OAuth.ts` and matches the app scheme in `app.json`.
 
 ## Installation & Running
 
@@ -86,7 +109,11 @@ npx expo start
 
 1. **Clerk key not working**: Make sure you're using the correct publishable key from your Clerk dashboard
 
-2. **OAuth not working**: Ensure OAuth providers are properly configured in Clerk dashboard with correct redirect URLs
+2. **OAuth not working**: 
+   - ✅ Ensure redirect URL `animatememories://auth-callback` is added to Clerk dashboard (Settings → Paths → Redirect URLs)
+   - ✅ Verify OAuth providers (Google/Apple) are enabled in Clerk dashboard
+   - ✅ Rebuild the app (deep links don't work in Expo Go): `npx expo run:ios` or `npx expo run:android`
+   - ✅ Check that `app.json` has `"scheme": "animatememories"`
 
 3. **Build errors**: Try clearing cache:
 ```bash

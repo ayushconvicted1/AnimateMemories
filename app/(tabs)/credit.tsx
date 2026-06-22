@@ -1,26 +1,78 @@
-import { StyleSheet, View, Text, TouchableOpacity, Dimensions } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
-import { useState, useEffect, useRef } from 'react';
+import {
+  StyleSheet,
+  View,
+  Text,
+  TouchableOpacity,
+  Alert,
+  AppState,
+  Linking,
+  Platform,
+  ActivityIndicator,
+  Dimensions,
+} from "react-native";
+import { LinearGradient } from "expo-linear-gradient";
+import { useState, useEffect, useCallback, useRef } from "react";
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
   withTiming,
 } from 'react-native-reanimated';
-import { GradientText } from '@/components/ui/GradientText';
-import ScreenWrapper from '@/components/ui/ScreenWrapper';
-import { IconSymbol } from '@/components/ui/IconSymbol';
+import { GradientText } from "@/components/ui/GradientText";
+import ScreenWrapper from "@/components/ui/ScreenWrapper";
+import { IconSymbol } from "@/components/ui/IconSymbol";
+import { useAuth as useAuthContext } from "@/contexts/AuthContext";
+import { useAuth } from "@clerk/clerk-expo";
+import { api } from "@/services/api";
+import { useFocusEffect } from "expo-router";
+import { iapService } from "@/services/iap-service";
+import { IAP_PRODUCTS } from "@/constants/iap-config";
 
+const WEBSITE_BASE = "https://animatememories.com";
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
-const CONTENT_WIDTH = SCREEN_WIDTH - 32;
-const TAB_GAP = 8;
-const TAB_PADDING = 16;
+
+const PACK_DETAILS = {
+  starter: {
+    id: 'starter',
+    name: 'Starter Pack',
+    credits: 30,
+    price: 9.99,
+    originalPrice: 15,
+    subtitle: 'Perfect for getting started',
+    productId: 'com.animatememories.credits.starter'
+  },
+  popular: {
+    id: 'popular',
+    name: 'Popular Pack',
+    credits: 100,
+    price: 24.99,
+    originalPrice: 40,
+    subtitle: 'Most popular for historians',
+    productId: 'com.animatememories.credits.popular'
+  },
+  pro: {
+    id: 'pro',
+    name: 'Pro Pack',
+    credits: 200,
+    price: 44.99,
+    originalPrice: 80,
+    subtitle: 'Best value for professionals',
+    productId: 'com.animatememories.credits.pro'
+  }
+};
 
 export default function CreditScreen() {
+  const { user } = useAuthContext();
+  const { getToken } = useAuth();
+
   const [selectedPack, setSelectedPack] = useState<'starter' | 'popular' | 'pro'>('popular');
+  const [userCredits, setUserCredits] = useState<number>(0);
+  const [userPlan, setUserPlan] = useState<{ packId: string; credits: number; amount: number; createdAt: string; } | null>(null);
+  const [transactions, setTransactions] = useState<Array<{ id: number; packId: string; credits: number; amount: number; createdAt: string; }>>([]);
+  const [isProcessingIAP, setIsProcessingIAP] = useState(false);
+
   const translateX = useSharedValue(0);
   const tabWidth = useSharedValue(0);
   
-  // Use refs to store layout measurements reliably
   const tabLayouts = useRef<{
     starter: { x: number; width: number } | null;
     popular: { x: number; width: number } | null;
@@ -35,11 +87,9 @@ export default function CreditScreen() {
     const layout = tabLayouts.current[pack];
     if (layout && layout.width > 0) {
       if (immediate) {
-        // Set immediately without animation for instant feedback
         tabWidth.value = layout.width;
         translateX.value = layout.x;
       } else {
-        // Animate smoothly
         tabWidth.value = withTiming(layout.width, { duration: 300 });
         translateX.value = withTiming(layout.x, { duration: 300 });
       }
@@ -47,7 +97,6 @@ export default function CreditScreen() {
   };
 
   useEffect(() => {
-    // Small delay to ensure layout is measured
     const timer = setTimeout(() => {
       updateIndicator(selectedPack);
     }, 0);
@@ -61,195 +110,480 @@ export default function CreditScreen() {
     };
   });
 
-  const transactions = [
-    { id: '1', name: '$25 - Popular Pack', date: '01 September, 2025' },
-    { id: '2', name: '$25 - Popular Pack', date: '02 August, 2025' },
-    { id: '3', name: '$25 - Popular Pack', date: '01 August, 2025' },
-  ];
+  const fetchUserCredits = useCallback(async () => {
+    if (!user) return;
+    try {
+      const token = await getToken();
+      const result = await api.verifyUser(user, token);
+      setUserCredits(result.result?.credits || 0);
+    } catch (error) {
+      console.error("Error fetching credits:", error);
+    }
+  }, [user, getToken]);
+
+  const fetchUserPlan = useCallback(async () => {
+    if (!user) return;
+    try {
+      const userEmail =
+        user?.primaryEmailAddress?.emailAddress ||
+        user?.emailAddresses?.[0]?.emailAddress;
+      if (!userEmail) return;
+      const token = await getToken();
+      const result = await api.getUserPlan(userEmail, token);
+      if (result.result) {
+        setUserPlan(result.result);
+      }
+    } catch (error) {
+      console.error("Error fetching user plan:", error);
+    }
+  }, [user, getToken]);
+
+  const fetchTransactions = useCallback(async () => {
+    if (!user) return;
+    try {
+      const userEmail =
+        user?.primaryEmailAddress?.emailAddress ||
+        user?.emailAddresses?.[0]?.emailAddress;
+      if (!userEmail) return;
+      const token = await getToken();
+      const result = await api.getTransactions(userEmail, token);
+      if (result.result) {
+        setTransactions(result.result);
+      }
+    } catch (error) {
+      console.error("Error fetching transactions:", error);
+    }
+  }, [user, getToken]);
+
+  useEffect(() => {
+    if (user) {
+      fetchUserCredits();
+      fetchUserPlan();
+      fetchTransactions();
+    }
+  }, [user, fetchUserCredits, fetchUserPlan, fetchTransactions]);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (user) {
+        fetchUserCredits();
+        fetchUserPlan();
+        fetchTransactions();
+      }
+    }, [user, fetchUserCredits, fetchUserPlan, fetchTransactions])
+  );
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener("change", (nextAppState) => {
+      if (nextAppState === "active" && user) {
+        setTimeout(() => {
+          fetchUserCredits();
+          fetchUserPlan();
+          fetchTransactions();
+        }, 1500);
+      }
+    });
+    return () => subscription.remove();
+  }, [user, fetchUserCredits, fetchUserPlan, fetchTransactions]);
+
+  useEffect(() => {
+    if (Platform.OS === 'ios' && user) {
+      const initIAP = async () => {
+        await iapService.initialize();
+      };
+      initIAP();
+    }
+  }, [user]);
+
+  useEffect(() => {
+    const handleDeepLink = async (event: { url: string }) => {
+      const url = event.url;
+      if (url.startsWith("animatememories://payment-cancelled")) {
+        Alert.alert(
+          "Transaction Cancelled",
+          "Your payment was not completed. No charges were made."
+        );
+        return;
+      }
+      if (!url.startsWith("animatememories://payment-success")) return;
+      try {
+        const urlObj = new URL(url);
+        const sessionId = urlObj.searchParams.get("session_id");
+        const emailFromLink = urlObj.searchParams.get("email");
+        const userEmail =
+          emailFromLink ||
+          user?.primaryEmailAddress?.emailAddress ||
+          user?.emailAddresses?.[0]?.emailAddress;
+
+        if (sessionId && userEmail) {
+          try {
+            const token = await getToken();
+            await api.verifyPayment(sessionId, userEmail, token);
+          } catch (_) {}
+        }
+
+        fetchUserCredits();
+        fetchUserPlan();
+        fetchTransactions();
+
+        Alert.alert(
+          "Payment Successful! 🎉",
+          "Your credits have been added to your account."
+        );
+      } catch (err) {
+        console.error("Deep link parse error:", err);
+        fetchUserCredits();
+      }
+    };
+
+    Linking.getInitialURL().then((url) => {
+      if (url) handleDeepLink({ url });
+    });
+
+    const subscription = Linking.addEventListener("url", handleDeepLink);
+    return () => subscription.remove();
+  }, [user, fetchUserCredits, fetchUserPlan, fetchTransactions, getToken]);
+
+  const handlePurchasePress = async () => {
+    if (!user) {
+      Alert.alert("Error", "Please sign in to purchase credits");
+      return;
+    }
+
+    const currentPack = PACK_DETAILS[selectedPack];
+    
+    // Attempt to get product ID from central IAP config, fallback to local default
+    const iapProduct = IAP_PRODUCTS.find(p => p.id === currentPack.id);
+    const productId = iapProduct ? iapProduct.productId : currentPack.productId;
+
+    if (Platform.OS === 'ios') {
+      const userEmail =
+        user.primaryEmailAddress?.emailAddress ||
+        user.emailAddresses?.[0]?.emailAddress;
+        
+      if (!userEmail) {
+        Alert.alert("Error", "Email is required to make a purchase");
+        return;
+      }
+
+      setIsProcessingIAP(true);
+      try {
+        const token = await getToken();
+        const result = await iapService.purchaseProduct(productId, userEmail, token);
+        
+        if (result.success) {
+          Alert.alert(
+            "Payment Successful! 🎉",
+            "Your credits have been added to your account."
+          );
+          fetchUserCredits();
+          fetchUserPlan();
+          fetchTransactions();
+        } else if (result.error !== 'Purchase cancelled') {
+          Alert.alert("Purchase Failed", result.error || "An unknown error occurred");
+        }
+      } catch (error: any) {
+        Alert.alert("Error", error.message || "Failed to process purchase");
+      } finally {
+        setIsProcessingIAP(false);
+      }
+    } else {
+      // Android / Web / Default payment flow via website
+      const userEmail =
+        user.primaryEmailAddress?.emailAddress ||
+        user.emailAddresses?.[0]?.emailAddress;
+      const userName =
+        user.fullName ||
+        `${user.firstName || ""} ${user.lastName || ""}`.trim() ||
+        "";
+
+      const params = new URLSearchParams({
+        ref: "ios", 
+        pack: currentPack.id,
+        ...(userEmail ? { email: userEmail } : {}),
+        ...(userName ? { name: userName } : {}),
+      });
+
+      const url = `${WEBSITE_BASE}/buy-credits?${params.toString()}`;
+
+      try {
+        await Linking.openURL(url);
+      } catch (err) {
+        Alert.alert("Error", "Could not open the website. Please try again.");
+      }
+    }
+  };
+
+  const handleRestorePurchases = async () => {
+    if (!user) return;
+
+    const userEmail =
+      user.primaryEmailAddress?.emailAddress ||
+      user.emailAddresses?.[0]?.emailAddress;
+      
+    if (!userEmail) return;
+
+    setIsProcessingIAP(true);
+    try {
+      const token = await getToken();
+      const result = await iapService.restorePurchases(userEmail, token);
+      
+      if (result.success) {
+        Alert.alert(
+          "Restore Complete",
+          result.message || `Restored ${result.restoredCount} purchases.`
+        );
+        fetchUserCredits();
+        fetchUserPlan();
+        fetchTransactions();
+      } else {
+        Alert.alert("Restore Failed", result.error || "An unknown error occurred");
+      }
+    } catch (error: any) {
+      Alert.alert("Error", error.message || "Failed to restore purchases");
+    } finally {
+      setIsProcessingIAP(false);
+    }
+  };
+
+  const formatTransactionName = (packId: string, amount: number) => {
+    const packNames: Record<string, string> = {
+      starter: "Starter Pack",
+      popular: "Popular Pack",
+      pro: "Pro Pack",
+    };
+    return `$${(amount / 100).toFixed(2)} — ${packNames[packId] || "Pack"}`;
+  };
+
+  const formatDate = (dateString: string) => {
+    const date = new Date(dateString);
+    return date.toLocaleDateString("en-US", {
+      day: "2-digit",
+      month: "long",
+      year: "numeric",
+    });
+  };
+
+  const currentPack = PACK_DETAILS[selectedPack];
 
   return (
-    <ScreenWrapper addBottomPadding={true}>
-
-        {/* AI-Powered Tag */}
-        <View style={styles.tagSection}>
-          <View style={styles.tagContainer}>
-            <Text style={styles.tagIcon}>✨</Text>
-            <Text style={styles.tagText}>AI-Powered Photo Restoration</Text>
-          </View>
+    <ScreenWrapper
+      addBottomPadding={true}
+      creditsText={userCredits !== null ? `${userCredits} Credits` : "Loading..."}
+    >
+      {/* AI-Powered Tag */}
+      <View style={styles.tagSection}>
+        <View style={styles.tagContainer}>
+          <Text style={styles.tagIcon}>✨</Text>
+          <Text style={styles.tagText}>AI-Powered Photo Restoration</Text>
         </View>
+      </View>
 
-        {/* Title Section */}
-        <View style={styles.titleSection}>
-          <GradientText style={styles.mainTitle}>Choose Your Credit Pack</GradientText>
-          <Text style={styles.subtitle}>
-            Restore old photos and bring them to life with <Text style={styles.subtitleHighlight}>AI-powered technology</Text>
-          </Text>
-        </View>
+      {/* Title Section */}
+      <View style={styles.titleSection}>
+        <GradientText style={styles.mainTitle}>Choose Your Credit Pack</GradientText>
+        <Text style={styles.subtitle}>
+          Restore old photos and bring them to life with <Text style={styles.subtitleHighlight}>AI-powered technology</Text>
+        </Text>
+      </View>
 
-        {/* Pack Selection Tabs */}
-        <View style={styles.packTabsContainer}>
-          <View style={styles.packTabsWrapper}>
-            <Animated.View style={[styles.packTabIndicator, animatedIndicatorStyle]}>
-              <LinearGradient
-                colors={['#28D4FA', '#D229FF']}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 0 }}
-                style={styles.packTabIndicatorGradient}
-              />
-            </Animated.View>
-            <TouchableOpacity
-              style={styles.packTab}
-              onPress={() => setSelectedPack('starter')}
-              onLayout={(event) => {
-                const { width, x } = event.nativeEvent.layout;
-                tabLayouts.current.starter = { x, width };
-              }}
-            >
-              <Text style={[
-                styles.packTabText,
-                selectedPack === 'starter' && styles.packTabTextSelected
-              ]}>Starter Pack</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.packTab}
-              onPress={() => setSelectedPack('popular')}
-              onLayout={(event) => {
-                const { width, x } = event.nativeEvent.layout;
-                tabLayouts.current.popular = { x, width };
-              }}
-            >
-              <Text style={[
-                styles.packTabText,
-                selectedPack === 'popular' && styles.packTabTextSelected
-              ]}>Most Popular</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.packTab}
-              onPress={() => setSelectedPack('pro')}
-              onLayout={(event) => {
-                const { width, x } = event.nativeEvent.layout;
-                tabLayouts.current.pro = { x, width };
-              }}
-            >
-              <Text style={[
-                styles.packTabText,
-                selectedPack === 'pro' && styles.packTabTextSelected
-              ]}>Pro Pack</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-
-        {/* Credit Pack Card */}
-        <View style={styles.packCard}>
-          <View style={styles.packCardContent}>
-            {/* Gradient Header Section */}
-            <LinearGradient
-              colors={['rgba(40, 212, 250, 0.08)', 'rgba(210, 41, 255, 0.08)', 'rgba(255, 255, 255, 1)']}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={styles.packCardGradientHeader}
-            >
-              <View style={styles.packCardHeader}>
-                <View style={styles.packCardLeft}>
-                  <View style={styles.creditsTag}>
-                    <Text style={styles.creditsTagText}>100 Credits</Text>
-                  </View>
-                  <GradientText style={styles.packCardTitle}>100 AI Processing Credits</GradientText>
-                  <Text style={styles.packCardSubtitle}>Most popular for historians</Text>
-                </View>
-                <View style={styles.packCardRight}>
-                  <Text style={styles.packCardPrice}>$25</Text>
-                  <View style={styles.originalPriceContainer}>
-                    <Text style={styles.originalPriceText}>Originally $55</Text>
-                    <View style={styles.strikethrough} />
-                  </View>
-                </View>
-              </View>
-            </LinearGradient>
-
-            {/* Features Section - White Background */}
-            <View style={styles.featuresContainer}>
-              <View style={styles.featureItem}>
-                <View style={styles.featureDot} />
-                <Text style={styles.featureText}>Photo restoration & animation</Text>
-              </View>
-              <View style={styles.featureItem}>
-                <View style={styles.featureDot} />
-                <Text style={styles.featureText}>Colorize old photos</Text>
-              </View>
-              <View style={styles.featureItem}>
-                <View style={styles.featureDot} />
-                <Text style={styles.featureText}>Priority processing</Text>
-              </View>
-              <View style={styles.featureItem}>
-                <View style={styles.featureDot} />
-                <Text style={styles.featureText}>Premium quality</Text>
-              </View>
-            </View>
-          </View>
-
-          {/* Absolute Positioned Button - Half Above, Half Below */}
-          <TouchableOpacity style={styles.upgradeButton}>
+      {/* Pack Selection Tabs */}
+      <View style={styles.packTabsContainer}>
+        <View style={styles.packTabsWrapper}>
+          <Animated.View style={[styles.packTabIndicator, animatedIndicatorStyle]}>
             <LinearGradient
               colors={['#28D4FA', '#D229FF']}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 0 }}
-              style={styles.upgradeButtonGradient}
-            >
-              <Text style={styles.upgradeButtonText}>Get Popular Pack</Text>
-              <IconSymbol name="chevron.right" size={20} color="#fff" />
-            </LinearGradient>
+              style={styles.packTabIndicatorGradient}
+            />
+          </Animated.View>
+          <TouchableOpacity
+            style={styles.packTab}
+            onPress={() => setSelectedPack('starter')}
+            onLayout={(event) => {
+              const { width, x } = event.nativeEvent.layout;
+              tabLayouts.current.starter = { x, width };
+            }}
+          >
+            <Text style={[
+              styles.packTabText,
+              selectedPack === 'starter' && styles.packTabTextSelected
+            ]}>Starter Pack</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.packTab}
+            onPress={() => setSelectedPack('popular')}
+            onLayout={(event) => {
+              const { width, x } = event.nativeEvent.layout;
+              tabLayouts.current.popular = { x, width };
+            }}
+          >
+            <Text style={[
+              styles.packTabText,
+              selectedPack === 'popular' && styles.packTabTextSelected
+            ]}>Most Popular</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.packTab}
+            onPress={() => setSelectedPack('pro')}
+            onLayout={(event) => {
+              const { width, x } = event.nativeEvent.layout;
+              tabLayouts.current.pro = { x, width };
+            }}
+          >
+            <Text style={[
+              styles.packTabText,
+              selectedPack === 'pro' && styles.packTabTextSelected
+            ]}>Pro Pack</Text>
           </TouchableOpacity>
         </View>
+      </View>
 
-        {/* Additional Features */}
-        <View style={styles.additionalFeaturesContainer}>
-          <View style={styles.additionalFeatureItem}>
-            <View style={styles.additionalFeatureDot} />
-            <Text style={styles.additionalFeatureText}>Secure Payment</Text>
-          </View>
-          <View style={styles.additionalFeatureItem}>
-            <View style={styles.additionalFeatureDot} />
-            <Text style={styles.additionalFeatureText}>Instant Processing</Text>
-          </View>
-          <View style={styles.additionalFeatureItem}>
-            <View style={styles.additionalFeatureDot} />
-            <Text style={styles.additionalFeatureText}>No Subscription</Text>
+      {/* Credit Pack Card */}
+      <View style={{ ...styles.packCard, paddingBottom: 60, marginBottom: 70 }}>
+        <View style={styles.packCardContent}>
+          {/* Gradient Header Section */}
+          <LinearGradient
+            colors={['rgba(40, 212, 250, 0.08)', 'rgba(210, 41, 255, 0.08)', 'rgba(255, 255, 255, 1)']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.packCardGradientHeader}
+          >
+            <View style={styles.packCardHeader}>
+              <View style={styles.packCardLeft}>
+                <View style={styles.creditsTag}>
+                  <Text style={styles.creditsTagText}>{currentPack.credits} Credits</Text>
+                </View>
+                <GradientText style={styles.packCardTitle}>{currentPack.credits} AI Processing Credits</GradientText>
+                <Text style={styles.packCardSubtitle}>{currentPack.subtitle}</Text>
+              </View>
+              <View style={styles.packCardRight}>
+                <Text style={styles.packCardPrice}>${currentPack.price}</Text>
+                <View style={styles.originalPriceContainer}>
+                  <Text style={styles.originalPriceText}>Originally ${currentPack.originalPrice}</Text>
+                  <View style={styles.strikethrough} />
+                </View>
+              </View>
+            </View>
+          </LinearGradient>
+
+          {/* Features Section - White Background */}
+          <View style={styles.featuresContainer}>
+            <View style={styles.featureItem}>
+              <View style={styles.featureDot} />
+              <Text style={styles.featureText}>Photo restoration & animation</Text>
+            </View>
+            <View style={styles.featureItem}>
+              <View style={styles.featureDot} />
+              <Text style={styles.featureText}>Colorize old photos</Text>
+            </View>
+            <View style={styles.featureItem}>
+              <View style={styles.featureDot} />
+              <Text style={styles.featureText}>Priority processing</Text>
+            </View>
+            <View style={styles.featureItem}>
+              <View style={styles.featureDot} />
+              <Text style={styles.featureText}>Premium quality</Text>
+            </View>
           </View>
         </View>
 
-        {/* Current Credits */}
-        <View style={styles.currentCreditsContainer}>
-          <Text style={styles.creditsIcon}>💧</Text>
-          <Text style={styles.currentCreditsText}>Current Credits left : 60</Text>
-        </View>
+        {/* Absolute Positioned Button - Half Above, Half Below */}
+        <TouchableOpacity 
+          style={styles.upgradeButton} 
+          onPress={handlePurchasePress}
+          disabled={isProcessingIAP}
+        >
+          <LinearGradient
+            colors={['#28D4FA', '#D229FF']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+            style={styles.upgradeButtonGradient}
+          >
+            {isProcessingIAP ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <>
+                <Text style={styles.upgradeButtonText}>Get {currentPack.name}</Text>
+                <IconSymbol name="chevron.right" size={20} color="#fff" />
+              </>
+            )}
+          </LinearGradient>
+        </TouchableOpacity>
+      </View>
 
-        {/* My Plan Section */}
+      {/* Restore Purchases Button for iOS Users */}
+      {Platform.OS === 'ios' && (
+        <View style={{ alignItems: 'center', marginBottom: 20 }}>
+          <TouchableOpacity 
+            style={styles.restoreButton}
+            onPress={handleRestorePurchases}
+            disabled={isProcessingIAP}
+          >
+            <Text style={styles.restoreText}>Restore Purchases</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {/* Additional Features */}
+      <View style={styles.additionalFeaturesContainer}>
+        <View style={styles.additionalFeatureItem}>
+          <View style={styles.additionalFeatureDot} />
+          <Text style={styles.additionalFeatureText}>Secure Payment</Text>
+        </View>
+        <View style={styles.additionalFeatureItem}>
+          <View style={styles.additionalFeatureDot} />
+          <Text style={styles.additionalFeatureText}>Instant Processing</Text>
+        </View>
+        <View style={styles.additionalFeatureItem}>
+          <View style={styles.additionalFeatureDot} />
+          <Text style={styles.additionalFeatureText}>No Subscription</Text>
+        </View>
+      </View>
+
+      {/* Current Credits */}
+      <View style={styles.currentCreditsContainer}>
+        <Text style={styles.creditsIcon}>💧</Text>
+        <Text style={styles.currentCreditsText}>Current Credits left : {userCredits}</Text>
+      </View>
+
+      {/* My Plan Section */}
+      {userPlan && (
         <View style={styles.myPlanSection}>
-          <GradientText style={styles.myPlanTitle}>My Plan - Most Popular</GradientText>
+          <GradientText style={styles.myPlanTitle}>
+            My Plan - {userPlan.packId === "popular" ? "Most Popular" : userPlan.packId === "starter" ? "Starter" : "Pro"}
+          </GradientText>
         </View>
+      )}
 
-        {/* Transaction History */}
-        <View style={styles.transactionSection}>
-          <Text style={styles.transactionTitle}>Transaction History</Text>
-          {transactions.map((transaction, index) => (
+      {/* Transaction History */}
+      <View style={styles.transactionSection}>
+        <Text style={styles.transactionTitle}>Transaction History</Text>
+        {transactions.length === 0 ? (
+          <Text style={styles.noTransactionsText}>
+            No transactions yet. Purchase a credit pack to get started!
+          </Text>
+        ) : (
+          transactions.map((transaction, index) => (
             <View key={transaction.id}>
               <View style={styles.transactionItem}>
-                <Text style={styles.transactionName}>{transaction.name}</Text>
-                <Text style={styles.transactionDate}>{transaction.date}</Text>
+                <Text style={styles.transactionName}>{formatTransactionName(transaction.packId, transaction.amount)}</Text>
+                <Text style={styles.transactionDate}>{formatDate(transaction.createdAt)}</Text>
               </View>
               {index < transactions.length - 1 && <View style={styles.transactionDivider} />}
             </View>
-          ))}
-        </View>
+          ))
+        )}
+      </View>
 
-        {/* Contact Section */}
-        <View style={styles.contactSection}>
-          <Text style={styles.contactText}>Need custom solutions?</Text>
-          <TouchableOpacity>
-            <GradientText style={styles.contactLink}>Contact Us</GradientText>
-          </TouchableOpacity>
-        </View>
+      {/* Contact Section */}
+      <View style={styles.contactSection}>
+        <Text style={styles.contactText}>Need custom solutions?</Text>
+        <TouchableOpacity onPress={() => Linking.openURL("mailto:support@animatememories.com")}>
+          <GradientText style={styles.contactLink}>Contact Us</GradientText>
+        </TouchableOpacity>
+      </View>
     </ScreenWrapper>
   );
 }
@@ -344,7 +678,6 @@ const styles = StyleSheet.create({
   },
   packCard: {
     marginHorizontal: 16,
-    marginBottom: 60,
     borderRadius: 11,
     backgroundColor: '#fff',
     shadowColor: '#000',
@@ -353,8 +686,8 @@ const styles = StyleSheet.create({
     shadowRadius: 31.7,
     elevation: 8,
     position: 'relative',
-    padding: 20,
     overflow: 'visible',
+    padding: 0,
   },
   packCardContent: {
     backgroundColor: '#fff',
@@ -402,7 +735,7 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
   },
   packCardPrice: {
-    fontSize: 40,
+    fontSize: 32,
     fontWeight: '600',
     color: '#000',
     marginBottom: 4,
@@ -542,6 +875,7 @@ const styles = StyleSheet.create({
     fontSize: 17,
     fontWeight: '600',
     color: '#878787',
+    flex: 1,
   },
   transactionDate: {
     fontSize: 17,
@@ -567,5 +901,22 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '500',
     textDecorationLine: 'underline',
+  },
+  restoreButton: {
+    alignItems: "center",
+    paddingVertical: 12,
+  },
+  restoreText: {
+    color: "#666",
+    fontSize: 13,
+    fontWeight: "500",
+    textDecorationLine: "underline",
+  },
+  noTransactionsText: {
+    fontSize: 13,
+    color: "#999",
+    textAlign: "center",
+    paddingVertical: 12,
+    lineHeight: 20,
   },
 });

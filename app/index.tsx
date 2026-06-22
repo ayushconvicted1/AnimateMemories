@@ -16,7 +16,7 @@ export default function Index() {
   if (isSignedIn) {
     // For existing users, go directly to tabs
     // For new users, they'll be redirected to onboarding from signup
-    return <Redirect href="/(onboarding)" />;
+    return <Redirect href="/(tabs)" />;
   }
 
   return <Redirect href="/(auth)" />;

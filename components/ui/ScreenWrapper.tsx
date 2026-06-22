@@ -9,6 +9,7 @@ interface ScreenWrapperProps extends ScrollViewProps {
   creditsText?: string;
   addBottomPadding?: boolean;
   contentContainerStyle?: any;
+  useCustomScroll?: boolean; // If true, just render header and children without ScrollView
 }
 
 export default function ScreenWrapper({
@@ -17,11 +18,24 @@ export default function ScreenWrapper({
   creditsText,
   addBottomPadding = true,
   contentContainerStyle,
+  useCustomScroll = false,
   ...scrollViewProps
 }: ScreenWrapperProps) {
   // Tab bar height: iOS = 105, Android = 90
   const tabBarHeight = Platform.OS === 'ios' ? 105 : 90;
   const bottomPadding = addBottomPadding ? tabBarHeight : 0;
+
+  // If using custom scroll (like FlatList), just render header and children
+  if (useCustomScroll) {
+    return (
+      <SafeAreaView style={styles.container}>
+        {showHeader && <TabHeader creditsText={creditsText} />}
+        <View style={[styles.customScrollContainer, { paddingBottom: bottomPadding }]}>
+          {children}
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.container}>
@@ -52,6 +66,9 @@ const styles = StyleSheet.create({
   },
   contentContainer: {
     flexGrow: 1,
+  },
+  customScrollContainer: {
+    flex: 1,
   },
 });
 

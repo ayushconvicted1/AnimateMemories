@@ -1,12 +1,12 @@
-import React, { useEffect, useRef } from 'react';
-import { View, Image, StyleSheet } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
+import React, { useEffect, useRef } from "react";
+import { View, Image, StyleSheet } from "react-native";
+import { LinearGradient } from "expo-linear-gradient";
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
   withTiming,
   withSequence,
-} from 'react-native-reanimated';
+} from "react-native-reanimated";
 
 interface BeforeAfterSliderProps {
   beforeImage: string;
@@ -45,7 +45,7 @@ export default function BeforeAfterSlider({
       };
 
       animate();
-      
+
       // Continue with interval
       intervalRef.current = setInterval(() => {
         animate();
@@ -68,7 +68,7 @@ export default function BeforeAfterSlider({
     // Calculate translateY: at progress 0, we want to show top (translateY = 0)
     // At progress 1, we want to show bottom (translateY = -height)
     const translateY = -progress.value * height;
-    
+
     return {
       transform: [{ translateY }],
     };
@@ -104,7 +104,7 @@ export default function BeforeAfterSlider({
       {/* Slider Handle */}
       <Animated.View style={[styles.handle, { width }, handleStyle]}>
         <LinearGradient
-          colors={['#28D4FA', '#D229FF']}
+          colors={["#28D4FA", "#D229FF"]}
           style={styles.handleGradient}
         />
       </Animated.View>
@@ -114,32 +114,28 @@ export default function BeforeAfterSlider({
 
 const styles = StyleSheet.create({
   container: {
-    position: 'relative',
+    position: "relative",
     borderRadius: 16,
-    overflow: 'hidden',
+    overflow: "hidden",
   },
   image: {
-    width: '100%',
-    height: '100%',
+    width: "100%",
+    height: "100%",
   },
   beforeContainer: {
-    position: 'absolute',
+    position: "absolute",
     top: 0,
     left: 0,
-    overflow: 'hidden',
+    overflow: "hidden",
   },
   handle: {
-    position: 'absolute',
+    position: "absolute",
     left: 0,
     height: 4,
     zIndex: 10,
   },
   handleGradient: {
     height: 4,
-    width: '100%',
+    width: "100%",
   },
 });
-
-
-
-

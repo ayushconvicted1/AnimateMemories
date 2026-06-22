@@ -7,24 +7,35 @@ import {
   Image,
   Dimensions,
   ActivityIndicator,
+  Alert,
+  Platform,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
 import { useEffect, useState } from "react";
+import * as ImagePicker from "expo-image-picker";
 import { GradientText } from "@/components/ui/GradientText";
 import AnimateMemoriesLogo from "@/components/images/AnimateMemoriesLogo";
 import UploadIcon from "@/components/images/UploadIcon";
+import HomeArrow from "@/components/images/HomeArrow";
 import NotificationsIcon from "@/components/images/NotificationsIcon";
-import TabHeader from "@/components/ui/TabHeader";
-import { useAuth } from "@/contexts/AuthContext";
+import ScreenWrapper from "@/components/ui/ScreenWrapper";
+import { useAuth as useAuthContext } from "@/contexts/AuthContext";
+import { useAuth } from "@clerk/clerk-expo";
 import { api } from "@/services/api";
+import { BlurView } from "expo-blur";
+import { getFontFamily } from "@/constants/Fonts";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 const CONTENT_WIDTH = SCREEN_WIDTH - 32;
 
+// API base URL for template images
+const API_BASE_URL =
+  process.env.EXPO_PUBLIC_API_BASE_URL || "http://localhost:3000";
+
 export default function HomeScreen() {
-  const { user } = useAuth();
+  const { user } = useAuthContext();
+  const { getToken } = useAuth();
   const [userCredits, setUserCredits] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -36,7 +47,9 @@ export default function HomeScreen() {
       }
 
       try {
-        const result = await api.verifyUser(user);
+        // Get Clerk session token
+        const token = await getToken();
+        const result = await api.verifyUser(user, token);
         setUserCredits(result.result?.credits || 0);
       } catch (error) {
         console.error("Error fetching user credits:", error);
@@ -46,232 +59,386 @@ export default function HomeScreen() {
       }
     };
 
-    fetchUserCredits();
-  }, [user]);
+    if (user) {
+      fetchUserCredits();
+    } else {
+      setLoading(false);
+    }
+  }, [user]); // Removed getToken from dependencies
 
   const handleTryForFree = () => {
     router.push("/(tabs)/animate");
   };
 
+  const requestImagePermission = async () => {
+    if (Platform.OS !== "web") {
+      const { status } =
+        await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== "granted") {
+        Alert.alert(
+          "Permission needed",
+          "Please grant camera roll permissions to upload images."
+        );
+        return false;
+      }
+    }
+    return true;
+  };
+
+  const handleUploadImage = async () => {
+    try {
+      const hasPermission = await requestImagePermission();
+      if (!hasPermission) return;
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [4, 3],
+        quality: 0.8,
+      });
+
+      if (result.canceled || !result.assets || !result.assets[0]) {
+        return;
+      }
+
+      const imageUri = result.assets[0].uri;
+      if (!imageUri) {
+        Alert.alert("Error", "No image selected.");
+        return;
+      }
+
+      // Navigate to create tab with image URI as param
+      router.push({
+        pathname: "/(tabs)/animate",
+        params: {
+          imageUri: encodeURIComponent(imageUri),
+        },
+      });
+    } catch (error: any) {
+      console.error("Error picking image:", error);
+      Alert.alert(
+        "Error",
+        error.message || "Failed to pick image. Please try again."
+      );
+    }
+  };
+
   const animationTemplates = [
     {
-      name: "Warm Hug",
-      image: "https://images.unsplash.com/photo-1518568814500-bf0f8d125f46",
+      id: "jump-scare",
+      name: "Jump Scare",
+      image: `${API_BASE_URL}/templates/jump-scare.webp`,
     },
     {
-      name: "Fighting Pose",
-      image: "https://images.unsplash.com/photo-1544005313-94ddf0286df2",
+      id: "evil-laugh",
+      name: "Evil Laugh",
+      image: `${API_BASE_URL}/templates/evil-laugh.webp`,
     },
     {
-      name: "Head Lean",
-      image: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d",
+      id: "trick-or-treat",
+      name: "Trick or Treat",
+      image: `${API_BASE_URL}/templates/trick-or-treat.webp`,
     },
     {
-      name: "High Ten",
-      image: "https://images.unsplash.com/photo-1522071820081-009f0129c71c",
+      id: "opening-gift",
+      name: "Opening Gift",
+      image: `${API_BASE_URL}/templates/opening-gift.webp`,
     },
     {
-      name: "Thumbs Up",
-      image: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d",
+      id: "holiday-toast",
+      name: "Holiday Toast",
+      image: `${API_BASE_URL}/templates/Holiday%20Toast.webp`,
+    },
+    {
+      id: "decorating-tree",
+      name: "Decorating the Tree",
+      image: `${API_BASE_URL}/templates/decorating-tree.webp`,
+    },
+    {
+      id: "carving-turkey",
+      name: "Carving the Turkey",
+      image: `${API_BASE_URL}/templates/carving-turkey.webp`,
+    },
+    {
+      id: "serving-dinner",
+      name: "Serving Dinner",
+      image: `${API_BASE_URL}/templates/serving-dinner.webp`,
+    },
+    {
+      id: "happy-dance",
+      name: "Happy Dance",
+      image: `${API_BASE_URL}/templates/happy-dance.webp`,
+    },
+    {
+      id: "friendly-wave",
+      name: "Friendly Wave",
+      image: `${API_BASE_URL}/templates/friendly-wave.webp`,
     },
   ];
 
-  return (
-    <SafeAreaView style={styles.container}>
-      <ScrollView
-        style={styles.scrollView}
-        showsVerticalScrollIndicator={false}
-      >
-        {/* Header */}
-        <TabHeader
-          creditsText={
-            loading
-              ? "Loading..."
-              : userCredits !== null
-              ? `${userCredits} Credits`
-              : "0 Credits"
-          }
-        />
+  const handleTemplateSelect = (templateId: string) => {
+    router.push({
+      pathname: "/(tabs)/animate",
+      params: {
+        templateId: templateId,
+      },
+    });
+  };
 
-        {/* Hero Image Section */}
-        <View style={styles.heroSection}>
-          <View style={styles.heroImageContainer}>
-            <Image
-              source={{
-                uri: "https://images.unsplash.com/photo-1518568814500-bf0f8d125f46",
-              }}
-              style={styles.heroImage}
-              resizeMode="cover"
-            />
-          </View>
-          {/* <LinearGradient
+  return (
+    <ScreenWrapper
+      addBottomPadding={true}
+      creditsText={
+        loading
+          ? "Loading..."
+          : userCredits !== null
+          ? `${userCredits} Credits`
+          : "0 Credits"
+      }
+    >
+      {/* Hero Image Section */}
+      <View style={styles.heroSection}>
+        <View style={styles.heroImageContainer}>
+          <Image
+            source={{
+              uri: "https://images.unsplash.com/photo-1518568814500-bf0f8d125f46",
+            }}
+            style={styles.heroImage}
+            resizeMode="cover"
+          />
+        </View>
+        {/* <LinearGradient
             colors={['transparent', 'rgba(0,0,0,0.3)']}
             style={styles.heroGradient}
           /> */}
-          <GradientText style={styles.heroTitle}>
-            Animate Old Photos with AI
-          </GradientText>
-          <Text style={styles.heroDescription}>
-            Easily create viral AI videos from your images and text with Animate
-            Memories. Start making trendy{" "}
-            <Text style={styles.highlightText}>
-              AI Kiss, Hug, or Dance videos
-            </Text>{" "}
-            — all with just one click!
-          </Text>
-        </View>
+        <GradientText style={styles.heroTitle}>
+          Animate Old Photos with AI
+        </GradientText>
+        <Text style={styles.heroDescription}>
+          Easily create viral AI videos from your images and text with Animate
+          Memories. Start making trendy{" "}
+          <Text style={styles.highlightText}>
+            AI Kiss, Hug, or Dance videos
+          </Text>{" "}
+          — all with just one click!
+        </Text>
+      </View>
 
-        {/* Upload Section */}
-        <View style={styles.uploadSection}>
-          <View style={styles.uploadContainer}>
-            <View style={styles.uploadArea}>
-              <View style={styles.uploadIconContainer}>
-                <Text style={styles.uploadIcon}>
-                  <UploadIcon />
-                </Text>
+      {/* Upload Section */}
+      <View style={styles.uploadSection}>
+        <TouchableOpacity
+          style={styles.uploadContainer}
+          onPress={handleUploadImage}
+          activeOpacity={0.7}
+        >
+          <View style={styles.uploadArea}>
+            <View style={styles.uploadIconContainer}>
+              <Text style={styles.uploadIcon}>
+                <UploadIcon />
+              </Text>
+            </View>
+            <Text style={styles.uploadText}>Upload a file here</Text>
+            <Text style={styles.uploadSubtext}>
+              Supported formats: jpg, jpeg, png{"\n"}Max file size: 10MB. Min
+              resolution 300x300px.
+            </Text>
+          </View>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.tryForFreeButton}
+          onPress={handleTryForFree}
+        >
+          <LinearGradient
+            colors={["#28D4FA", "#D229FF"]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+            style={styles.tryForFreeGradient}
+          >
+            <Text style={styles.tryForFreeText}>Try For Free</Text>
+          </LinearGradient>
+        </TouchableOpacity>
+        <Text style={styles.orTryText}>Or try animating an example</Text>
+      </View>
+
+      {/* Animation Templates */}
+      <View style={styles.templatesSection}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={styles.templatesScroll}
+        >
+          {animationTemplates.map((template, index) => (
+            <TouchableOpacity
+              key={index}
+              style={styles.templateCard}
+              onPress={() => handleTemplateSelect(template.id)}
+              activeOpacity={0.7}
+            >
+              <View style={styles.templateImageContainer}>
+                <Image
+                  source={{ uri: template.image }}
+                  style={styles.templateImage}
+                  resizeMode="cover"
+                />
               </View>
-              <Text style={styles.uploadText}>Upload a file here</Text>
-              <Text style={styles.uploadSubtext}>
-                Supported formats: jpg, jpeg, png{"\n"}Max file size: 10MB. Min
-                resolution 300x300px.
+              <Text style={styles.templateName}>{template.name}</Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      </View>
+
+      {/* How to Section */}
+      <View style={styles.howToSection}>
+        <Text style={styles.howToTitle}>
+          How to Animate Old Pictures with AI?
+        </Text>
+
+        {/* Step 1 */}
+        <View style={styles.stepContainer}>
+          <View style={styles.stepContent}>
+            <View style={styles.stepImageWrapper}>
+              {/* Tilted gradient background */}
+              <View
+                style={[styles.gradientBackground, styles.gradientTiltLeft]}
+              >
+                <LinearGradient
+                  colors={[
+                    "rgba(147, 51, 234, 0.4)",
+                    "rgba(59, 130, 246, 0.4)",
+                  ]}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={styles.gradientFill}
+                />
+              </View>
+              <View style={styles.stepImageContainer}>
+                <Image
+                  source={require("@/assets/images/Home1.webp")}
+                  style={styles.stepImage}
+                  resizeMode="cover"
+                />
+              </View>
+              {/* Arrow pointing to frame */}
+              <View style={styles.arrowContainer}>
+                <HomeArrow width={25} height={12} />
+                <View style={styles.uploadIconFrame}>
+                  <BlurView
+                    intensity={20}
+                    tint="light"
+                    style={styles.uploadIconBlur}
+                  >
+                    <UploadIcon color="#4A4A4A" width={20} height={22} />
+                  </BlurView>
+                </View>
+              </View>
+            </View>
+            <View style={[styles.stepTextContainer, styles.stepTextRight]}>
+              <Text style={[styles.stepNumber, styles.textRight]}>Step 1</Text>
+              <GradientText style={[styles.stepTitle, styles.textRight]}>
+                Upload Your Image
+              </GradientText>
+              <Text style={[styles.stepDescription, styles.textRight]}>
+                Click "<Text style={styles.stepHighlight}>Try for Free</Text>"
+                and import your old photos effortlessly.
               </Text>
             </View>
           </View>
-          <TouchableOpacity
-            style={styles.tryForFreeButton}
-            onPress={handleTryForFree}
-          >
-            <LinearGradient
-              colors={["#28D4FA", "#D229FF"]}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 0 }}
-              style={styles.tryForFreeGradient}
-            >
-              <Text style={styles.tryForFreeText}>Try For Free</Text>
-            </LinearGradient>
-          </TouchableOpacity>
-          <Text style={styles.orTryText}>Or try animating an example</Text>
         </View>
 
-        {/* Animation Templates */}
-        <View style={styles.templatesSection}>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            style={styles.templatesScroll}
-          >
-            {animationTemplates.map((template, index) => (
-              <View key={index} style={styles.templateCard}>
-                <View style={styles.templateImageContainer}>
-                  <Image
-                    source={{ uri: template.image }}
-                    style={styles.templateImage}
-                    resizeMode="cover"
-                  />
-                </View>
-                <Text style={styles.templateName}>{template.name}</Text>
+        {/* Step 2 */}
+        <View style={styles.stepContainer}>
+          <View style={styles.stepContent}>
+            <View style={styles.stepTextContainer}>
+              <Text style={styles.stepNumber}>Step 2</Text>
+              <GradientText style={styles.stepTitle}>
+                Animate Your Photo
+              </GradientText>
+              <Text style={styles.stepDescription}>
+                Ether Choose the template or choose custom for desired output &{" "}
+                <Text style={styles.stepHighlight}>let AI do the magic</Text>
+              </Text>
+            </View>
+            <View style={styles.stepImageWrapper}>
+              {/* Tilted gradient background - opposite direction */}
+              <View
+                style={[styles.gradientBackground, styles.gradientTiltRight]}
+              >
+                <LinearGradient
+                  colors={[
+                    "rgba(59, 130, 246, 0.4)",
+                    "rgba(147, 51, 234, 0.4)",
+                  ]}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={styles.gradientFill}
+                />
               </View>
-            ))}
-          </ScrollView>
-        </View>
-
-        {/* How to Section */}
-        <View style={styles.howToSection}>
-          <Text style={styles.howToTitle}>
-            How to Animate Old Pictures with AI?
-          </Text>
-
-          {/* Step 1 */}
-          <View style={styles.stepContainer}>
-            <View style={styles.stepContent}>
               <View style={styles.stepImageContainer}>
                 <Image
-                  source={{
-                    uri: "https://images.unsplash.com/photo-1518568814500-bf0f8d125f46",
-                  }}
+                  source={require("@/assets/images/Home2.webp")}
                   style={styles.stepImage}
                   resizeMode="cover"
                 />
               </View>
-              <View style={styles.stepTextContainer}>
-                <Text style={styles.stepNumber}>Step 1</Text>
-                <GradientText style={styles.stepTitle}>
-                  Upload Your Image
-                </GradientText>
-                <Text style={styles.stepDescription}>
-                  Click "<Text style={styles.stepHighlight}>Try for Free</Text>"
-                  and import your old photos effortlessly.
+              {/* <View style={styles.templateBadge}>
+                <Text style={styles.templateBadgeText}>T</Text>
+                <Text style={styles.templateBadgeLabel}>
+                  Let the girl sit down
                 </Text>
-              </View>
-            </View>
-          </View>
-
-          {/* Step 2 */}
-          <View style={styles.stepContainer}>
-            <View style={styles.stepContent}>
-              <View style={styles.stepTextContainer}>
-                <Text style={styles.stepNumber}>Step 2</Text>
-                <GradientText style={styles.stepTitle}>
-                  Animate Your Photo
-                </GradientText>
-                <Text style={styles.stepDescription}>
-                  Ether Choose the template or choose custom for desired output
-                  &{" "}
-                  <Text style={styles.stepHighlight}>let AI do the magic</Text>
-                </Text>
-              </View>
-              <View style={styles.stepImageContainer}>
-                <Image
-                  source={{
-                    uri: "https://images.unsplash.com/photo-1518568814500-bf0f8d125f46",
-                  }}
-                  style={styles.stepImage}
-                  resizeMode="cover"
-                />
-                <View style={styles.templateBadge}>
-                  <Text style={styles.templateBadgeText}>T</Text>
-                  <Text style={styles.templateBadgeLabel}>
-                    Let the girl sit down
-                  </Text>
-                </View>
-              </View>
-            </View>
-          </View>
-
-          {/* Step 3 */}
-          <View style={styles.stepContainer}>
-            <View style={styles.stepContent}>
-              <View style={styles.stepImageContainer}>
-                <Image
-                  source={{
-                    uri: "https://images.unsplash.com/photo-1518568814500-bf0f8d125f46",
-                  }}
-                  style={styles.stepImage}
-                  resizeMode="cover"
-                />
-                <View style={styles.downloadBadge}>
-                  <Text style={styles.downloadIcon}>⬇</Text>
-                </View>
-              </View>
-              <View style={styles.stepTextContainer}>
-                <Text style={styles.stepNumber}>Step 3</Text>
-                <GradientText style={styles.stepTitle}>
-                  Export and Download
-                </GradientText>
-                <Text style={styles.stepDescription}>
-                  Preview and download your animated videos instantly.
-                </Text>
-              </View>
+              </View> */}
             </View>
           </View>
         </View>
 
-        {/* Gallery Preview */}
-        <View style={styles.gallerySection}>
+        {/* Step 3 */}
+        <View style={styles.stepContainer}>
+          <View style={styles.stepContent}>
+            <View style={styles.stepImageWrapper}>
+              {/* Tilted gradient background */}
+              <View
+                style={[styles.gradientBackground, styles.gradientTiltLeft]}
+              >
+                <LinearGradient
+                  colors={[
+                    "rgba(147, 51, 234, 0.4)",
+                    "rgba(59, 130, 246, 0.4)",
+                  ]}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={styles.gradientFill}
+                />
+              </View>
+              <View style={styles.stepImageContainer}>
+                <Image
+                  source={require("@/assets/images/Home3.webp")}
+                  style={styles.stepImage}
+                  resizeMode="cover"
+                />
+              </View>
+              <View style={styles.downloadBadge}>
+                <Text style={styles.downloadIcon}>⬇</Text>
+              </View>
+            </View>
+            <View style={[styles.stepTextContainer, styles.stepTextRight]}>
+              <Text style={[styles.stepNumber, styles.textRight]}>Step 3</Text>
+              <GradientText style={[styles.stepTitle, styles.textRight]}>
+                Export and Download
+              </GradientText>
+              <Text style={[styles.stepDescription, styles.textRight]}>
+                Preview and download your animated videos instantly.
+              </Text>
+            </View>
+          </View>
+        </View>
+      </View>
+
+      {/* Gallery Preview */}
+      <View style={styles.gallerySection}>
+        <TouchableOpacity onPress={() => router.push("/(tabs)/animate")}>
           <GradientText style={styles.viewMoreText}>View More</GradientText>
-        </View>
-      </ScrollView>
-    </SafeAreaView>
+        </TouchableOpacity>
+      </View>
+    </ScreenWrapper>
   );
 }
 
@@ -304,7 +471,8 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   logoIconText: {
-    fontSize: 18,
+    fontSize: 15,
+    fontFamily: getFontFamily("700"),
     fontWeight: "700",
     color: "#fff",
   },
@@ -319,12 +487,14 @@ const styles = StyleSheet.create({
     marginLeft: 4,
   },
   logoTextTop: {
-    fontSize: 16,
+    fontSize: 14,
+    fontFamily: getFontFamily("700"),
     fontWeight: "700",
     color: "#000",
   },
   logoTextBottom: {
-    fontSize: 12,
+    fontSize: 10,
+    fontFamily: getFontFamily("400"),
     fontWeight: "400",
     color: "#000",
   },
@@ -339,7 +509,8 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   creditsButtonText: {
-    fontSize: 12,
+    fontSize: 10,
+    fontFamily: getFontFamily("600"),
     fontWeight: "600",
     color: "#fff",
   },
@@ -347,7 +518,7 @@ const styles = StyleSheet.create({
     padding: 4,
   },
   bellIcon: {
-    fontSize: 20,
+    fontSize: 17,
   },
   heroSection: {
     width: CONTENT_WIDTH,
@@ -374,14 +545,16 @@ const styles = StyleSheet.create({
     height: 100,
   },
   heroTitle: {
-    fontSize: 28,
+    fontSize: 24,
+    fontFamily: getFontFamily("700"),
     fontWeight: "700",
     textAlign: "center",
     marginTop: 19,
     marginBottom: 10,
   },
   heroDescription: {
-    fontSize: 20,
+    fontSize: 17,
+    fontFamily: getFontFamily("400"),
     fontWeight: "400",
     color: "#000",
     textAlign: "center",
@@ -406,6 +579,7 @@ const styles = StyleSheet.create({
     shadowRadius: 17.1,
     elevation: 5,
     marginBottom: 16,
+    overflow: "hidden",
   },
   uploadArea: {
     borderWidth: 0.75,
@@ -422,16 +596,18 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   uploadIcon: {
-    fontSize: 42,
+    fontSize: 34,
   },
   uploadText: {
-    fontSize: 18,
+    fontSize: 15,
+    fontFamily: getFontFamily("400"),
     fontWeight: "400",
     color: "#000",
     marginBottom: 8,
   },
   uploadSubtext: {
-    fontSize: 12.781,
+    fontSize: 11,
+    fontFamily: getFontFamily("400"),
     fontWeight: "400",
     color: "#979797",
     textAlign: "center",
@@ -449,12 +625,14 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   tryForFreeText: {
-    fontSize: 20,
+    fontSize: 17,
+    fontFamily: getFontFamily("600"),
     fontWeight: "600",
     color: "#fff",
   },
   orTryText: {
-    fontSize: 20,
+    fontSize: 17,
+    fontFamily: getFontFamily("400"),
     fontWeight: "400",
     color: "#000",
     textAlign: "center",
@@ -482,7 +660,8 @@ const styles = StyleSheet.create({
     height: "100%",
   },
   templateName: {
-    fontSize: 15,
+    fontSize: 13,
+    fontFamily: getFontFamily("400"),
     fontWeight: "400",
     color: "#000",
     textAlign: "center",
@@ -493,57 +672,122 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   howToTitle: {
-    fontSize: 22,
+    fontSize: 17,
+    fontFamily: getFontFamily("700"),
     fontWeight: "700",
     color: "#000",
     textAlign: "center",
-    marginBottom: 30,
+    marginBottom: 24,
   },
   stepContainer: {
-    marginBottom: 30,
+    marginBottom: 20,
+    backgroundColor: "transparent",
   },
   stepNumber: {
-    fontSize: 24.177,
+    fontSize: 17,
+    fontFamily: getFontFamily("700"),
     fontWeight: "700",
     color: "#000",
     textDecorationLine: "underline",
-    marginBottom: 12,
+    marginBottom: 10,
   },
   stepContent: {
     flexDirection: "row",
     alignItems: "flex-start",
-    gap: 16,
-    paddingRight: 16,
+    gap: 10,
+    paddingRight: 4,
+  },
+  stepImageWrapper: {
+    width: "50%",
+    position: "relative",
+    alignItems: "center",
+    justifyContent: "flex-start",
+    paddingVertical: 6,
+    overflow: "visible",
+  },
+  gradientBackground: {
+    position: "absolute",
+    width: "100%",
+    height: "85%",
+    borderRadius: 10,
+    overflow: "hidden",
+    opacity: 0.8,
+    zIndex: 0,
+    top: "10%",
+  },
+  gradientTiltLeft: {
+    transform: [{ rotate: "-12deg" }],
+  },
+  gradientTiltRight: {
+    transform: [{ rotate: "12deg" }],
+  },
+  gradientFill: {
+    width: "100%",
+    height: "100%",
   },
   stepImageContainer: {
-    width: "50%",
+    width: "75%",
     aspectRatio: 79.3 / 118.72,
     borderRadius: 2.185,
     overflow: "hidden",
     shadowColor: "#000",
-    shadowOffset: { width: 10.924, height: 10.924 },
-    shadowOpacity: 0.25,
-    shadowRadius: 16.277,
-    elevation: 5,
+    shadowOffset: { width: 6, height: 6 },
+    shadowOpacity: 0.2,
+    shadowRadius: 10,
+    elevation: 4,
+    backgroundColor: "transparent",
+    zIndex: 2,
+    alignSelf: "flex-start",
+    marginLeft: 8,
   },
   stepImage: {
     width: "100%",
     height: "100%",
   },
+  arrowContainer: {
+    position: "absolute",
+    right: -30,
+    top: "35%",
+    zIndex: 3,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  uploadIconFrame: {
+    width: 32,
+    height: 32,
+    borderRadius: 6,
+    overflow: "hidden",
+  },
+  uploadIconBlur: {
+    width: "100%",
+    height: "100%",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(74, 74, 74, 0.4)",
+  },
   stepTextContainer: {
     width: "50%",
     flexShrink: 0,
   },
+  stepTextRight: {
+    alignItems: "flex-end",
+  },
+  textRight: {
+    textAlign: "right",
+  },
   stepTitle: {
-    fontSize: 19.781,
+    fontSize: 14,
+    fontFamily: getFontFamily("700"),
     fontWeight: "700",
-    marginBottom: 8,
+    marginBottom: 6,
   },
   stepDescription: {
-    fontSize: 15,
+    fontSize: 11,
+    fontFamily: getFontFamily("400"),
     fontWeight: "400",
     color: "#000",
-    lineHeight: 22,
+    lineHeight: 18,
   },
   stepHighlight: {
     color: "#D229FF",
@@ -561,9 +805,11 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 5,
     backdropFilter: "blur(1.8px)",
+    zIndex: 10,
   },
   templateBadgeText: {
-    fontSize: 11,
+    fontSize: 9,
+    fontFamily: getFontFamily("500"),
     fontWeight: "500",
     color: "#000",
     borderWidth: 0.5,
@@ -573,7 +819,8 @@ const styles = StyleSheet.create({
     paddingVertical: 2,
   },
   templateBadgeLabel: {
-    fontSize: 11,
+    fontSize: 9,
+    fontFamily: getFontFamily("400"),
     fontWeight: "400",
     color: "#000",
   },
@@ -591,16 +838,17 @@ const styles = StyleSheet.create({
     backdropFilter: "blur(1.8px)",
   },
   downloadIcon: {
-    fontSize: 10.998,
+    fontSize: 9,
   },
   gallerySection: {
     width: CONTENT_WIDTH,
     marginHorizontal: 16,
-    marginBottom: 120,
+    marginBottom: 20,
     alignItems: "center",
   },
   viewMoreText: {
-    fontSize: 18,
+    fontSize: 15,
+    fontFamily: getFontFamily("600"),
     fontWeight: "600",
   },
 });

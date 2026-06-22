@@ -119,7 +119,7 @@ const LandingAuth = () => {
           </Text>
         </View>
       </TouchableOpacity>
-      <TouchableOpacity
+      {/* <TouchableOpacity
         onPress={() => {
           // router.replace("/(tabs)");
         }}
@@ -135,7 +135,7 @@ const LandingAuth = () => {
         >
           Later
         </Text>
-      </TouchableOpacity>
+      </TouchableOpacity> */}
     </View>
   );
 };

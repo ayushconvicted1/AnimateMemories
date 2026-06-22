@@ -12,21 +12,28 @@ import {
   Platform,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import * as ImagePicker from "expo-image-picker";
 import { Video, ResizeMode } from "expo-av";
 import ScreenWrapper from "@/components/ui/ScreenWrapper";
 import { GradientText } from "@/components/ui/GradientText";
+import FullScreenVideoViewer from "@/components/ui/FullScreenVideoViewer";
 import UploadIcon from "@/components/images/UploadIcon";
 import SurpriseMeIcon from "@/components/images/SurpriseMeIcon";
 import GenerateIcon from "@/components/images/GenerateIcon";
 import GenerateCreditIcon from "@/components/images/GenerateCreditIcon";
-import { useAuth } from "@/contexts/AuthContext";
+import { useAuth as useAuthContext } from "@/contexts/AuthContext";
+import { useAuth } from "@clerk/clerk-expo";
 import { api } from "@/services/api";
-import { uploadImageToCloudinary } from "@/services/cloudinary";
+import { Linking } from "react-native";
+import { useLocalSearchParams } from "expo-router";
 
-const { width: SCREEN_WIDTH } = Dimensions.get("window");
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
 const CONTENT_WIDTH = SCREEN_WIDTH - 32;
+
+// API base URL for template images
+const API_BASE_URL =
+  process.env.EXPO_PUBLIC_API_BASE_URL || "http://localhost:3000";
 
 const promptExamples = [
   "slowly turns head left and right, blinks softly, gentle smile",
@@ -37,80 +44,234 @@ const promptExamples = [
 ];
 
 export default function AnimateScreen() {
-  const { user } = useAuth();
-  const [selectedTool, setSelectedTool] = useState<"restore" | "animate" | null>(null);
-  const [customPrompt, setCustomPrompt] = useState("");
+  const { user } = useAuthContext();
+  const { getToken } = useAuth();
+  const params = useLocalSearchParams();
+  // Default to animate tool and jump scare template
+  const [selectedTool, setSelectedTool] = useState<
+    "restore" | "animate" | "enhance" | null
+  >("animate");
+  const [customPrompt, setCustomPrompt] = useState(
+    "A person in costume suddenly lunges forward with a spooky expression, arms extended as if to grab the viewer."
+  );
   const [uploadedImage, setUploadedImage] = useState<string | null>(null);
   const [restoredImage, setRestoredImage] = useState<string | null>(null);
   const [animatedVideo, setAnimatedVideo] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [userCredits, setUserCredits] = useState<number>(0);
-  const [selectedTemplate, setSelectedTemplate] = useState<string | null>(null);
+  const [selectedTemplate, setSelectedTemplate] = useState<string | null>(
+    "jump-scare"
+  );
+  const [enhanceOptions, setEnhanceOptions] = useState({
+    upscale: true,
+    faceEnhance: false,
+    colorize: false,
+  });
+  const [showFullScreenVideo, setShowFullScreenVideo] = useState(false);
+  const [hasProcessedInitialImage, setHasProcessedInitialImage] = useState(false);
+  const [isPreviewPlaying, setIsPreviewPlaying] = useState(false);
+  const previewVideoRef = useRef<Video>(null);
+  const [featureCosts, setFeatureCosts] = useState<any>(null);
+
+  useEffect(() => {
+    const fetchCosts = async () => {
+      try {
+        const response = await api.getFeatureCosts();
+        setFeatureCosts(response?.result);
+      } catch (error) {
+        console.error("Failed to fetch feature costs", error);
+      }
+    };
+    fetchCosts();
+  }, []);
 
   const animationTemplates = [
     {
-      id: "warm-hug",
-      name: "Warm Hug",
-      prompt: "Two people see each other, smile warmly, and share a gentle, affectionate hug.",
-      image: "https://images.unsplash.com/photo-1518568814500-bf0f8d125f46",
+      id: "jump-scare",
+      name: "Jump Scare",
+      prompt:
+        "A person in costume suddenly lunges forward with a spooky expression, arms extended as if to grab the viewer.",
+      image: `${API_BASE_URL}/templates/jump-scare.webp`,
     },
     {
-      id: "fighting-pose",
-      name: "Fighting Pose",
-      prompt: "start fighting",
-      image: "https://images.unsplash.com/photo-1544005313-94ddf0286df2",
+      id: "evil-laugh",
+      name: "Evil Laugh",
+      prompt:
+        "A person in a villainous costume leans their head back and performs a slow, menacing laugh.",
+      image: `${API_BASE_URL}/templates/evil-laugh.webp`,
     },
     {
-      id: "head-lean",
-      name: "Head Lean",
-      prompt: "Two friends stand side by side, smiling, and gently lean their heads together.",
-      image: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d",
+      id: "trick-or-treat",
+      name: "Trick or Treat",
+      prompt:
+        "A person in a Halloween costume holds open a treat bag or pumpkin bucket, looking up with an expectant smile.",
+      image: `${API_BASE_URL}/templates/trick-or-treat.webp`,
     },
     {
-      id: "high-ten",
-      name: "High Ten",
-      prompt: "Two people face each other with excitement, raise their hands, and give each other a joyful high ten.",
-      image: "https://images.unsplash.com/photo-1522071820081-009f0129c71c",
+      id: "opening-gift",
+      name: "Opening Gift",
+      prompt:
+        "A person's face lights up with joy and surprise as they tear the wrapping paper off a present.",
+      image: `${API_BASE_URL}/templates/opening-gift.webp`,
     },
     {
-      id: "thumbs-up",
-      name: "Thumbs Up",
-      prompt: "A person looks at the camera, smiles confidently, and gives a cheerful thumbs up gesture.",
-      image: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d",
+      id: "holiday-toast",
+      name: "Holiday Toast",
+      prompt:
+        "Two people smile warmly at each other, raise their glasses, and clink them together in a celebratory toast.",
+      image: `${API_BASE_URL}/templates/Holiday%20Toast.webp`,
+    },
+    {
+      id: "decorating-tree",
+      name: "Decorating the Tree",
+      prompt:
+        "A person carefully reaches out and hangs a shining ornament on a Christmas tree branch.",
+      image: `${API_BASE_URL}/templates/decorating-tree.webp`,
+    },
+    {
+      id: "carving-turkey",
+      name: "Carving the Turkey",
+      prompt:
+        "A person stands at a dinner table, smiling as they skillfully carve a large, roasted turkey.",
+      image: `${API_BASE_URL}/templates/carving-turkey.webp`,
+    },
+    {
+      id: "serving-dinner",
+      name: "Serving Dinner",
+      prompt:
+        "A person smiles and presents a large dish of food, moving it forward as if offering it to someone at the table.",
+      image: `${API_BASE_URL}/templates/serving-dinner.webp`,
+    },
+    {
+      id: "happy-dance",
+      name: "Happy Dance",
+      prompt:
+        "A person does a simple, joyful dance, shuffling their feet and grooving their shoulders with a big smile.",
+      image: `${API_BASE_URL}/templates/happy-dance.webp`,
+    },
+    {
+      id: "friendly-wave",
+      name: "Friendly Wave",
+      prompt:
+        "A person looks toward the camera, smiles, and gives a friendly wave with their hand.",
+      image: `${API_BASE_URL}/templates/friendly-wave.webp`,
     },
   ];
 
-  useEffect(() => {
-    fetchUserCredits();
-  }, [user]);
-
-  const fetchUserCredits = async () => {
+  const fetchUserCredits = useCallback(async () => {
     if (!user) return;
     try {
-      const result = await api.verifyUser(user);
+      const token = await getToken();
+      const result = await api.verifyUser(user, token);
       setUserCredits(result.result?.credits || 0);
     } catch (error) {
       console.error("Error fetching credits:", error);
     }
-  };
+  }, [user]); // Removed getToken from dependencies
+
+  useEffect(() => {
+    if (user) {
+      fetchUserCredits();
+    }
+  }, [user, fetchUserCredits]);
+
+  // Ensure preview video is paused when fullscreen opens
+  useEffect(() => {
+    if (showFullScreenVideo && previewVideoRef.current) {
+      previewVideoRef.current.pauseAsync().then(() => {
+        setIsPreviewPlaying(false);
+      }).catch(console.error);
+    }
+  }, [showFullScreenVideo]);
+
+  // Ensure preview video stays paused when it's not supposed to play
+  useEffect(() => {
+    if (!showFullScreenVideo && previewVideoRef.current && isPreviewPlaying) {
+      previewVideoRef.current.pauseAsync().then(() => {
+        setIsPreviewPlaying(false);
+      }).catch(console.error);
+    }
+  }, [showFullScreenVideo, isPreviewPlaying]);
+
+  // Handle incoming image from route params (from home screen or onboarding)
+  useEffect(() => {
+    const imageUri = params.imageUri as string | undefined;
+    
+    if (imageUri && !hasProcessedInitialImage && user) {
+      setHasProcessedInitialImage(true);
+      // Decode the URI if it's encoded
+      const decodedUri = decodeURIComponent(imageUri);
+      uploadImageFromUri(decodedUri);
+    }
+  }, [params.imageUri, hasProcessedInitialImage, user, uploadImageFromUri]);
+
+  // Handle incoming template ID from route params (from home screen)
+  useEffect(() => {
+    const templateId = params.templateId as string | undefined;
+    
+    if (templateId) {
+      const template = animationTemplates.find((t) => t.id === templateId);
+      if (template) {
+        setSelectedTemplate(template.id);
+        setCustomPrompt(template.prompt);
+      }
+    }
+  }, [params.templateId]);
 
   const requestImagePermission = async () => {
     if (Platform.OS !== "web") {
-      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      const { status } =
+        await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (status !== "granted") {
-        Alert.alert("Permission needed", "Please grant camera roll permissions to upload images.");
+        Alert.alert(
+          "Permission needed",
+          "Please grant camera roll permissions to upload images."
+        );
         return false;
       }
     }
     return true;
   };
 
-  const pickImage = async () => {
-    const hasPermission = await requestImagePermission();
-    if (!hasPermission) return;
-
+  // Helper function to upload image from URI
+  const uploadImageFromUri = useCallback(async (imageUri: string) => {
+    if (!imageUri) return;
+    
+    setUploading(true);
     try {
+      const token = await getToken();
+      const cloudinaryUrl = await api.uploadImage(imageUri, token);
+      if (!cloudinaryUrl) {
+        throw new Error("Upload failed - no URL returned");
+      }
+      setUploadedImage(cloudinaryUrl);
+      setRestoredImage(null);
+      setAnimatedVideo(null);
+      
+      // Auto-select first template (jump-scare) with its prompt
+      // Using the first template directly since it's always jump-scare
+      setSelectedTemplate("jump-scare");
+      setCustomPrompt(
+        "A person in costume suddenly lunges forward with a spooky expression, arms extended as if to grab the viewer."
+      );
+    } catch (uploadError: any) {
+      console.error("Upload error:", uploadError);
+      Alert.alert(
+        "Upload Error",
+        uploadError.message ||
+          "Failed to upload image. Please check your internet connection and try again."
+      );
+    } finally {
+      setUploading(false);
+    }
+  }, [getToken]);
+
+  const pickImage = async () => {
+    try {
+      const hasPermission = await requestImagePermission();
+      if (!hasPermission) return;
+
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
         allowsEditing: true,
@@ -118,31 +279,42 @@ export default function AnimateScreen() {
         quality: 0.8,
       });
 
-      if (!result.canceled && result.assets[0]) {
-        setUploading(true);
-        const imageUri = result.assets[0].uri;
-        
-        // Upload to Cloudinary
-        const cloudinaryUrl = await uploadImageToCloudinary(imageUri, "image");
-        setUploadedImage(cloudinaryUrl);
-        setRestoredImage(null);
-        setAnimatedVideo(null);
-        setUploading(false);
+      if (result.canceled) {
+        return;
       }
+
+      if (!result.assets || !result.assets[0]) {
+        Alert.alert("Error", "No image selected.");
+        return;
+      }
+
+      setUploading(true);
+      const imageUri = result.assets[0].uri;
+
+      if (!imageUri) {
+        throw new Error("Image URI is missing");
+      }
+
+      // Use the helper function to upload
+      await uploadImageFromUri(imageUri);
     } catch (error: any) {
       console.error("Error picking image:", error);
-      Alert.alert("Error", "Failed to pick image. Please try again.");
+      Alert.alert(
+        "Error",
+        error.message || "Failed to pick image. Please try again."
+      );
       setUploading(false);
     }
   };
 
   const handleSurpriseMe = () => {
-    const randomPrompt = promptExamples[Math.floor(Math.random() * promptExamples.length)];
+    const randomPrompt =
+      promptExamples[Math.floor(Math.random() * promptExamples.length)];
     setCustomPrompt(randomPrompt);
     setSelectedTemplate(null);
   };
 
-  const handleTemplateSelect = (template: typeof animationTemplates[0]) => {
+  const handleTemplateSelect = (template: (typeof animationTemplates)[0]) => {
     setSelectedTemplate(template.id);
     setCustomPrompt(template.prompt);
   };
@@ -158,26 +330,92 @@ export default function AnimateScreen() {
       return;
     }
 
-    const userEmail = user?.primaryEmailAddress?.emailAddress || user?.emailAddresses?.[0]?.emailAddress;
+    const userEmail =
+      user?.primaryEmailAddress?.emailAddress ||
+      user?.emailAddresses?.[0]?.emailAddress;
     if (!userEmail) {
       Alert.alert("Error", "Unable to get user email.");
       return;
     }
 
-    if (userCredits < 1) {
-      Alert.alert("Insufficient Credits", "You need at least 1 credit to restore images.");
+    const requiredCredits = featureCosts?.restore_image || 1;
+
+    if (userCredits < requiredCredits) {
+      Alert.alert(
+        "Insufficient Credits",
+        `You need at least ${requiredCredits} credits to restore images. Please purchase more credits to continue.`
+      );
       return;
     }
 
     setLoading(true);
     try {
-      const result = await api.restoreImage(uploadedImage, userEmail);
+      const token = await getToken();
+      const result = await api.restoreImage(uploadedImage, userEmail, token);
       setRestoredImage(result.result);
       await fetchUserCredits();
       Alert.alert("Success", "Image restored successfully!");
     } catch (error: any) {
       console.error("Error restoring image:", error);
-      Alert.alert("Error", error.message || "Failed to restore image. Please try again.");
+      Alert.alert(
+        "Error",
+        error.message || "Failed to restore image. Please try again."
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleEnhance = async () => {
+    if (!uploadedImage) {
+      Alert.alert("No Image", "Please upload an image first.");
+      return;
+    }
+
+    if (!user) {
+      Alert.alert("Sign In Required", "Please sign in to enhance images.");
+      return;
+    }
+
+    const userEmail =
+      user?.primaryEmailAddress?.emailAddress ||
+      user?.emailAddresses?.[0]?.emailAddress;
+    if (!userEmail) {
+      Alert.alert("Error", "Unable to get user email.");
+      return;
+    }
+
+    let totalCost = 0;
+    if (enhanceOptions.upscale) totalCost += featureCosts?.enhance_upscale || 1;
+    if (enhanceOptions.faceEnhance) totalCost += featureCosts?.enhance_face || 1;
+    if (enhanceOptions.colorize) totalCost += featureCosts?.enhance_colorize || 1;
+
+    if (totalCost === 0) {
+      Alert.alert("Error", "Please select at least one enhancement option.");
+      return;
+    }
+
+    if (userCredits < totalCost) {
+      Alert.alert(
+        "Insufficient Credits",
+        `You need at least ${totalCost} credits to perform this enhancement. Please purchase more credits to continue.`
+      );
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const token = await getToken();
+      const result = await api.enhanceImage(uploadedImage, userEmail, enhanceOptions, token);
+      setRestoredImage(result.result); // Using restoredImage state to show image output
+      await fetchUserCredits();
+      Alert.alert("Success", "Image enhanced successfully!");
+    } catch (error: any) {
+      console.error("Error enhancing image:", error);
+      Alert.alert(
+        "Error",
+        error.message || "Failed to enhance image. Please try again."
+      );
     } finally {
       setLoading(false);
     }
@@ -194,28 +432,48 @@ export default function AnimateScreen() {
       return;
     }
 
-    const userEmail = user?.primaryEmailAddress?.emailAddress || user?.emailAddresses?.[0]?.emailAddress;
+    const userEmail =
+      user?.primaryEmailAddress?.emailAddress ||
+      user?.emailAddresses?.[0]?.emailAddress;
     if (!userEmail) {
       Alert.alert("Error", "Unable to get user email.");
       return;
     }
 
-    if (userCredits < 2) {
-      Alert.alert("Insufficient Credits", "You need at least 2 credits to animate images.");
+    // Check credits - all video animations cost dynamic credits
+    const requiredCredits = featureCosts?.animate_photo || 3;
+    if (userCredits < requiredCredits) {
+      Alert.alert(
+        "Insufficient Credits",
+        `You need at least ${requiredCredits} credits to animate images. Please purchase more credits to continue.`
+      );
       return;
     }
 
     setLoading(true);
     try {
+      const token = await getToken();
       const imageToAnimate = restoredImage || uploadedImage;
-      const prompt = customPrompt || "looks around and smiles";
-      const result = await api.animatePhoto(imageToAnimate, userEmail, prompt, 6);
+      const prompt =
+        customPrompt ||
+        "Two people see each other, smile warmly, and share a gentle, affectionate hug.";
+      // Use duration 10 to get 3 credits cost as per API logic
+      const result = await api.animatePhoto(
+        imageToAnimate,
+        userEmail,
+        prompt,
+        10,
+        token
+      );
       setAnimatedVideo(result.result);
       await fetchUserCredits();
-      Alert.alert("Success", "Video generated successfully!");
+      // Don't auto-open fullscreen - let user tap to open
     } catch (error: any) {
       console.error("Error animating image:", error);
-      Alert.alert("Error", error.message || "Failed to animate image. Please try again.");
+      Alert.alert(
+        "Error",
+        error.message || "Failed to animate image. Please try again."
+      );
     } finally {
       setLoading(false);
     }
@@ -225,18 +483,48 @@ export default function AnimateScreen() {
     setUploadedImage(null);
     setRestoredImage(null);
     setAnimatedVideo(null);
-    setCustomPrompt("");
-    setSelectedTemplate(null);
+    setShowFullScreenVideo(false);
+    // Reset to defaults: animate tool and warm hug template
+    setSelectedTool("animate");
+    setCustomPrompt(
+      "Two people see each other, smile warmly, and share a gentle, affectionate hug."
+    );
+    setSelectedTemplate("warm-hug");
+    setEnhanceOptions({ upscale: true, faceEnhance: false, colorize: false });
   };
 
   const getCreditCost = () => {
-    if (selectedTool === "restore") return 1;
-    if (selectedTool === "animate") return 2;
+    if (selectedTool === "restore") return featureCosts?.restore_image || 1;
+    if (selectedTool === "enhance") {
+      let cost = 0;
+      if (enhanceOptions.upscale) cost += featureCosts?.enhance_upscale || 1;
+      if (enhanceOptions.faceEnhance) cost += featureCosts?.enhance_face || 1;
+      if (enhanceOptions.colorize) cost += featureCosts?.enhance_colorize || 1;
+      return cost;
+    }
+    if (selectedTool === "animate") return featureCosts?.animate_photo || 3;
     return 0;
   };
 
+  const handleDownload = async (url: string, type: "image" | "video") => {
+    try {
+      const canOpen = await Linking.canOpenURL(url);
+      if (canOpen) {
+        await Linking.openURL(url);
+      } else {
+        Alert.alert("Error", "Unable to open download link.");
+      }
+    } catch (error: any) {
+      console.error("Error downloading:", error);
+      Alert.alert("Error", "Failed to download file. Please try again.");
+    }
+  };
+
   return (
-    <ScreenWrapper addBottomPadding={true}>
+    <ScreenWrapper 
+      addBottomPadding={true}
+      creditsText={userCredits !== null ? `${userCredits} Credits` : "Loading..."}
+    >
       <ScrollView showsVerticalScrollIndicator={false}>
         {/* Title Section */}
         <View style={styles.titleSection}>
@@ -290,21 +578,41 @@ export default function AnimateScreen() {
             </View>
             <Text style={styles.toolLabel}>Animate Photo</Text>
           </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[
+              styles.toolCard,
+              selectedTool === "enhance" && styles.toolCardSelected,
+            ]}
+            onPress={() => setSelectedTool("enhance")}
+          >
+            <View style={styles.toolImageContainer}>
+              <Image
+                source={{
+                  uri: "https://images.unsplash.com/photo-1518568814500-bf0f8d125f46",
+                }}
+                style={styles.toolImage}
+                resizeMode="cover"
+              />
+            </View>
+            <Text style={styles.toolLabel}>Enhance Photo</Text>
+          </TouchableOpacity>
         </View>
 
         {/* Upload Section */}
         <View style={styles.uploadSection}>
-          <LinearGradient
-            colors={["rgba(40, 212, 250, 0.15)", "rgba(210, 41, 255, 0.15)"]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={styles.uploadContainer}
-          >
-            <TouchableOpacity
-              style={styles.uploadArea}
-              onPress={pickImage}
-              disabled={uploading}
+          <View style={styles.uploadContainer}>
+            <LinearGradient
+              colors={["rgba(40, 212, 250, 0.15)", "rgba(210, 41, 255, 0.15)"]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.uploadGradient}
             >
+              <TouchableOpacity
+                style={styles.uploadArea}
+                onPress={pickImage}
+                disabled={uploading}
+              >
               {uploading ? (
                 <ActivityIndicator size="large" color="#28D4FA" />
               ) : uploadedImage ? (
@@ -330,8 +638,8 @@ export default function AnimateScreen() {
                     <Text style={styles.uploadTitle}>Upload a file here</Text>
                     <View style={styles.uploadSeparator} />
                     <Text style={styles.uploadSubtext}>
-                      Supported formats: jpg, jpeg, png{"\n"}Max file size: 10MB.
-                      Min resolution 300x300px.
+                      Supported formats: jpg, jpeg, png{"\n"}Max file size:
+                      10MB. Min resolution 300x300px.
                     </Text>
                   </View>
                   <View style={styles.uploadRightSection}>
@@ -341,25 +649,45 @@ export default function AnimateScreen() {
                   </View>
                 </View>
               )}
-            </TouchableOpacity>
-          </LinearGradient>
+              </TouchableOpacity>
+            </LinearGradient>
+          </View>
         </View>
 
         {/* Result Display */}
         {(restoredImage || animatedVideo) && (
           <View style={styles.resultSection}>
             <Text style={styles.resultTitle}>
-              {animatedVideo ? "Your Video is Ready!" : "Your Restored Photo is Ready!"}
+              {animatedVideo
+                ? "Your Video is Ready!"
+                : "Your Restored Photo is Ready!"}
             </Text>
             <View style={styles.resultContainer}>
               {animatedVideo ? (
-                <Video
-                  source={{ uri: animatedVideo }}
-                  style={styles.resultVideo}
-                  useNativeControls
-                  resizeMode={ResizeMode.CONTAIN}
-                  isLooping
-                />
+                <TouchableOpacity
+                  activeOpacity={0.9}
+                  onPress={() => {
+                    // Pause preview video before opening fullscreen
+                    previewVideoRef.current?.pauseAsync().then(() => {
+                      setIsPreviewPlaying(false);
+                      setShowFullScreenVideo(true);
+                    }).catch(console.error);
+                  }}
+                  style={styles.resultVideoContainer}
+                >
+                  <Video
+                    ref={previewVideoRef}
+                    source={{ uri: animatedVideo }}
+                    style={styles.resultVideo}
+                    useNativeControls={false}
+                    resizeMode={ResizeMode.CONTAIN}
+                    isLooping
+                    shouldPlay={false}
+                    onPlaybackStatusUpdate={(status) => {
+                      setIsPreviewPlaying(status.isPlaying);
+                    }}
+                  />
+                </TouchableOpacity>
               ) : (
                 <Image
                   source={{ uri: restoredImage! }}
@@ -368,9 +696,32 @@ export default function AnimateScreen() {
                 />
               )}
             </View>
-            <TouchableOpacity style={styles.resetButton} onPress={handleReset}>
-              <Text style={styles.resetButtonText}>Start Over</Text>
-            </TouchableOpacity>
+            <View style={styles.resultActions}>
+              <TouchableOpacity
+                style={[styles.downloadButton, styles.resultActionButton]}
+                onPress={() =>
+                  handleDownload(
+                    animatedVideo || restoredImage!,
+                    animatedVideo ? "video" : "image"
+                  )
+                }
+              >
+                <LinearGradient
+                  colors={["#28D4FA", "#D229FF"]}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
+                  style={styles.downloadButtonGradient}
+                >
+                  <Text style={styles.downloadButtonText}>Download</Text>
+                </LinearGradient>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.resetButton, styles.resultActionButton]}
+                onPress={handleReset}
+              >
+                <Text style={styles.resetButtonText}>Start Over</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         )}
 
@@ -407,7 +758,10 @@ export default function AnimateScreen() {
                   setSelectedTemplate(null);
                 }}
               />
-              <TouchableOpacity style={styles.surpriseButton} onPress={handleSurpriseMe}>
+              <TouchableOpacity
+                style={styles.surpriseButton}
+                onPress={handleSurpriseMe}
+              >
                 <LinearGradient
                   colors={["#28D4FA", "#D229FF"]}
                   start={{ x: 0, y: 0 }}
@@ -422,12 +776,58 @@ export default function AnimateScreen() {
           </View>
         )}
 
+        {/* Enhance Options Section - Only show for enhance */}
+        {selectedTool === "enhance" && !restoredImage && (
+          <View style={styles.customSection}>
+             <View style={styles.customHeader}>
+               <Text style={styles.customTitle}>Enhancement Options</Text>
+             </View>
+             <View style={[styles.customInputContainer, { minHeight: "auto", paddingVertical: 12 }]}>
+               <TouchableOpacity 
+                 style={{ flexDirection: "row", alignItems: "center", marginBottom: 12 }}
+                 onPress={() => setEnhanceOptions(prev => ({...prev, upscale: !prev.upscale}))}
+               >
+                 <View style={{ width: 24, height: 24, borderRadius: 4, borderWidth: 2, borderColor: enhanceOptions.upscale ? "#28D4FA" : "#9d9d9d", backgroundColor: enhanceOptions.upscale ? "#28D4FA" : "transparent", marginRight: 12, alignItems: "center", justifyContent: "center" }}>
+                   {enhanceOptions.upscale && <Text style={{ color: "#fff", fontSize: 16, fontWeight: "bold" }}>✓</Text>}
+                 </View>
+                 <Text style={{ fontSize: 16, color: "#000" }}>4K Upscale ({featureCosts?.enhance_upscale || 1} credit{(featureCosts?.enhance_upscale || 1) !== 1 ? 's' : ''})</Text>
+               </TouchableOpacity>
+
+               <TouchableOpacity 
+                 style={{ flexDirection: "row", alignItems: "center", marginBottom: 12 }}
+                 onPress={() => setEnhanceOptions(prev => ({...prev, faceEnhance: !prev.faceEnhance}))}
+               >
+                 <View style={{ width: 24, height: 24, borderRadius: 4, borderWidth: 2, borderColor: enhanceOptions.faceEnhance ? "#28D4FA" : "#9d9d9d", backgroundColor: enhanceOptions.faceEnhance ? "#28D4FA" : "transparent", marginRight: 12, alignItems: "center", justifyContent: "center" }}>
+                   {enhanceOptions.faceEnhance && <Text style={{ color: "#fff", fontSize: 16, fontWeight: "bold" }}>✓</Text>}
+                 </View>
+                 <Text style={{ fontSize: 16, color: "#000" }}>Face Enhancement ({featureCosts?.enhance_face || 1} credit{(featureCosts?.enhance_face || 1) !== 1 ? 's' : ''})</Text>
+               </TouchableOpacity>
+
+               <TouchableOpacity 
+                 style={{ flexDirection: "row", alignItems: "center" }}
+                 onPress={() => setEnhanceOptions(prev => ({...prev, colorize: !prev.colorize}))}
+               >
+                 <View style={{ width: 24, height: 24, borderRadius: 4, borderWidth: 2, borderColor: enhanceOptions.colorize ? "#28D4FA" : "#9d9d9d", backgroundColor: enhanceOptions.colorize ? "#28D4FA" : "transparent", marginRight: 12, alignItems: "center", justifyContent: "center" }}>
+                   {enhanceOptions.colorize && <Text style={{ color: "#fff", fontSize: 16, fontWeight: "bold" }}>✓</Text>}
+                 </View>
+                 <Text style={{ fontSize: 16, color: "#000" }}>Colorize B&W ({featureCosts?.enhance_colorize || 1} credit{(featureCosts?.enhance_colorize || 1) !== 1 ? 's' : ''})</Text>
+               </TouchableOpacity>
+             </View>
+          </View>
+        )}
+
         {/* Generate Button */}
         {!animatedVideo && !restoredImage && (
           <View style={styles.generateSection}>
             <TouchableOpacity
               style={styles.generateButton}
-              onPress={selectedTool === "restore" ? handleRestore : handleAnimate}
+              onPress={
+                selectedTool === "restore" 
+                  ? handleRestore 
+                  : selectedTool === "enhance"
+                    ? handleEnhance
+                    : handleAnimate
+              }
               disabled={loading || !uploadedImage || !selectedTool}
             >
               <LinearGradient
@@ -463,6 +863,30 @@ export default function AnimateScreen() {
           </GradientText>
         </View>
 
+        {/* Full Screen Video Modal */}
+        <FullScreenVideoViewer
+          visible={showFullScreenVideo}
+          videoUri={animatedVideo}
+          onClose={() => {
+            setShowFullScreenVideo(false);
+            // Ensure preview video is paused when closing fullscreen
+            previewVideoRef.current?.pauseAsync().then(() => {
+              setIsPreviewPlaying(false);
+            }).catch(console.error);
+          }}
+          onDownload={() => {
+            if (animatedVideo) {
+              handleDownload(animatedVideo, "video");
+            }
+          }}
+          onPreviewVideoPause={() => {
+            // Pause preview video when fullscreen opens
+            previewVideoRef.current?.pauseAsync().then(() => {
+              setIsPreviewPlaying(false);
+            }).catch(console.error);
+          }}
+        />
+
         {/* Animation Templates - Only show for animate */}
         {selectedTool === "animate" && !animatedVideo && (
           <View style={styles.templatesSection}>
@@ -485,7 +909,12 @@ export default function AnimateScreen() {
                   setCustomPrompt("");
                 }}
               >
-                <View style={[styles.templateImageContainer, styles.customTemplateContainer]}>
+                <View
+                  style={[
+                    styles.templateImageContainer,
+                    styles.customTemplateContainer,
+                  ]}
+                >
                   <Text style={styles.customTemplateText}>+</Text>
                 </View>
                 <Text style={styles.templateName}>Custom</Text>
@@ -495,7 +924,8 @@ export default function AnimateScreen() {
                   key={template.id}
                   style={[
                     styles.templateCard,
-                    selectedTemplate === template.id && styles.templateCardSelected,
+                    selectedTemplate === template.id &&
+                      styles.templateCardSelected,
                   ]}
                   onPress={() => handleTemplateSelect(template)}
                 >
@@ -525,12 +955,12 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   mainTitle: {
-    fontSize: 28,
+    fontSize: 24,
     fontWeight: "700",
     marginBottom: 8,
   },
   subtitle: {
-    fontSize: 20,
+    fontSize: 17,
     fontWeight: "400",
     color: "#000",
     textAlign: "center",
@@ -568,7 +998,7 @@ const styles = StyleSheet.create({
     height: "100%",
   },
   toolLabel: {
-    fontSize: 17.343,
+    fontSize: 14,
     fontWeight: "700",
     color: "#000",
     textAlign: "center",
@@ -580,12 +1010,18 @@ const styles = StyleSheet.create({
   },
   uploadContainer: {
     borderRadius: 7,
+    backgroundColor: "#fff",
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 0 },
     shadowOpacity: 0.3,
     shadowRadius: 17.1,
     elevation: 5,
     margin: 9,
+    overflow: "hidden",
+  },
+  uploadGradient: {
+    borderRadius: 7,
+    flex: 1,
   },
   uploadArea: {
     borderWidth: 0.75,
@@ -597,6 +1033,7 @@ const styles = StyleSheet.create({
     paddingBottom: 20,
     minHeight: 168,
     justifyContent: "center",
+    margin: 9,
   },
   uploadContent: {
     flexDirection: "row",
@@ -617,7 +1054,7 @@ const styles = StyleSheet.create({
     alignItems: "flex-start",
   },
   uploadTitle: {
-    fontSize: 18,
+    fontSize: 15,
     fontWeight: "400",
     color: "#000",
     marginBottom: 8,
@@ -629,7 +1066,7 @@ const styles = StyleSheet.create({
     width: "85%",
   },
   uploadSubtext: {
-    fontSize: 12.781,
+    fontSize: 11,
     fontWeight: "400",
     color: "#979797",
     lineHeight: 18,
@@ -657,7 +1094,7 @@ const styles = StyleSheet.create({
   },
   removeButtonText: {
     color: "#fff",
-    fontSize: 24,
+    fontSize: 20,
     fontWeight: "bold",
   },
   resultSection: {
@@ -665,7 +1102,7 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   resultTitle: {
-    fontSize: 20,
+    fontSize: 17,
     fontWeight: "700",
     color: "#000",
     textAlign: "center",
@@ -678,10 +1115,18 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     backgroundColor: "#000",
     marginBottom: 16,
+    justifyContent: "center",
+    alignItems: "center",
   },
   resultImage: {
     width: "100%",
     height: "100%",
+  },
+  resultVideoContainer: {
+    width: "100%",
+    height: "100%",
+    justifyContent: "center",
+    alignItems: "center",
   },
   resultVideo: {
     width: "100%",
@@ -697,9 +1142,34 @@ const styles = StyleSheet.create({
     alignSelf: "center",
   },
   resetButtonText: {
-    fontSize: 18,
+    fontSize: 15,
     fontWeight: "600",
     color: "#000",
+  },
+  resultActions: {
+    flexDirection: "row",
+    gap: 12,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  resultActionButton: {
+    flex: 1,
+    maxWidth: 150,
+  },
+  downloadButton: {
+    borderRadius: 7,
+    overflow: "hidden",
+  },
+  downloadButtonGradient: {
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  downloadButtonText: {
+    fontSize: 15,
+    fontWeight: "600",
+    color: "#fff",
   },
   customSection: {
     paddingHorizontal: 16,
@@ -712,7 +1182,7 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   customTitle: {
-    fontSize: 20,
+    fontSize: 17,
     fontWeight: "600",
     color: "#000",
   },
@@ -730,7 +1200,7 @@ const styles = StyleSheet.create({
     paddingVertical: 3,
   },
   optionalText: {
-    fontSize: 14.556,
+    fontSize: 12,
     fontWeight: "600",
   },
   customInputContainer: {
@@ -744,7 +1214,7 @@ const styles = StyleSheet.create({
     position: "relative",
   },
   customInput: {
-    fontSize: 18,
+    fontSize: 15,
     fontWeight: "400",
     color: "#000",
     textAlignVertical: "top",
@@ -765,7 +1235,7 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
   },
   surpriseText: {
-    fontSize: 17.076,
+    fontSize: 14,
     fontWeight: "300",
     color: "#fff",
   },
@@ -793,7 +1263,7 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   generateText: {
-    fontSize: 20,
+    fontSize: 17,
     fontWeight: "600",
     color: "#fff",
   },
@@ -808,7 +1278,7 @@ const styles = StyleSheet.create({
     marginLeft: 8,
   },
   creditsBadgeText: {
-    fontSize: 12,
+    fontSize: 10,
     fontWeight: "500",
     color: "#fff",
   },
@@ -821,7 +1291,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   creditsText: {
-    fontSize: 17.747,
+    fontSize: 14,
     fontWeight: "500",
   },
   templatesSection: {
@@ -829,14 +1299,14 @@ const styles = StyleSheet.create({
     marginBottom: 40,
   },
   templatesTitle: {
-    fontSize: 28,
+    fontSize: 24,
     fontWeight: "700",
     color: "#000",
     textAlign: "center",
     marginBottom: 12,
   },
   templatesSubtitle: {
-    fontSize: 20,
+    fontSize: 17,
     fontWeight: "400",
     color: "#000",
     textAlign: "center",
@@ -869,7 +1339,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   customTemplateText: {
-    fontSize: 32,
+    fontSize: 28,
     color: "#979797",
   },
   templateImage: {
@@ -877,7 +1347,7 @@ const styles = StyleSheet.create({
     height: "100%",
   },
   templateName: {
-    fontSize: 15,
+    fontSize: 13,
     fontWeight: "400",
     color: "#000",
     textAlign: "center",

@@ -10,7 +10,12 @@
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.anonymous.AnimateMemories"
+      "bundleIdentifier": "com.hexerve.AnimateMemories",
+      "infoPlist": {
+        "NSPhotoLibraryUsageDescription": "We need access to your photo library to upload and animate your photos.",
+        "NSPhotoLibraryAddUsageDescription": "We need access to save your animated videos to your photo library."
+      },
+      "appleTeamId": "N6M4Z5254R"
     },
     "android": {
       "adaptiveIcon": {
@@ -21,7 +26,15 @@
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
-      "package": "com.anonymous.AnimateMemories"
+      "package": "com.hexerve.AnimateMemories",
+      "statusBar": {
+        "barStyle": "dark-content",
+        "backgroundColor": "#ffffff"
+      },
+      "permissions": [
+        "android.permission.RECORD_AUDIO",
+        "android.permission.MODIFY_AUDIO_SETTINGS"
+      ]
     },
     "web": {
       "output": "static",

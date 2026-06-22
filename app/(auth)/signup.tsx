@@ -3,13 +3,20 @@ import AppleIcon from "@/components/images/AppleIcon";
 import GoogleIcon from "@/components/images/GoogleIcon";
 import SearchGradient from "@/components/reusable/SearchGradient";
 import TopScrollComponent from "@/components/reusable/TopScrollComponent";
-import { useSignUp } from "@clerk/clerk-expo";
+import { useSignUp, useOAuth } from "@clerk/clerk-expo";
+import * as WebBrowser from "expo-web-browser";
+import { Platform } from "react-native";
+import { OAUTH_REDIRECT_URL } from "@/constants/OAuth";
 
 // Debug: Check if Clerk key is loaded
 console.log(
   "Clerk publishable key loaded:",
   !!process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY
 );
+
+// Complete OAuth flow in browser
+WebBrowser.maybeCompleteAuthSession();
+
 import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
 import React, { useState } from "react";
@@ -49,6 +56,10 @@ const SignUpScreen = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [pendingVerification, setPendingVerification] = useState(false);
   const [code, setCode] = useState("");
+
+  // OAuth hooks
+  const { startOAuthFlow: startGoogleOAuth } = useOAuth({ strategy: "oauth_google" });
+  const { startOAuthFlow: startAppleOAuth } = useOAuth({ strategy: "oauth_apple" });
 
   const handleSignup = async () => {
     if (!isLoaded) {
@@ -214,19 +225,68 @@ const SignUpScreen = () => {
   };
 
   const handleGoogleSignup = async () => {
-    Alert.alert(
-      "OAuth Development Mode",
-      "OAuth sign-up works best on physical devices or in production builds. For development, please use email/password signup.",
-      [{ text: "OK", style: "default" }]
-    );
+    if (!isLoaded) {
+      Alert.alert("Error", "Clerk is not loaded yet. Please wait a moment and try again.");
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      const { createdSessionId } = await startGoogleOAuth({
+        redirectUrl: OAUTH_REDIRECT_URL,
+      });
+
+      if (createdSessionId) {
+        await setActive({ session: createdSessionId });
+        router.replace("/(onboarding)");
+      } else {
+        // User cancelled or error occurred
+        console.log("OAuth flow cancelled or incomplete");
+      }
+    } catch (err: any) {
+      console.error("Google OAuth error:", err);
+      const errorMessage = err.errors?.[0]?.message || "Failed to sign up with Google. Please try again.";
+      Alert.alert("Sign Up Failed", errorMessage);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handleAppleSignup = async () => {
-    Alert.alert(
-      "OAuth Development Mode",
-      "OAuth sign-up works best on physical devices or in production builds. For development, please use email/password signup.",
-      [{ text: "OK", style: "default" }]
-    );
+    if (!isLoaded) {
+      Alert.alert("Error", "Clerk is not loaded yet. Please wait a moment and try again.");
+      return;
+    }
+
+    // Apple Sign In only works on iOS
+    if (Platform.OS !== "ios") {
+      Alert.alert(
+        "Not Available",
+        "Apple Sign In is only available on iOS devices."
+      );
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      const { createdSessionId } = await startAppleOAuth({
+        redirectUrl: OAUTH_REDIRECT_URL,
+      });
+
+      if (createdSessionId) {
+        await setActive({ session: createdSessionId });
+        router.replace("/(onboarding)");
+      } else {
+        // User cancelled or error occurred
+        console.log("OAuth flow cancelled or incomplete");
+      }
+    } catch (err: any) {
+      console.error("Apple OAuth error:", err);
+      const errorMessage = err.errors?.[0]?.message || "Failed to sign up with Apple. Please try again.";
+      Alert.alert("Sign Up Failed", errorMessage);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
