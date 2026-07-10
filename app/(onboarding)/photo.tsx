@@ -100,7 +100,6 @@ export default function OnboardingPhoto() {
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.All, // Allow both images and videos
       allowsEditing: true,
-      aspect: [1, 1],
       quality: 1,
     });
 

@@ -217,11 +217,12 @@ export const api = {
     userEmail: string,
     customPrompt: string = "",
     duration: number = 6,
-    token?: string | null
+    token?: string | null,
+    quality: string = "480p"
   ) => {
     return apiRequest("/api/old-photo-animation", {
       method: "POST",
-      body: { inputImageUrl, userEmail, customPrompt, duration },
+      body: { inputImageUrl, userEmail, customPrompt, duration, quality },
       token,
     });
   },
@@ -370,6 +371,13 @@ export const api = {
       method: "POST",
       body: { receiptData, userEmail },
       token,
+    });
+  },
+
+  // Fetch video presets (animation templates)
+  getVideoPresets: async () => {
+    return apiRequest("/api/admin/video-presets?activeOnly=true", {
+      method: "GET",
     });
   },
 };

@@ -73,6 +73,7 @@ export default function AnimateScreen() {
   const [isPreviewPlaying, setIsPreviewPlaying] = useState(false);
   const previewVideoRef = useRef<Video>(null);
   const [featureCosts, setFeatureCosts] = useState<any>(null);
+  const [selectedQuality, setSelectedQuality] = useState<"480p" | "720p" | "1080p">("480p");
 
   useEffect(() => {
     const fetchCosts = async () => {
@@ -84,80 +85,28 @@ export default function AnimateScreen() {
       }
     };
     fetchCosts();
+
+    const fetchTemplates = async () => {
+      try {
+        const response = await api.getVideoPresets();
+        if (response && response.presets) {
+          setAnimationTemplates(response.presets);
+          
+          // Select the first template if none is selected
+          if (!selectedTemplate && response.presets.length > 0) {
+            setSelectedTemplate(response.presets[0].slug || response.presets[0].id);
+            setCustomPrompt(response.presets[0].prompt || "");
+          }
+        }
+      } catch (error) {
+        console.error("Failed to fetch templates", error);
+      }
+    };
+    fetchTemplates();
   }, []);
 
-  const animationTemplates = [
-    {
-      id: "jump-scare",
-      name: "Jump Scare",
-      prompt:
-        "A person in costume suddenly lunges forward with a spooky expression, arms extended as if to grab the viewer.",
-      image: `${API_BASE_URL}/templates/jump-scare.webp`,
-    },
-    {
-      id: "evil-laugh",
-      name: "Evil Laugh",
-      prompt:
-        "A person in a villainous costume leans their head back and performs a slow, menacing laugh.",
-      image: `${API_BASE_URL}/templates/evil-laugh.webp`,
-    },
-    {
-      id: "trick-or-treat",
-      name: "Trick or Treat",
-      prompt:
-        "A person in a Halloween costume holds open a treat bag or pumpkin bucket, looking up with an expectant smile.",
-      image: `${API_BASE_URL}/templates/trick-or-treat.webp`,
-    },
-    {
-      id: "opening-gift",
-      name: "Opening Gift",
-      prompt:
-        "A person's face lights up with joy and surprise as they tear the wrapping paper off a present.",
-      image: `${API_BASE_URL}/templates/opening-gift.webp`,
-    },
-    {
-      id: "holiday-toast",
-      name: "Holiday Toast",
-      prompt:
-        "Two people smile warmly at each other, raise their glasses, and clink them together in a celebratory toast.",
-      image: `${API_BASE_URL}/templates/Holiday%20Toast.webp`,
-    },
-    {
-      id: "decorating-tree",
-      name: "Decorating the Tree",
-      prompt:
-        "A person carefully reaches out and hangs a shining ornament on a Christmas tree branch.",
-      image: `${API_BASE_URL}/templates/decorating-tree.webp`,
-    },
-    {
-      id: "carving-turkey",
-      name: "Carving the Turkey",
-      prompt:
-        "A person stands at a dinner table, smiling as they skillfully carve a large, roasted turkey.",
-      image: `${API_BASE_URL}/templates/carving-turkey.webp`,
-    },
-    {
-      id: "serving-dinner",
-      name: "Serving Dinner",
-      prompt:
-        "A person smiles and presents a large dish of food, moving it forward as if offering it to someone at the table.",
-      image: `${API_BASE_URL}/templates/serving-dinner.webp`,
-    },
-    {
-      id: "happy-dance",
-      name: "Happy Dance",
-      prompt:
-        "A person does a simple, joyful dance, shuffling their feet and grooving their shoulders with a big smile.",
-      image: `${API_BASE_URL}/templates/happy-dance.webp`,
-    },
-    {
-      id: "friendly-wave",
-      name: "Friendly Wave",
-      prompt:
-        "A person looks toward the camera, smiles, and gives a friendly wave with their hand.",
-      image: `${API_BASE_URL}/templates/friendly-wave.webp`,
-    },
-  ];
+  const [animationTemplates, setAnimationTemplates] = useState<any[]>([]);
+
 
   const fetchUserCredits = useCallback(async () => {
     if (!user) return;
@@ -210,14 +159,14 @@ export default function AnimateScreen() {
   useEffect(() => {
     const templateId = params.templateId as string | undefined;
     
-    if (templateId) {
-      const template = animationTemplates.find((t) => t.id === templateId);
+    if (templateId && animationTemplates.length > 0) {
+      const template = animationTemplates.find((t) => (t.slug || t.id) === templateId);
       if (template) {
-        setSelectedTemplate(template.id);
+        setSelectedTemplate(template.slug || template.id);
         setCustomPrompt(template.prompt);
       }
     }
-  }, [params.templateId]);
+  }, [params.templateId, animationTemplates]);
 
   const requestImagePermission = async () => {
     if (Platform.OS !== "web") {
@@ -249,12 +198,11 @@ export default function AnimateScreen() {
       setRestoredImage(null);
       setAnimatedVideo(null);
       
-      // Auto-select first template (jump-scare) with its prompt
-      // Using the first template directly since it's always jump-scare
-      setSelectedTemplate("jump-scare");
-      setCustomPrompt(
-        "A person in costume suddenly lunges forward with a spooky expression, arms extended as if to grab the viewer."
-      );
+      // Auto-select first template if available
+      if (animationTemplates && animationTemplates.length > 0) {
+        setSelectedTemplate(animationTemplates[0].slug || animationTemplates[0].id);
+        setCustomPrompt(animationTemplates[0].prompt || "");
+      }
     } catch (uploadError: any) {
       console.error("Upload error:", uploadError);
       Alert.alert(
@@ -275,7 +223,6 @@ export default function AnimateScreen() {
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
         allowsEditing: true,
-        aspect: [4, 3],
         quality: 0.8,
       });
 
@@ -440,12 +387,14 @@ export default function AnimateScreen() {
       return;
     }
 
-    // Check credits - all video animations cost dynamic credits
-    const requiredCredits = featureCosts?.animate_photo || 3;
+    // Check credits - cost depends on selected quality tier
+    const qualityCostKeys: Record<string, string> = { "480p": "animate_photo", "720p": "animate_photo_hd", "1080p": "animate_photo_uhd" };
+    const qualityDefaults: Record<string, number> = { "480p": 3, "720p": 5, "1080p": 8 };
+    const requiredCredits = featureCosts?.[qualityCostKeys[selectedQuality]] || qualityDefaults[selectedQuality];
     if (userCredits < requiredCredits) {
       Alert.alert(
         "Insufficient Credits",
-        `You need at least ${requiredCredits} credits to animate images. Please purchase more credits to continue.`
+        `You need at least ${requiredCredits} credits to animate images at ${selectedQuality}. Please purchase more credits to continue.`
       );
       return;
     }
@@ -457,13 +406,13 @@ export default function AnimateScreen() {
       const prompt =
         customPrompt ||
         "Two people see each other, smile warmly, and share a gentle, affectionate hug.";
-      // Use duration 10 to get 3 credits cost as per API logic
       const result = await api.animatePhoto(
         imageToAnimate,
         userEmail,
         prompt,
         10,
-        token
+        token,
+        selectedQuality
       );
       setAnimatedVideo(result.result);
       await fetchUserCredits();
@@ -491,6 +440,7 @@ export default function AnimateScreen() {
     );
     setSelectedTemplate("warm-hug");
     setEnhanceOptions({ upscale: true, faceEnhance: false, colorize: false });
+    setSelectedQuality("480p");
   };
 
   const getCreditCost = () => {
@@ -502,7 +452,11 @@ export default function AnimateScreen() {
       if (enhanceOptions.colorize) cost += featureCosts?.enhance_colorize || 1;
       return cost;
     }
-    if (selectedTool === "animate") return featureCosts?.animate_photo || 3;
+    if (selectedTool === "animate") {
+      const qKeys: Record<string, string> = { "480p": "animate_photo", "720p": "animate_photo_hd", "1080p": "animate_photo_uhd" };
+      const qDefaults: Record<string, number> = { "480p": 3, "720p": 5, "1080p": 8 };
+      return featureCosts?.[qKeys[selectedQuality]] || qDefaults[selectedQuality];
+    }
     return 0;
   };
 
@@ -816,6 +770,108 @@ export default function AnimateScreen() {
           </View>
         )}
 
+        {/* Quality Selection - Only show for animate */}
+        {selectedTool === "animate" && !animatedVideo && (
+          <View style={styles.qualitySection}>
+            <Text style={styles.qualitySectionTitle}>Output Quality</Text>
+            <View style={styles.qualityRow}>
+              {/* Standard 480p */}
+              <TouchableOpacity
+                style={[
+                  styles.qualityCard,
+                  selectedQuality === "480p" && styles.qualityCardSelected,
+                ]}
+                onPress={() => setSelectedQuality("480p")}
+              >
+                {selectedQuality === "480p" ? (
+                  <LinearGradient
+                    colors={["#28A4F0", "#38BDF8"]}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={styles.qualityCardGradient}
+                  >
+                    <Text style={[styles.qualityLabel, { color: "#fff" }]}>Standard</Text>
+                    <Text style={[styles.qualityRes, { color: "rgba(255,255,255,0.8)" }]}>480p</Text>
+                    <Text style={[styles.qualityCredits, { color: "rgba(255,255,255,0.9)" }]}>
+                      {featureCosts?.animate_photo || 3} credits
+                    </Text>
+                  </LinearGradient>
+                ) : (
+                  <View style={styles.qualityCardInner}>
+                    <Text style={styles.qualityLabel}>Standard</Text>
+                    <Text style={styles.qualityRes}>480p</Text>
+                    <Text style={styles.qualityCredits}>
+                      {featureCosts?.animate_photo || 3} credits
+                    </Text>
+                  </View>
+                )}
+              </TouchableOpacity>
+              {/* HD 720p */}
+              <TouchableOpacity
+                style={[
+                  styles.qualityCard,
+                  selectedQuality === "720p" && styles.qualityCardSelected,
+                ]}
+                onPress={() => setSelectedQuality("720p")}
+              >
+                {selectedQuality === "720p" ? (
+                  <LinearGradient
+                    colors={["#A855F7", "#EC4899"]}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={styles.qualityCardGradient}
+                  >
+                    <Text style={[styles.qualityLabel, { color: "#fff" }]}>HD</Text>
+                    <Text style={[styles.qualityRes, { color: "rgba(255,255,255,0.8)" }]}>720p</Text>
+                    <Text style={[styles.qualityCredits, { color: "rgba(255,255,255,0.9)" }]}>
+                      {featureCosts?.animate_photo_hd || 5} credits
+                    </Text>
+                  </LinearGradient>
+                ) : (
+                  <View style={styles.qualityCardInner}>
+                    <Text style={styles.qualityLabel}>HD</Text>
+                    <Text style={styles.qualityRes}>720p</Text>
+                    <Text style={styles.qualityCredits}>
+                      {featureCosts?.animate_photo_hd || 5} credits
+                    </Text>
+                  </View>
+                )}
+              </TouchableOpacity>
+              {/* Ultra HD 1080p */}
+              <TouchableOpacity
+                style={[
+                  styles.qualityCard,
+                  selectedQuality === "1080p" && styles.qualityCardSelected,
+                ]}
+                onPress={() => setSelectedQuality("1080p")}
+              >
+                {selectedQuality === "1080p" ? (
+                  <LinearGradient
+                    colors={["#F59E0B", "#F97316"]}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={styles.qualityCardGradient}
+                  >
+                    <Text style={[styles.qualityLabel, { color: "#fff" }]}>Ultra HD</Text>
+                    <Text style={[styles.qualityRes, { color: "rgba(255,255,255,0.8)" }]}>1080p</Text>
+                    <Text style={[styles.qualityCredits, { color: "rgba(255,255,255,0.9)" }]}>
+                      {featureCosts?.animate_photo_uhd || 8} credits
+                    </Text>
+                  </LinearGradient>
+                ) : (
+                  <View style={styles.qualityCardInner}>
+                    <Text style={styles.qualityLabel}>Ultra HD</Text>
+                    <Text style={styles.qualityRes}>1080p</Text>
+                    <Text style={styles.qualityCredits}>
+                      {featureCosts?.animate_photo_uhd || 8} credits
+                    </Text>
+                  </View>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
+
         {/* Generate Button */}
         {!animatedVideo && !restoredImage && (
           <View style={styles.generateSection}>
@@ -919,26 +975,29 @@ export default function AnimateScreen() {
                 </View>
                 <Text style={styles.templateName}>Custom</Text>
               </TouchableOpacity>
-              {animationTemplates.map((template) => (
+              {animationTemplates.map((template) => {
+                const templateId = template.slug || template.id;
+                return (
                 <TouchableOpacity
-                  key={template.id}
+                  key={templateId}
                   style={[
                     styles.templateCard,
-                    selectedTemplate === template.id &&
+                    selectedTemplate === templateId &&
                       styles.templateCardSelected,
                   ]}
                   onPress={() => handleTemplateSelect(template)}
                 >
                   <View style={styles.templateImageContainer}>
                     <Image
-                      source={{ uri: template.image }}
+                      source={{ uri: template.thumbnailUrl || template.image }}
                       style={styles.templateImage}
                       resizeMode="cover"
                     />
                   </View>
                   <Text style={styles.templateName}>{template.name}</Text>
                 </TouchableOpacity>
-              ))}
+                );
+              })}
             </ScrollView>
           </View>
         )}
@@ -1351,5 +1410,64 @@ const styles = StyleSheet.create({
     fontWeight: "400",
     color: "#000",
     textAlign: "center",
+  },
+  qualitySection: {
+    paddingHorizontal: 16,
+    marginBottom: 16,
+  },
+  qualitySectionTitle: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: "#000",
+    marginBottom: 12,
+    textTransform: "uppercase" as const,
+    letterSpacing: 0.5,
+  },
+  qualityRow: {
+    flexDirection: "row" as const,
+    gap: 10,
+  },
+  qualityCard: {
+    flex: 1,
+    borderRadius: 12,
+    overflow: "hidden" as const,
+    borderWidth: 1.5,
+    borderColor: "#e5e7eb",
+  },
+  qualityCardSelected: {
+    borderColor: "transparent",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 6,
+    elevation: 4,
+  },
+  qualityCardGradient: {
+    paddingVertical: 14,
+    paddingHorizontal: 8,
+    alignItems: "center" as const,
+  },
+  qualityCardInner: {
+    paddingVertical: 14,
+    paddingHorizontal: 8,
+    alignItems: "center" as const,
+    backgroundColor: "#fff",
+  },
+  qualityLabel: {
+    fontSize: 14,
+    fontWeight: "700" as const,
+    color: "#1f2937",
+    marginBottom: 2,
+  },
+  qualityRes: {
+    fontSize: 11,
+    fontWeight: "500" as const,
+    color: "#9ca3af",
+    marginBottom: 4,
+  },
+  qualityCredits: {
+    fontSize: 12,
+    fontWeight: "600" as const,
+    color: "#6b7280",
   },
 });

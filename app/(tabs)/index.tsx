@@ -38,6 +38,7 @@ export default function HomeScreen() {
   const { getToken } = useAuth();
   const [userCredits, setUserCredits] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
+  const [animationTemplates, setAnimationTemplates] = useState<any[]>([]);
 
   useEffect(() => {
     const fetchUserCredits = async () => {
@@ -52,19 +53,31 @@ export default function HomeScreen() {
         const result = await api.verifyUser(user, token);
         setUserCredits(result.result?.credits || 0);
       } catch (error) {
-        console.error("Error fetching user credits:", error);
-        setUserCredits(0);
+        console.error("Error fetching credits:", error);
       } finally {
         setLoading(false);
       }
     };
+
+    const fetchTemplates = async () => {
+      try {
+        const response = await api.getVideoPresets();
+        if (response && response.presets) {
+          setAnimationTemplates(response.presets);
+        }
+      } catch (error) {
+        console.error("Failed to fetch templates", error);
+      }
+    };
+
+    fetchTemplates();
 
     if (user) {
       fetchUserCredits();
     } else {
       setLoading(false);
     }
-  }, [user]); // Removed getToken from dependencies
+  }, [user]);
 
   const handleTryForFree = () => {
     router.push("/(tabs)/animate");
@@ -93,7 +106,6 @@ export default function HomeScreen() {
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
         allowsEditing: true,
-        aspect: [4, 3],
         quality: 0.8,
       });
 
@@ -122,59 +134,6 @@ export default function HomeScreen() {
       );
     }
   };
-
-  const animationTemplates = [
-    {
-      id: "jump-scare",
-      name: "Jump Scare",
-      image: `${API_BASE_URL}/templates/jump-scare.webp`,
-    },
-    {
-      id: "evil-laugh",
-      name: "Evil Laugh",
-      image: `${API_BASE_URL}/templates/evil-laugh.webp`,
-    },
-    {
-      id: "trick-or-treat",
-      name: "Trick or Treat",
-      image: `${API_BASE_URL}/templates/trick-or-treat.webp`,
-    },
-    {
-      id: "opening-gift",
-      name: "Opening Gift",
-      image: `${API_BASE_URL}/templates/opening-gift.webp`,
-    },
-    {
-      id: "holiday-toast",
-      name: "Holiday Toast",
-      image: `${API_BASE_URL}/templates/Holiday%20Toast.webp`,
-    },
-    {
-      id: "decorating-tree",
-      name: "Decorating the Tree",
-      image: `${API_BASE_URL}/templates/decorating-tree.webp`,
-    },
-    {
-      id: "carving-turkey",
-      name: "Carving the Turkey",
-      image: `${API_BASE_URL}/templates/carving-turkey.webp`,
-    },
-    {
-      id: "serving-dinner",
-      name: "Serving Dinner",
-      image: `${API_BASE_URL}/templates/serving-dinner.webp`,
-    },
-    {
-      id: "happy-dance",
-      name: "Happy Dance",
-      image: `${API_BASE_URL}/templates/happy-dance.webp`,
-    },
-    {
-      id: "friendly-wave",
-      name: "Friendly Wave",
-      image: `${API_BASE_URL}/templates/friendly-wave.webp`,
-    },
-  ];
 
   const handleTemplateSelect = (templateId: string) => {
     router.push({
@@ -207,10 +166,6 @@ export default function HomeScreen() {
             resizeMode="cover"
           />
         </View>
-        {/* <LinearGradient
-            colors={['transparent', 'rgba(0,0,0,0.3)']}
-            style={styles.heroGradient}
-          /> */}
         <GradientText style={styles.heroTitle}>
           Animate Old Photos with AI
         </GradientText>
@@ -269,14 +224,17 @@ export default function HomeScreen() {
         >
           {animationTemplates.map((template, index) => (
             <TouchableOpacity
-              key={index}
-              style={styles.templateCard}
-              onPress={() => handleTemplateSelect(template.id)}
-              activeOpacity={0.7}
+              key={template.slug || template.id}
+              style={[
+                styles.templateCard,
+                index === 0 && { marginLeft: 16 },
+                index === animationTemplates.length - 1 && { marginRight: 16 },
+              ]}
+              onPress={() => handleTemplateSelect(template.slug || template.id)}
             >
               <View style={styles.templateImageContainer}>
                 <Image
-                  source={{ uri: template.image }}
+                  source={{ uri: template.thumbnailUrl || template.image }}
                   style={styles.templateImage}
                   resizeMode="cover"
                 />
