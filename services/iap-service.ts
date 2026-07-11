@@ -13,7 +13,7 @@
 
 import { Platform } from 'react-native';
 import * as InAppPurchases from 'expo-in-app-purchases';
-import { getProductIds, getProductByProductId, isValidProductId } from '@/constants/iap-config';
+import { getProductIds, getProductByProductId, isValidProductId, getSubscriptionProductIds } from '@/constants/iap-config';
 import { api } from './api';
 
 export class IAPService {
@@ -72,7 +72,8 @@ export class IAPService {
     }
 
     try {
-      const productIds = getProductIds();
+      const productIds = [...getProductIds(), ...getSubscriptionProductIds()];
+      
       console.log('IAP: Fetching products:', productIds);
       console.log('IAP: Bundle ID should be: com.hexerve.AnimateMemories');
       

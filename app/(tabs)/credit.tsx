@@ -60,11 +60,42 @@ const PACK_DETAILS = {
   }
 };
 
+const SUBSCRIPTION_DETAILS = {
+  basic: {
+    id: 'sub_basic',
+    name: 'Basic Monthly',
+    credits: 50,
+    price: 7.99,
+    originalPrice: 15,
+    subtitle: 'Great for occasional use',
+    productId: 'com.hexerve.AnimateMemories.sub.basic'
+  },
+  standard: {
+    id: 'sub_standard',
+    name: 'Standard Monthly',
+    credits: 150,
+    price: 14.99,
+    originalPrice: 30,
+    subtitle: 'Best for regular users',
+    productId: 'com.hexerve.AnimateMemories.sub.standard'
+  },
+  premium: {
+    id: 'sub_premium',
+    name: 'Premium Monthly',
+    credits: 400,
+    price: 29.99,
+    originalPrice: 60,
+    subtitle: 'For power users',
+    productId: 'com.hexerve.AnimateMemories.sub.premium'
+  }
+};
 export default function CreditScreen() {
   const { user } = useAuthContext();
   const { getToken } = useAuth();
 
+  const [billingType, setBillingType] = useState<'one-time' | 'subscription'>('one-time');
   const [selectedPack, setSelectedPack] = useState<'starter' | 'popular' | 'pro'>('popular');
+  const [selectedSubPack, setSelectedSubPack] = useState<'basic' | 'standard' | 'premium'>('standard');
   const [userCredits, setUserCredits] = useState<number>(0);
   const [userPlan, setUserPlan] = useState<{ packId: string; credits: number; amount: number; createdAt: string; } | null>(null);
   const [transactions, setTransactions] = useState<Array<{ id: number; packId: string; credits: number; amount: number; createdAt: string; }>>([]);
@@ -77,13 +108,20 @@ export default function CreditScreen() {
     starter: { x: number; width: number } | null;
     popular: { x: number; width: number } | null;
     pro: { x: number; width: number } | null;
+    basic: { x: number; width: number } | null;
+    standard: { x: number; width: number } | null;
+    premium: { x: number; width: number } | null;
   }>({
     starter: null,
     popular: null,
     pro: null,
+    basic: null,
+    standard: null,
+    premium: null,
   });
 
-  const updateIndicator = (pack: 'starter' | 'popular' | 'pro', immediate = false) => {
+  const updateIndicator = (pack: string, immediate = false) => {
+    // @ts-ignore
     const layout = tabLayouts.current[pack];
     if (layout && layout.width > 0) {
       if (immediate) {
@@ -98,10 +136,10 @@ export default function CreditScreen() {
 
   useEffect(() => {
     const timer = setTimeout(() => {
-      updateIndicator(selectedPack);
+      updateIndicator(billingType === 'one-time' ? selectedPack : selectedSubPack);
     }, 0);
     return () => clearTimeout(timer);
-  }, [selectedPack]);
+  }, [selectedPack, selectedSubPack, billingType]);
 
   const animatedIndicatorStyle = useAnimatedStyle(() => {
     return {
@@ -250,10 +288,11 @@ export default function CreditScreen() {
       return;
     }
 
-    const currentPack = PACK_DETAILS[selectedPack];
+    const currentPack = billingType === 'one-time' ? PACK_DETAILS[selectedPack] : SUBSCRIPTION_DETAILS[selectedSubPack];
     
     // Attempt to get product ID from central IAP config, fallback to local default
-    const iapProduct = IAP_PRODUCTS.find(p => p.id === currentPack.id);
+    const iapProduct = IAP_PRODUCTS.find(p => p.id === currentPack.id) || 
+                       (await import('@/constants/iap-config')).IAP_SUBSCRIPTION_PRODUCTS.find(p => p.id === currentPack.id);
     const productId = iapProduct ? iapProduct.productId : currentPack.productId;
 
     if (Platform.OS === 'ios') {
@@ -381,10 +420,30 @@ export default function CreditScreen() {
 
       {/* Title Section */}
       <View style={styles.titleSection}>
-        <GradientText style={styles.mainTitle}>Choose Your Credit Pack</GradientText>
+        <GradientText style={styles.mainTitle}>Choose Your Plan</GradientText>
         <Text style={styles.subtitle}>
           Restore old photos and bring them to life with <Text style={styles.subtitleHighlight}>AI-powered technology</Text>
         </Text>
+      </View>
+
+      {/* Billing Type Toggle */}
+      <View style={styles.billingToggleContainer}>
+        <TouchableOpacity 
+          style={[styles.billingToggleBtn, billingType === 'one-time' && styles.billingToggleBtnActive]}
+          onPress={() => setBillingType('one-time')}
+        >
+          <Text style={[styles.billingToggleText, billingType === 'one-time' && styles.billingToggleTextActive]}>
+            One-Time Packs
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity 
+          style={[styles.billingToggleBtn, billingType === 'subscription' && styles.billingToggleBtnActive]}
+          onPress={() => setBillingType('subscription')}
+        >
+          <Text style={[styles.billingToggleText, billingType === 'subscription' && styles.billingToggleTextActive]}>
+            Subscriptions
+          </Text>
+        </TouchableOpacity>
       </View>
 
       {/* Pack Selection Tabs */}
@@ -398,45 +457,92 @@ export default function CreditScreen() {
               style={styles.packTabIndicatorGradient}
             />
           </Animated.View>
-          <TouchableOpacity
-            style={styles.packTab}
-            onPress={() => setSelectedPack('starter')}
-            onLayout={(event) => {
-              const { width, x } = event.nativeEvent.layout;
-              tabLayouts.current.starter = { x, width };
-            }}
-          >
-            <Text style={[
-              styles.packTabText,
-              selectedPack === 'starter' && styles.packTabTextSelected
-            ]}>Starter Pack</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.packTab}
-            onPress={() => setSelectedPack('popular')}
-            onLayout={(event) => {
-              const { width, x } = event.nativeEvent.layout;
-              tabLayouts.current.popular = { x, width };
-            }}
-          >
-            <Text style={[
-              styles.packTabText,
-              selectedPack === 'popular' && styles.packTabTextSelected
-            ]}>Most Popular</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.packTab}
-            onPress={() => setSelectedPack('pro')}
-            onLayout={(event) => {
-              const { width, x } = event.nativeEvent.layout;
-              tabLayouts.current.pro = { x, width };
-            }}
-          >
-            <Text style={[
-              styles.packTabText,
-              selectedPack === 'pro' && styles.packTabTextSelected
-            ]}>Pro Pack</Text>
-          </TouchableOpacity>
+          
+          {billingType === 'one-time' ? (
+            <>
+              <TouchableOpacity
+                style={styles.packTab}
+                onPress={() => setSelectedPack('starter')}
+                onLayout={(event) => {
+                  const { width, x } = event.nativeEvent.layout;
+                  tabLayouts.current.starter = { x, width };
+                }}
+              >
+                <Text style={[
+                  styles.packTabText,
+                  selectedPack === 'starter' && styles.packTabTextSelected
+                ]}>Starter Pack</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.packTab}
+                onPress={() => setSelectedPack('popular')}
+                onLayout={(event) => {
+                  const { width, x } = event.nativeEvent.layout;
+                  tabLayouts.current.popular = { x, width };
+                }}
+              >
+                <Text style={[
+                  styles.packTabText,
+                  selectedPack === 'popular' && styles.packTabTextSelected
+                ]}>Most Popular</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.packTab}
+                onPress={() => setSelectedPack('pro')}
+                onLayout={(event) => {
+                  const { width, x } = event.nativeEvent.layout;
+                  tabLayouts.current.pro = { x, width };
+                }}
+              >
+                <Text style={[
+                  styles.packTabText,
+                  selectedPack === 'pro' && styles.packTabTextSelected
+                ]}>Pro Pack</Text>
+              </TouchableOpacity>
+            </>
+          ) : (
+            <>
+              <TouchableOpacity
+                style={styles.packTab}
+                onPress={() => setSelectedSubPack('basic')}
+                onLayout={(event) => {
+                  const { width, x } = event.nativeEvent.layout;
+                  tabLayouts.current.basic = { x, width };
+                }}
+              >
+                <Text style={[
+                  styles.packTabText,
+                  selectedSubPack === 'basic' && styles.packTabTextSelected
+                ]}>Basic</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.packTab}
+                onPress={() => setSelectedSubPack('standard')}
+                onLayout={(event) => {
+                  const { width, x } = event.nativeEvent.layout;
+                  tabLayouts.current.standard = { x, width };
+                }}
+              >
+                <Text style={[
+                  styles.packTabText,
+                  selectedSubPack === 'standard' && styles.packTabTextSelected
+                ]}>Standard</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.packTab}
+                onPress={() => setSelectedSubPack('premium')}
+                onLayout={(event) => {
+                  const { width, x } = event.nativeEvent.layout;
+                  tabLayouts.current.premium = { x, width };
+                }}
+              >
+                <Text style={[
+                  styles.packTabText,
+                  selectedSubPack === 'premium' && styles.packTabTextSelected
+                ]}>Premium</Text>
+              </TouchableOpacity>
+            </>
+          )}
         </View>
       </View>
 
@@ -536,10 +642,12 @@ export default function CreditScreen() {
           <View style={styles.additionalFeatureDot} />
           <Text style={styles.additionalFeatureText}>Instant Processing</Text>
         </View>
-        <View style={styles.additionalFeatureItem}>
-          <View style={styles.additionalFeatureDot} />
-          <Text style={styles.additionalFeatureText}>No Subscription</Text>
-        </View>
+        {billingType === 'subscription' && (
+          <View style={styles.additionalFeatureItem}>
+            <View style={styles.additionalFeatureDot} />
+            <Text style={styles.additionalFeatureText}>Cancel Anytime</Text>
+          </View>
+        )}
       </View>
 
       {/* Current Credits */}
@@ -633,6 +741,36 @@ const styles = StyleSheet.create({
   subtitleHighlight: {
     fontWeight: '600',
     color: '#D229FF',
+  },
+  billingToggleContainer: {
+    flexDirection: 'row',
+    backgroundColor: '#F3F4F6',
+    borderRadius: 12,
+    padding: 4,
+    marginHorizontal: 16,
+    marginBottom: 20,
+    alignSelf: 'center',
+  },
+  billingToggleBtn: {
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+  },
+  billingToggleBtnActive: {
+    backgroundColor: '#fff',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 1,
+    elevation: 2,
+  },
+  billingToggleText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#6B7280',
+  },
+  billingToggleTextActive: {
+    color: '#111827',
   },
   packTabsContainer: {
     paddingHorizontal: 16,

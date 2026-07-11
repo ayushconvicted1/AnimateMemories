@@ -69,5 +69,42 @@ export const getProductByProductId = (productId: string): IAPProduct | null => {
  * Validate if a product ID is one of our configured products
  */
 export const isValidProductId = (productId: string): boolean => {
-  return IAP_PRODUCTS.some(p => p.productId === productId);
+  return IAP_PRODUCTS.some(p => p.productId === productId) || 
+         IAP_SUBSCRIPTION_PRODUCTS.some(p => p.productId === productId);
+};
+
+export interface IAPSubscriptionProduct {
+  id: 'sub_basic' | 'sub_standard' | 'sub_premium';
+  productId: string;
+  credits: number;
+  priceMonthly: number;
+}
+
+export const IAP_SUBSCRIPTION_PRODUCTS: IAPSubscriptionProduct[] = [
+  {
+    id: 'sub_basic',
+    productId: 'com.hexerve.AnimateMemories.sub.basic',
+    credits: 50,
+    priceMonthly: 7.99,
+  },
+  {
+    id: 'sub_standard',
+    productId: 'com.hexerve.AnimateMemories.sub.standard',
+    credits: 150,
+    priceMonthly: 14.99,
+  },
+  {
+    id: 'sub_premium',
+    productId: 'com.hexerve.AnimateMemories.sub.premium',
+    credits: 400,
+    priceMonthly: 29.99,
+  },
+];
+
+export const getSubscriptionProductIds = (): string[] => {
+  return IAP_SUBSCRIPTION_PRODUCTS.map(product => product.productId);
+};
+
+export const getSubscriptionProductById = (productId: string): IAPSubscriptionProduct | null => {
+  return IAP_SUBSCRIPTION_PRODUCTS.find(p => p.productId === productId) || null;
 };
