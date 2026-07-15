@@ -59,14 +59,7 @@ const LandingAuth = () => {
             width: "70%",
             marginTop: "2%",
             alignItems: "center",
-            ...(Platform.OS === "ios"
-              ? {
-                  shadowColor: "#000",
-                  shadowOpacity: 0.18,
-                  shadowOffset: { width: 0, height: 4 },
-                  shadowRadius: 6,
-                }
-              : { elevation: 3 }),
+            elevation: 3,
           }}
         >
           <Text
@@ -98,14 +91,7 @@ const LandingAuth = () => {
             marginTop: 20,
             backgroundColor: '#fff',
             alignItems: "center",
-            ...(Platform.OS === "ios"
-              ? {
-                  shadowColor: "#000",
-                  shadowOpacity: 0.18,
-                  shadowOffset: { width: 0, height: 4 },
-                  shadowRadius: 6,
-                }
-              : { elevation: 3 }),
+            elevation: 3,
           }}
         >
           <Text

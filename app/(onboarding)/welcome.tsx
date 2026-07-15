@@ -198,9 +198,6 @@ const styles = StyleSheet.create({
     lineHeight: 24,
     marginBottom: 30,
     paddingHorizontal: 20,
-    textShadowColor: "rgba(0, 0, 0, 0.5)",
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 3,
   },
   continueContainer: {
     width: "100%",

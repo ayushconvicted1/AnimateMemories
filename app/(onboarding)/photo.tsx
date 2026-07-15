@@ -347,10 +347,6 @@ const styles = StyleSheet.create({
     height: 200,
     borderRadius: 16,
     overflow: "hidden",
-    shadowColor: "#D229FF",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
     elevation: 8,
   },
   photoCard1: {

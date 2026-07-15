@@ -804,10 +804,6 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     borderWidth: 2.5,
     borderColor: "#fff",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 4,
     elevation: 5,
   },
   editButtonGradient: {

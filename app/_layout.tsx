@@ -47,7 +47,9 @@ export default function RootLayout() {
   useEffect(() => {
     // Set status bar background color for Android
     if (Platform.OS === "android") {
-      SystemUI.setBackgroundColorAsync("#ffffff").catch(console.error);
+      SystemUI.setBackgroundColorAsync("#ffffff").catch(() => {
+        // Suppress error during hot reload when Activity might be temporarily unavailable
+      });
     }
 
     // Handle deep links when app is already open

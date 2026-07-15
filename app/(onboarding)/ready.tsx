@@ -153,10 +153,6 @@ const styles = StyleSheet.create({
   },
   sliderContainer: {
     marginBottom: 30,
-    shadowColor: "#D229FF",
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.3,
-    shadowRadius: 20,
     elevation: 10,
   },
   buttonContainer: {

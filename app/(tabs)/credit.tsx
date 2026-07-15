@@ -24,8 +24,6 @@ import { useAuth as useAuthContext } from "@/contexts/AuthContext";
 import { useAuth } from "@clerk/clerk-expo";
 import { api } from "@/services/api";
 import { useFocusEffect } from "expo-router";
-import { iapService } from "@/services/iap-service";
-import { IAP_PRODUCTS } from "@/constants/iap-config";
 
 const WEBSITE_BASE = "https://animatememories.com";
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -99,7 +97,7 @@ export default function CreditScreen() {
   const [userCredits, setUserCredits] = useState<number>(0);
   const [userPlan, setUserPlan] = useState<{ packId: string; credits: number; amount: number; createdAt: string; } | null>(null);
   const [transactions, setTransactions] = useState<Array<{ id: number; packId: string; credits: number; amount: number; createdAt: string; }>>([]);
-  const [isProcessingIAP, setIsProcessingIAP] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
 
   const translateX = useSharedValue(0);
   const tabWidth = useSharedValue(0);
@@ -224,14 +222,7 @@ export default function CreditScreen() {
     return () => subscription.remove();
   }, [user, fetchUserCredits, fetchUserPlan, fetchTransactions]);
 
-  useEffect(() => {
-    if (Platform.OS === 'ios' && user) {
-      const initIAP = async () => {
-        await iapService.initialize();
-      };
-      initIAP();
-    }
-  }, [user]);
+
 
   useEffect(() => {
     const handleDeepLink = async (event: { url: string }) => {
@@ -289,101 +280,33 @@ export default function CreditScreen() {
     }
 
     const currentPack = billingType === 'one-time' ? PACK_DETAILS[selectedPack] : SUBSCRIPTION_DETAILS[selectedSubPack];
-    
-    // Attempt to get product ID from central IAP config, fallback to local default
-    const iapProduct = IAP_PRODUCTS.find(p => p.id === currentPack.id) || 
-                       (await import('@/constants/iap-config')).IAP_SUBSCRIPTION_PRODUCTS.find(p => p.id === currentPack.id);
-    const productId = iapProduct ? iapProduct.productId : currentPack.productId;
 
-    if (Platform.OS === 'ios') {
-      const userEmail =
-        user.primaryEmailAddress?.emailAddress ||
-        user.emailAddresses?.[0]?.emailAddress;
-        
-      if (!userEmail) {
-        Alert.alert("Error", "Email is required to make a purchase");
-        return;
-      }
-
-      setIsProcessingIAP(true);
-      try {
-        const token = await getToken();
-        const result = await iapService.purchaseProduct(productId, userEmail, token);
-        
-        if (result.success) {
-          Alert.alert(
-            "Payment Successful! 🎉",
-            "Your credits have been added to your account."
-          );
-          fetchUserCredits();
-          fetchUserPlan();
-          fetchTransactions();
-        } else if (result.error !== 'Purchase cancelled') {
-          Alert.alert("Purchase Failed", result.error || "An unknown error occurred");
-        }
-      } catch (error: any) {
-        Alert.alert("Error", error.message || "Failed to process purchase");
-      } finally {
-        setIsProcessingIAP(false);
-      }
-    } else {
-      // Android / Web / Default payment flow via website
-      const userEmail =
-        user.primaryEmailAddress?.emailAddress ||
-        user.emailAddresses?.[0]?.emailAddress;
-      const userName =
-        user.fullName ||
-        `${user.firstName || ""} ${user.lastName || ""}`.trim() ||
-        "";
-
-      const params = new URLSearchParams({
-        ref: "ios", 
-        pack: currentPack.id,
-        ...(userEmail ? { email: userEmail } : {}),
-        ...(userName ? { name: userName } : {}),
-      });
-
-      const url = `${WEBSITE_BASE}/buy-credits?${params.toString()}`;
-
-      try {
-        await Linking.openURL(url);
-      } catch (err) {
-        Alert.alert("Error", "Could not open the website. Please try again.");
-      }
-    }
-  };
-
-  const handleRestorePurchases = async () => {
-    if (!user) return;
-
+    // All platforms use the web-based Stripe payment flow
     const userEmail =
       user.primaryEmailAddress?.emailAddress ||
       user.emailAddresses?.[0]?.emailAddress;
-      
-    if (!userEmail) return;
+    const userName =
+      user.fullName ||
+      `${user.firstName || ""} ${user.lastName || ""}`.trim() ||
+      "";
 
-    setIsProcessingIAP(true);
+    const params = new URLSearchParams({
+      ref: Platform.OS,
+      pack: currentPack.id,
+      ...(userEmail ? { email: userEmail } : {}),
+      ...(userName ? { name: userName } : {}),
+    });
+
+    const url = `${WEBSITE_BASE}/buy-credits?${params.toString()}`;
+
     try {
-      const token = await getToken();
-      const result = await iapService.restorePurchases(userEmail, token);
-      
-      if (result.success) {
-        Alert.alert(
-          "Restore Complete",
-          result.message || `Restored ${result.restoredCount} purchases.`
-        );
-        fetchUserCredits();
-        fetchUserPlan();
-        fetchTransactions();
-      } else {
-        Alert.alert("Restore Failed", result.error || "An unknown error occurred");
-      }
-    } catch (error: any) {
-      Alert.alert("Error", error.message || "Failed to restore purchases");
-    } finally {
-      setIsProcessingIAP(false);
+      await Linking.openURL(url);
+    } catch (err) {
+      Alert.alert("Error", "Could not open the website. Please try again.");
     }
   };
+
+
 
   const formatTransactionName = (packId: string, amount: number) => {
     const packNames: Record<string, string> = {
@@ -599,7 +522,7 @@ export default function CreditScreen() {
         <TouchableOpacity 
           style={styles.upgradeButton} 
           onPress={handlePurchasePress}
-          disabled={isProcessingIAP}
+          disabled={isProcessing}
         >
           <LinearGradient
             colors={['#28D4FA', '#D229FF']}
@@ -607,7 +530,7 @@ export default function CreditScreen() {
             end={{ x: 1, y: 0 }}
             style={styles.upgradeButtonGradient}
           >
-            {isProcessingIAP ? (
+            {isProcessing ? (
               <ActivityIndicator color="#fff" />
             ) : (
               <>
@@ -618,19 +541,6 @@ export default function CreditScreen() {
           </LinearGradient>
         </TouchableOpacity>
       </View>
-
-      {/* Restore Purchases Button for iOS Users */}
-      {Platform.OS === 'ios' && (
-        <View style={{ alignItems: 'center', marginBottom: 20 }}>
-          <TouchableOpacity 
-            style={styles.restoreButton}
-            onPress={handleRestorePurchases}
-            disabled={isProcessingIAP}
-          >
-            <Text style={styles.restoreText}>Restore Purchases</Text>
-          </TouchableOpacity>
-        </View>
-      )}
 
       {/* Additional Features */}
       <View style={styles.additionalFeaturesContainer}>
@@ -758,10 +668,6 @@ const styles = StyleSheet.create({
   },
   billingToggleBtnActive: {
     backgroundColor: '#fff',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 1,
     elevation: 2,
   },
   billingToggleText: {
@@ -818,10 +724,6 @@ const styles = StyleSheet.create({
     marginHorizontal: 16,
     borderRadius: 11,
     backgroundColor: '#fff',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.27,
-    shadowRadius: 31.7,
     elevation: 8,
     position: 'relative',
     overflow: 'visible',
@@ -947,10 +849,6 @@ const styles = StyleSheet.create({
     right: 0,
     borderRadius: 4,
     overflow: 'hidden',
-    shadowColor: '#D229FF',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.26,
-    shadowRadius: 12.4,
     elevation: 5,
     zIndex: 10,
     marginHorizontal: 20,
@@ -1040,16 +938,7 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     textDecorationLine: 'underline',
   },
-  restoreButton: {
-    alignItems: "center",
-    paddingVertical: 12,
-  },
-  restoreText: {
-    color: "#666",
-    fontSize: 13,
-    fontWeight: "500",
-    textDecorationLine: "underline",
-  },
+
   noTransactionsText: {
     fontSize: 13,
     color: "#999",

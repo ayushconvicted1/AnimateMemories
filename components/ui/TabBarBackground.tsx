@@ -33,27 +33,3 @@ const styles = StyleSheet.create({
     bottom: 0,
   },
 });
-      {/* Frosted blur overlay */}
-      <BlurView
-        tint="light"
-        intensity={Platform.OS === "ios" ? 80 : 100}
-        style={StyleSheet.absoluteFill}
-      />
-      {/* Subtle white overlay for frosted look */}
-      <View style={styles.whiteOverlay} />
-    </View>
-  );
-}
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    overflow: "hidden",
-  },
-  whiteOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(255, 255, 255, 0.15)",
-  },
-});

@@ -172,7 +172,6 @@ export default function TabLayout() {
           marginHorizontal: 0,
           marginBottom: 0,
           elevation: 0,
-          shadowOpacity: 0,
           borderTopLeftRadius: 10,
           borderTopRightRadius: 10,
         },
@@ -311,13 +310,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     overflow: "hidden",
     position: "relative",
-    shadowColor: "#000",
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
     elevation: 4,
   },
   centerButtonIcon: {

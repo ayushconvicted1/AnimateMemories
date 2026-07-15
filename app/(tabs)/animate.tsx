@@ -414,6 +414,7 @@ export default function AnimateScreen() {
         token,
         selectedQuality
       );
+      console.log("Animation API Result:", result);
       setAnimatedVideo(result.result);
       await fetchUserCredits();
       // Don't auto-open fullscreen - let user tap to open
@@ -633,10 +634,10 @@ export default function AnimateScreen() {
                     ref={previewVideoRef}
                     source={{ uri: animatedVideo }}
                     style={styles.resultVideo}
-                    useNativeControls={false}
+                    useNativeControls={true}
                     resizeMode={ResizeMode.CONTAIN}
                     isLooping
-                    shouldPlay={false}
+                    shouldPlay={true}
                     onPlaybackStatusUpdate={(status) => {
                       setIsPreviewPlaying(status.isPlaying);
                     }}
@@ -1070,10 +1071,6 @@ const styles = StyleSheet.create({
   uploadContainer: {
     borderRadius: 7,
     backgroundColor: "#fff",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.3,
-    shadowRadius: 17.1,
     elevation: 5,
     margin: 9,
     overflow: "hidden",
@@ -1305,10 +1302,6 @@ const styles = StyleSheet.create({
   generateButton: {
     borderRadius: 7,
     overflow: "hidden",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
     elevation: 5,
     width: "70%",
     alignSelf: "center",
@@ -1436,10 +1429,6 @@ const styles = StyleSheet.create({
   },
   qualityCardSelected: {
     borderColor: "transparent",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.15,
-    shadowRadius: 6,
     elevation: 4,
   },
   qualityCardGradient: {

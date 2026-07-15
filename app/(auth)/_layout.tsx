@@ -11,8 +11,9 @@ const AuthLayout = () => {
     <View style={{ flex: 1 }}>
       {/* Background Gradient */}
       <Image
-      source={require("@/assets/images/Background.png")}
-        style={[StyleSheet.absoluteFill, { paddingTop: insets.top }]}
+        source={require("@/assets/images/Background.png")}
+        style={[StyleSheet.absoluteFill, { width: '100%', height: '100%' }]}
+        contentFit="cover"
       />
 
       {/* Screens */}
