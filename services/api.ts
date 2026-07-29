@@ -184,6 +184,13 @@ export const api = {
     });
   },
 
+  // Get dynamic pricing
+  getPricing: async () => {
+    return apiRequest("/api/pricing", {
+      method: "GET",
+    });
+  },
+
   // Restore image
   restoreImage: async (
     inputImageUrl: string,

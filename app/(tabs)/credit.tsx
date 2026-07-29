@@ -24,6 +24,7 @@ import { useAuth as useAuthContext } from "@/contexts/AuthContext";
 import { useAuth } from "@clerk/clerk-expo";
 import { api } from "@/services/api";
 import { useFocusEffect } from "expo-router";
+import { usePricing } from "@/contexts/PricingContext";
 
 const WEBSITE_BASE = "https://animatememories.com";
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -90,6 +91,7 @@ const SUBSCRIPTION_DETAILS = {
 export default function CreditScreen() {
   const { user } = useAuthContext();
   const { getToken } = useAuth();
+  const { pricingData } = usePricing();
 
   const [billingType, setBillingType] = useState<'one-time' | 'subscription'>('one-time');
   const [selectedPack, setSelectedPack] = useState<'starter' | 'popular' | 'pro'>('popular');
@@ -290,9 +292,14 @@ export default function CreditScreen() {
       `${user.firstName || ""} ${user.lastName || ""}`.trim() ||
       "";
 
+    const dynamicAmount = pricingData?.[currentPack.id]?.amount ?? currentPack.price;
+    const dynamicCredits = pricingData?.[currentPack.id]?.credits ?? currentPack.credits;
+
     const params = new URLSearchParams({
       ref: Platform.OS,
       pack: currentPack.id,
+      amount: String(dynamicAmount),
+      credits: String(dynamicCredits),
       ...(userEmail ? { email: userEmail } : {}),
       ...(userName ? { name: userName } : {}),
     });
@@ -326,7 +333,9 @@ export default function CreditScreen() {
     });
   };
 
-  const currentPack = PACK_DETAILS[selectedPack];
+  const currentPack = billingType === 'one-time' ? PACK_DETAILS[selectedPack] : SUBSCRIPTION_DETAILS[selectedSubPack];
+  const dynamicAmount = pricingData?.[currentPack.id]?.amount ?? currentPack.price;
+  const dynamicCredits = pricingData?.[currentPack.id]?.credits ?? currentPack.credits;
 
   return (
     <ScreenWrapper
@@ -482,13 +491,13 @@ export default function CreditScreen() {
             <View style={styles.packCardHeader}>
               <View style={styles.packCardLeft}>
                 <View style={styles.creditsTag}>
-                  <Text style={styles.creditsTagText}>{currentPack.credits} Credits</Text>
+                  <Text style={styles.creditsTagText}>{dynamicCredits} Credits</Text>
                 </View>
-                <GradientText style={styles.packCardTitle}>{currentPack.credits} AI Processing Credits</GradientText>
+                <GradientText style={styles.packCardTitle}>{dynamicCredits} AI Processing Credits</GradientText>
                 <Text style={styles.packCardSubtitle}>{currentPack.subtitle}</Text>
               </View>
               <View style={styles.packCardRight}>
-                <Text style={styles.packCardPrice}>${currentPack.price}</Text>
+                <Text style={styles.packCardPrice}>${dynamicAmount}</Text>
                 <View style={styles.originalPriceContainer}>
                   <Text style={styles.originalPriceText}>Originally ${currentPack.originalPrice}</Text>
                   <View style={styles.strikethrough} />

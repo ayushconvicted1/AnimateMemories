@@ -21,6 +21,8 @@ import {
 } from "@expo-google-fonts/outfit";
 import * as SplashScreen from "expo-splash-screen";
 
+import { PricingProvider } from "@/contexts/PricingContext";
+
 // Keep the splash screen visible while we fetch resources
 SplashScreen.preventAutoHideAsync();
 
@@ -170,15 +172,17 @@ export default function RootLayout() {
 
   return (
     <AuthProvider>
-      <StatusBar
-        style={Platform.OS === "android" ? "dark" : "auto"}
-        backgroundColor={Platform.OS === "android" ? "#ffffff" : undefined}
-      />
-      <Stack
-        screenOptions={{
-          headerShown: false,
-        }}
-      />
+      <PricingProvider>
+        <StatusBar
+          style={Platform.OS === "android" ? "dark" : "auto"}
+          backgroundColor={Platform.OS === "android" ? "#ffffff" : undefined}
+        />
+        <Stack
+          screenOptions={{
+            headerShown: false,
+          }}
+        />
+      </PricingProvider>
     </AuthProvider>
   );
 }
