@@ -56,7 +56,8 @@
       ],
       "expo-secure-store",
       "expo-apple-authentication",
-      "expo-av"
+      "expo-av",
+      "react-native-iap"
     ],
     "experiments": {
       "typedRoutes": true,

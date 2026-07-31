@@ -33,7 +33,7 @@ const CONTENT_WIDTH = SCREEN_WIDTH - 32;
 
 // API base URL for template images
 const API_BASE_URL =
-  process.env.EXPO_PUBLIC_API_BASE_URL || "http://localhost:3000";
+  process.env.EXPO_PUBLIC_API_BASE_URL || "https://www.animatememories.com";
 
 const promptExamples = [
   "slowly turns head left and right, blinks softly, gentle smile",

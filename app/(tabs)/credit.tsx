@@ -35,28 +35,28 @@ const PACK_DETAILS = {
     id: 'starter',
     name: 'Starter Pack',
     credits: 30,
-    price: 9.99,
-    originalPrice: 15,
+    price: 5.99,
+    originalPrice: 12,
     subtitle: 'Perfect for getting started',
-    productId: 'com.animatememories.credits.starter'
+    productId: 'com.hexerve.AnimateMemories.credits.starter'
   },
   popular: {
     id: 'popular',
     name: 'Popular Pack',
     credits: 100,
-    price: 24.99,
+    price: 19.99,
     originalPrice: 40,
     subtitle: 'Most popular for historians',
-    productId: 'com.animatememories.credits.popular'
+    productId: 'com.hexerve.AnimateMemories.credits.popular'
   },
   pro: {
     id: 'pro',
     name: 'Pro Pack',
     credits: 200,
-    price: 44.99,
-    originalPrice: 80,
+    price: 34.99,
+    originalPrice: 70,
     subtitle: 'Best value for professionals',
-    productId: 'com.animatememories.credits.pro'
+    productId: 'com.hexerve.AnimateMemories.credits.pro'
   }
 };
 
@@ -73,7 +73,7 @@ const SUBSCRIPTION_DETAILS = {
   standard: {
     id: 'sub_standard',
     name: 'Standard Monthly',
-    credits: 150,
+    credits: 120,
     price: 14.99,
     originalPrice: 30,
     subtitle: 'Best for regular users',
@@ -82,9 +82,9 @@ const SUBSCRIPTION_DETAILS = {
   premium: {
     id: 'sub_premium',
     name: 'Premium Monthly',
-    credits: 400,
-    price: 29.99,
-    originalPrice: 60,
+    credits: 250,
+    price: 39.99,
+    originalPrice: 70,
     subtitle: 'For power users',
     productId: 'com.hexerve.AnimateMemories.sub.premium'
   }

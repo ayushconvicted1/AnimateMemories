@@ -20,19 +20,19 @@ export const IAP_PRODUCTS: IAPProduct[] = [
     id: 'starter',
     productId: 'com.hexerve.AnimateMemories.credits.starter',
     credits: 30,
-    price: 9.99,
+    price: 5.99,
   },
   {
     id: 'popular',
     productId: 'com.hexerve.AnimateMemories.credits.popular',
     credits: 100,
-    price: 24.99,
+    price: 19.99,
   },
   {
     id: 'pro',
     productId: 'com.hexerve.AnimateMemories.credits.pro',
     credits: 200,
-    price: 44.99,
+    price: 34.99,
   },
 ];
 
@@ -90,14 +90,14 @@ export const IAP_SUBSCRIPTION_PRODUCTS: IAPSubscriptionProduct[] = [
   {
     id: 'sub_standard',
     productId: 'com.hexerve.AnimateMemories.sub.standard',
-    credits: 150,
+    credits: 120,
     priceMonthly: 14.99,
   },
   {
     id: 'sub_premium',
     productId: 'com.hexerve.AnimateMemories.sub.premium',
-    credits: 400,
-    priceMonthly: 29.99,
+    credits: 250,
+    priceMonthly: 39.99,
   },
 ];
 

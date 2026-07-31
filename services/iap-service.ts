@@ -1,25 +1,31 @@
 /**
- * IAP Service for iOS In-App Purchases
- * Using Expo In-App Purchases API
+ * IAP Service for In-App Purchases using react-native-iap
  * 
- * This service handles all iOS IAP operations including:
- * - Initializing IAP connection
- * - Fetching available products
- * - Purchasing products
- * - Verifying receipts with backend
- * - Restoring purchases
- * - Finishing transactions
+ * This service handles IAP operations including:
+ * - Initializing IAP connection with App Store / Google Play
+ * - Fetching available products & subscriptions
+ * - Requesting purchases & subscriptions
+ * - Verifying receipts with backend (/api/iap-verify)
+ * - Restoring purchases (/api/iap-restore)
+ * - Finishing transactions with StoreKit / Google Play Billing
  */
 
 import { Platform } from 'react-native';
-import * as InAppPurchases from 'expo-in-app-purchases';
-import { getProductIds, getProductByProductId, isValidProductId, getSubscriptionProductIds } from '@/constants/iap-config';
+import * as RNIap from 'react-native-iap';
+import { 
+  getProductIds, 
+  getSubscriptionProductIds, 
+  isValidProductId,
+  IAP_PRODUCTS,
+  IAP_SUBSCRIPTION_PRODUCTS 
+} from '@/constants/iap-config';
 import { api } from './api';
 
 export class IAPService {
   private static instance: IAPService;
   private isInitialized = false;
-  private products: InAppPurchases.IAPItemDetails[] = [];
+  private products: RNIap.Product[] = [];
+  private subscriptions: RNIap.Subscription[] = [];
 
   private constructor() {}
 
@@ -35,118 +41,97 @@ export class IAPService {
    * Must be called before any other IAP operations
    */
   async initialize(): Promise<boolean> {
-    if (Platform.OS !== 'ios') {
-      console.log('IAP: Not on iOS, skipping initialization');
+    if (Platform.OS !== 'ios' && Platform.OS !== 'android') {
+      console.log('IAP: Not on mobile platform, skipping initialization');
       return false;
     }
 
     if (this.isInitialized) {
-      console.log('IAP: Already initialized');
+      console.log('IAP: Connection already initialized');
       return true;
     }
 
     try {
-      console.log('IAP: Initializing connection...');
-      await InAppPurchases.connectAsync();
-      
+      console.log('IAP: Initializing connection with react-native-iap...');
+      const result = await RNIap.initConnection();
+      console.log('IAP: Connected to store:', result);
+
       this.isInitialized = true;
-      console.log('IAP: Connection initialized successfully');
       
-      // Fetch products
+      // Fetch products and subscriptions
       await this.fetchProducts();
       
       return true;
     } catch (error) {
-      console.error('IAP: Failed to initialize:', error);
+      console.error('IAP: Failed to initialize connection:', error);
       return false;
     }
   }
 
   /**
-   * Fetch available products from App Store
+   * Fetch available products and subscriptions from App Store / Google Play
    */
-  async fetchProducts(): Promise<InAppPurchases.IAPItemDetails[]> {
-    if (Platform.OS !== 'ios') {
-      console.log('IAP: Not on iOS platform, skipping product fetch');
-      return [];
+  async fetchProducts(): Promise<{ products: RNIap.Product[]; subscriptions: RNIap.Subscription[] }> {
+    if (Platform.OS !== 'ios' && Platform.OS !== 'android') {
+      return { products: [], subscriptions: [] };
     }
 
     try {
-      const productIds = [...getProductIds(), ...getSubscriptionProductIds()];
-      
-      console.log('IAP: Fetching products:', productIds);
-      console.log('IAP: Bundle ID should be: com.hexerve.AnimateMemories');
-      
-      const { results, responseCode } = await InAppPurchases.getProductsAsync(productIds);
-      
-      console.log('IAP: Response code:', responseCode);
-      console.log('IAP: Response code OK?', responseCode === InAppPurchases.IAPResponseCode.OK);
-      console.log('IAP: Raw results:', JSON.stringify(results, null, 2));
-      
-      if (responseCode === InAppPurchases.IAPResponseCode.OK) {
-        this.products = results || [];
-        console.log('IAP: Fetched products:', this.products.length);
-        
-        if (this.products.length === 0) {
-          console.warn('⚠️ IAP: 0 products fetched. Possible reasons:');
-          console.warn('  1. Product IDs in App Store Connect don\'t match code');
-          console.warn('  2. Products not "Ready to Submit" in App Store Connect');
-          console.warn('  3. Agreements/Banking/Tax not completed');
-          console.warn('  4. Products just created (wait 2-24 hours for propagation)');
-          console.warn('  5. Bundle ID mismatch');
-        } else {
-          console.log('✅ IAP: Successfully fetched products:');
-          this.products.forEach(product => {
-            console.log(`  - ${product.productId}: ${product.title} (${product.price})`);
-          });
+      const productSkus = getProductIds();
+      const subscriptionSkus = getSubscriptionProductIds();
+
+      console.log('IAP: Fetching products:', productSkus);
+      console.log('IAP: Fetching subscriptions:', subscriptionSkus);
+
+      let fetchedProducts: RNIap.Product[] = [];
+      let fetchedSubscriptions: RNIap.Subscription[] = [];
+
+      try {
+        if (productSkus.length > 0) {
+          fetchedProducts = await RNIap.getProducts({ skus: productSkus });
+          this.products = fetchedProducts || [];
+          console.log(`IAP: Successfully fetched ${this.products.length} products`);
         }
-        
-        return this.products;
-      } else {
-        const errorMessage = this.getResponseCodeMessage(responseCode);
-        console.error('IAP: Failed to fetch products, response code:', responseCode, '-', errorMessage);
-        throw new Error(`Failed to fetch IAP products: ${errorMessage}`);
+      } catch (prodErr) {
+        console.warn('IAP: Failed to fetch credit pack products:', prodErr);
       }
+
+      try {
+        if (subscriptionSkus.length > 0) {
+          fetchedSubscriptions = await RNIap.getSubscriptions({ skus: subscriptionSkus });
+          this.subscriptions = fetchedSubscriptions || [];
+          console.log(`IAP: Successfully fetched ${this.subscriptions.length} subscriptions`);
+        }
+      } catch (subErr) {
+        console.warn('IAP: Failed to fetch subscription products:', subErr);
+      }
+
+      return {
+        products: this.products,
+        subscriptions: this.subscriptions,
+      };
     } catch (error) {
-      console.error('IAP: Failed to fetch products:', error);
-      throw new Error('Failed to fetch IAP products');
+      console.error('IAP: Failed to fetch store items:', error);
+      return { products: [], subscriptions: [] };
     }
   }
 
   /**
-   * Get human-readable message for response code
+   * Get product details by product ID (SKU)
    */
-  private getResponseCodeMessage(code: InAppPurchases.IAPResponseCode): string {
-    switch (code) {
-      case InAppPurchases.IAPResponseCode.OK:
-        return 'Success';
-      case InAppPurchases.IAPResponseCode.USER_CANCELED:
-        return 'User cancelled';
-      case InAppPurchases.IAPResponseCode.ERROR:
-        return 'Error occurred';
-      case InAppPurchases.IAPResponseCode.DEFERRED:
-        return 'Purchase deferred (awaiting approval)';
-      default:
-        return `Unknown code: ${code}`;
-    }
-  }
-
-  /**
-   * Get a specific product by product ID
-   */
-  getProduct(productId: string): InAppPurchases.IAPItemDetails | undefined {
+  getProduct(productId: string): RNIap.Product | undefined {
     return this.products.find(p => p.productId === productId);
   }
 
   /**
-   * Get all available products
+   * Get subscription details by product ID (SKU)
    */
-  getProducts(): InAppPurchases.IAPItemDetails[] {
-    return this.products;
+  getSubscription(productId: string): RNIap.Subscription | undefined {
+    return this.subscriptions.find(s => s.productId === productId);
   }
 
   /**
-   * Purchase a product
+   * Purchase a product or subscription
    */
   async purchaseProduct(
     productId: string,
@@ -158,88 +143,85 @@ export class IAPService {
     creditsAdded?: number;
     error?: string;
   }> {
-    if (Platform.OS !== 'ios') {
-      return { success: false, error: 'IAP only available on iOS' };
+    if (Platform.OS !== 'ios' && Platform.OS !== 'android') {
+      return { success: false, error: 'IAP only available on iOS and Android' };
     }
 
     if (!this.isInitialized) {
-      await this.initialize();
+      const initialized = await this.initialize();
+      if (!initialized) {
+        return { success: false, error: 'Failed to initialize payment connection' };
+      }
     }
 
     if (!isValidProductId(productId)) {
       return { success: false, error: 'Invalid product ID' };
     }
 
+    const isSubscription = getSubscriptionProductIds().includes(productId);
+
     try {
-      console.log('IAP: Requesting purchase for:', productId);
-      
-      // Check if the product has been retrieved from the store
-      let product = this.getProduct(productId);
-      
-      // If we don't have it loaded in memory, try fetching again
-      if (!product) {
-        console.log('IAP: Product not found in local cache, fetching again...');
-        await this.fetchProducts();
-        product = this.getProduct(productId);
-        
-        if (!product) {
-          return { 
-            success: false, 
-            error: 'Apple could not find this product block. Please ensure products are "Ready to Submit" in App Store Connect and wait 24hrs.' 
-          };
-        }
+      console.log(`IAP: Requesting ${isSubscription ? 'subscription' : 'purchase'} for:`, productId);
+
+      let purchaseResult: RNIap.Purchase | RNIap.Purchase[] | null = null;
+
+      if (isSubscription) {
+        purchaseResult = await RNIap.requestSubscription({ sku: productId });
+      } else {
+        purchaseResult = await RNIap.requestPurchase({ sku: productId });
       }
 
-      
-      // Request purchase from App Store
-      const { responseCode, results } = await InAppPurchases.purchaseItemAsync(productId);
-      
-      if (responseCode === InAppPurchases.IAPResponseCode.OK && results && results.length > 0) {
-        console.log('IAP: Purchase successful, verifying receipt...');
-        
-        // Get the purchase details
-        const purchase = results[0];
-        
-        // Get the receipt
-        const receiptData = purchase.transactionReceipt;
-        
-        if (!receiptData) {
-          throw new Error('No receipt available');
+      const purchase = Array.isArray(purchaseResult) ? purchaseResult[0] : purchaseResult;
+
+      if (!purchase) {
+        throw new Error('No purchase data returned from App Store / Google Play');
+      }
+
+      console.log('IAP: Purchase successful, extracting receipt data...');
+
+      const receiptData = purchase.transactionReceipt || (purchase as any).receipt || (purchase as any).transactionId;
+
+      if (!receiptData) {
+        throw new Error('No valid receipt data found in purchase response');
+      }
+
+      console.log('IAP: Verifying receipt with backend...');
+      const verificationResult = await api.verifyIAPReceipt(receiptData, userEmail, token);
+
+      if (verificationResult.success) {
+        // Finish transaction with Apple / Google
+        try {
+          await RNIap.finishTransaction({ 
+            purchase, 
+            isConsumable: !isSubscription 
+          });
+          console.log('IAP: Transaction finished successfully with native store');
+        } catch (finishErr) {
+          console.warn('IAP: Error finishing transaction:', finishErr);
         }
 
-        // Verify receipt with backend
-        const verificationResult = await api.verifyIAPReceipt(receiptData, userEmail, token);
-
-        if (verificationResult.success) {
-          // Finish the transaction
-          await InAppPurchases.finishTransactionAsync(purchase, true);
-          
-          console.log('IAP: Purchase verified and completed');
-          
-          return {
-            success: true,
-            credits: verificationResult.credits,
-            creditsAdded: verificationResult.creditsAdded,
-          };
-        } else {
-          throw new Error(verificationResult.error || 'Verification failed');
-        }
-      } else if (responseCode === InAppPurchases.IAPResponseCode.USER_CANCELED) {
-        return { success: false, error: 'Purchase cancelled' };
+        return {
+          success: true,
+          credits: verificationResult.credits,
+          creditsAdded: verificationResult.creditsAdded,
+        };
       } else {
-        throw new Error(`Purchase failed with code: ${responseCode}`);
+        throw new Error(verificationResult.error || 'Backend receipt verification failed');
       }
     } catch (error: any) {
-      console.error('IAP: Purchase failed:', error);
-      
-      // Handle user cancellation
-      if (error.message?.includes('cancelled') || error.message?.includes('canceled')) {
+      console.error('IAP: Purchase error:', error);
+
+      if (
+        error?.code === 'E_USER_CANCELLED' ||
+        error?.message?.includes('cancelled') ||
+        error?.message?.includes('canceled')
+      ) {
         return { success: false, error: 'Purchase cancelled' };
       }
-      
-      return { 
-        success: false, 
-        error: error.message || 'Purchase failed' 
+
+      return {
+        success: false,
+        error: error.message || 'Purchase failed',
       };
     }
   }
@@ -257,8 +239,8 @@ export class IAPService {
     message?: string;
     error?: string;
   }> {
-    if (Platform.OS !== 'ios') {
-      return { success: false, error: 'IAP only available on iOS' };
+    if (Platform.OS !== 'ios' && Platform.OS !== 'android') {
+      return { success: false, error: 'IAP only available on mobile' };
     }
 
     if (!this.isInitialized) {
@@ -266,116 +248,100 @@ export class IAPService {
     }
 
     try {
-      console.log('IAP: Restoring purchases...');
-      
-      // Get purchase history
-      const { responseCode, results } = await InAppPurchases.getPurchaseHistoryAsync(false);
-      
-      if (responseCode !== InAppPurchases.IAPResponseCode.OK || !results || results.length === 0) {
-        return { 
-          success: true, 
+      console.log('IAP: Restoring purchases via react-native-iap...');
+      const availablePurchases = await RNIap.getAvailablePurchases();
+
+      if (!availablePurchases || availablePurchases.length === 0) {
+        return {
+          success: true,
           restoredCount: 0,
           creditsAdded: 0,
-          message: 'No purchases to restore' 
+          message: 'No active purchases to restore',
         };
       }
 
-      // Get the most recent receipt
-      const latestPurchase = results[results.length - 1];
-      const receiptData = latestPurchase.transactionReceipt;
-      
+      const latestPurchase = availablePurchases[availablePurchases.length - 1];
+      const receiptData = latestPurchase.transactionReceipt || (latestPurchase as any).receipt;
+
       if (!receiptData) {
-        return { 
-          success: true, 
+        return {
+          success: true,
           restoredCount: 0,
           creditsAdded: 0,
-          message: 'No purchases to restore' 
+          message: 'No receipt found for previous purchases',
         };
       }
 
-      // Verify and restore with backend
       const restoreResult = await api.restoreIAPPurchases(receiptData, userEmail, token);
 
-      console.log('IAP: Restore result:', restoreResult);
-
-      // Finish all transactions
-      for (const purchase of results) {
-        await InAppPurchases.finishTransactionAsync(purchase, true);
+      // Finish all restored transactions
+      for (const purchase of availablePurchases) {
+        try {
+          await RNIap.finishTransaction({ purchase, isConsumable: false });
+        } catch (e) {
+          console.warn('IAP: Error finishing restored transaction:', e);
+        }
       }
 
       return {
         success: true,
         restoredCount: restoreResult.restoredCount || 0,
         creditsAdded: restoreResult.creditsAdded || 0,
-        message: restoreResult.message,
+        message: restoreResult.message || 'Purchases restored successfully',
       };
     } catch (error: any) {
       console.error('IAP: Restore failed:', error);
-      return { 
-        success: false, 
-        error: error.message || 'Failed to restore purchases' 
+      return {
+        success: false,
+        error: error.message || 'Failed to restore purchases',
       };
     }
   }
 
   /**
-   * Handle pending purchases on app launch
-   * Call this when app starts to finish any incomplete transactions
+   * Handle pending transactions on app startup
    */
   async handlePendingPurchases(
     userEmail: string,
     token?: string | null
   ): Promise<void> {
-    if (Platform.OS !== 'ios') {
-      return;
-    }
+    if (Platform.OS !== 'ios' && Platform.OS !== 'android') return;
 
     try {
-      // Get purchase history to check for pending transactions
-      const { responseCode, results } = await InAppPurchases.getPurchaseHistoryAsync(false);
-      
-      if (responseCode !== InAppPurchases.IAPResponseCode.OK || !results || results.length === 0) {
-        console.log('IAP: No pending purchases');
-        return;
+      const purchases = await RNIap.getAvailablePurchases();
+      if (!purchases || purchases.length === 0) return;
+
+      console.log(`IAP: Handling ${purchases.length} pending/available purchases`);
+      for (const purchase of purchases) {
+        const receiptData = purchase.transactionReceipt || (purchase as any).receipt;
+        if (receiptData) {
+          try {
+            await api.verifyIAPReceipt(receiptData, userEmail, token);
+            await RNIap.finishTransaction({ purchase, isConsumable: true });
+          } catch (e) {
+            console.warn('IAP: Error processing pending purchase:', e);
+          }
+        }
       }
-
-      console.log('IAP: Found purchase history:', results.length);
-
-      // Get the latest receipt and verify with backend
-      const latestPurchase = results[results.length - 1];
-      const receiptData = latestPurchase.transactionReceipt;
-      
-      if (receiptData) {
-        await api.verifyIAPReceipt(receiptData, userEmail, token);
-      }
-
-      // Finish all transactions
-      for (const purchase of results) {
-        await InAppPurchases.finishTransactionAsync(purchase, true);
-      }
-
-      console.log('IAP: Finished pending purchases');
     } catch (error) {
-      console.error('IAP: Failed to handle pending purchases:', error);
+      console.error('IAP: Failed handling pending purchases:', error);
     }
   }
 
   /**
-   * Cleanup IAP connection
-   * Call when app is closing
+   * Cleanup IAP connection on app closing
    */
   async cleanup(): Promise<void> {
-    if (Platform.OS !== 'ios' || !this.isInitialized) {
-      return;
-    }
+    if (!this.isInitialized) return;
 
     try {
-      await InAppPurchases.disconnectAsync();
+      await RNIap.endConnection();
       this.isInitialized = false;
       this.products = [];
+      this.subscriptions = [];
       console.log('IAP: Connection closed');
     } catch (error) {
-      console.error('IAP: Failed to cleanup:', error);
+      console.error('IAP: Failed to cleanup connection:', error);
     }
   }
 }

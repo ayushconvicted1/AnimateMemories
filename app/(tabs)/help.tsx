@@ -105,7 +105,7 @@ export default function HelpScreen() {
             <View style={styles.helpItem}>
               <Text style={styles.helpItemTitle}>Credit Costs</Text>
               <Text style={styles.helpItemText}>
-                • Photo restoration: 1 credit{"\n"}• Photo animation: 3 credits
+                • Photo restoration: 1 credit{"\n"}• Photo animation: Starts from 3 credits (varies by model & duration)
                 {"\n"}• Credits never expire{"\n"}• Unused credits remain in
                 your account
               </Text>
