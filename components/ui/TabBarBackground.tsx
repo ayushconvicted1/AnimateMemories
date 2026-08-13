@@ -1,35 +1,19 @@
-import { BlurView } from "expo-blur";
-import { StyleSheet, Platform } from "react-native";
-import { LinearGradient } from "expo-linear-gradient";
+import React from "react";
+import { StyleSheet, View } from "react-native";
 
 export default function TabBarBackground() {
   return (
-    <BlurView
-      tint="light"
-      intensity={Platform.OS === "ios" ? 92 : 100}
-      style={styles.blurView}
-    >
-      <LinearGradient
-        colors={["rgba(255,255,255,0)", "rgba(255,255,255,1)"]}
-        locations={[0.539, 1.0977]}
-        style={styles.gradient}
-      />
-    </BlurView>
+    <View style={styles.solidBackground} />
   );
 }
 
 const styles = StyleSheet.create({
-  blurView: {
-    flex: 1,
-    backgroundColor: "rgba(255,255,255,0.48)",
-    borderRadius: 10,
-    overflow: "hidden",
-  },
-  gradient: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
+  solidBackground: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "#FFFFFF",
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
+    borderTopWidth: 1,
+    borderTopColor: "#E2E8F0",
   },
 });

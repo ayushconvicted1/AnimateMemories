@@ -141,7 +141,8 @@ const SignUpScreen = () => {
           );
         }
 
-        router.replace("/(onboarding)");
+        // The quick tour shows automatically on first open (TourContext).
+        router.replace("/(tabs)");
       } else if (signUpAttempt.status === "missing_requirements") {
         await signUp.prepareEmailAddressVerification({
           strategy: "email_code",
@@ -207,7 +208,8 @@ const SignUpScreen = () => {
           );
         }
 
-        router.replace("/(onboarding)");
+        // The quick tour shows automatically on first open (TourContext).
+        router.replace("/(tabs)");
       } else {
         Alert.alert(
           "Verification Failed",
@@ -238,14 +240,27 @@ const SignUpScreen = () => {
 
       if (createdSessionId) {
         await setActive({ session: createdSessionId });
-        router.replace("/(onboarding)");
+        // The quick tour shows automatically on first open (TourContext).
+        router.replace("/(tabs)");
       } else {
         // User cancelled or error occurred
         console.log("OAuth flow cancelled or incomplete");
       }
     } catch (err: any) {
       console.error("Google OAuth error:", err);
-      const errorMessage = err.errors?.[0]?.message || "Failed to sign up with Google. Please try again.";
+      const errorMessage = err.errors?.[0]?.message || err.message || "Failed to sign up with Google. Please try again.";
+      const errorCode = err.errors?.[0]?.code || "";
+
+      if (
+        errorCode === "session_exists" ||
+        errorMessage.toLowerCase().includes("session already exists") ||
+        errorMessage.toLowerCase().includes("active session")
+      ) {
+        if (router.canDismiss()) router.dismissAll();
+        router.replace("/(tabs)");
+        return;
+      }
+
       Alert.alert("Sign Up Failed", errorMessage);
     } finally {
       setIsLoading(false);
@@ -275,14 +290,27 @@ const SignUpScreen = () => {
 
       if (createdSessionId) {
         await setActive({ session: createdSessionId });
-        router.replace("/(onboarding)");
+        // The quick tour shows automatically on first open (TourContext).
+        router.replace("/(tabs)");
       } else {
         // User cancelled or error occurred
         console.log("OAuth flow cancelled or incomplete");
       }
     } catch (err: any) {
       console.error("Apple OAuth error:", err);
-      const errorMessage = err.errors?.[0]?.message || "Failed to sign up with Apple. Please try again.";
+      const errorMessage = err.errors?.[0]?.message || err.message || "Failed to sign up with Apple. Please try again.";
+      const errorCode = err.errors?.[0]?.code || "";
+
+      if (
+        errorCode === "session_exists" ||
+        errorMessage.toLowerCase().includes("session already exists") ||
+        errorMessage.toLowerCase().includes("active session")
+      ) {
+        if (router.canDismiss()) router.dismissAll();
+        router.replace("/(tabs)");
+        return;
+      }
+
       Alert.alert("Sign Up Failed", errorMessage);
     } finally {
       setIsLoading(false);

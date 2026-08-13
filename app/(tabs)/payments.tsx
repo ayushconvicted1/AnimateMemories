@@ -15,6 +15,14 @@ import ScreenWrapper from "@/components/ui/ScreenWrapper";
 import { useAuth as useAuthContext } from "@/contexts/AuthContext";
 import { useAuth } from "@clerk/clerk-expo";
 import { api } from "@/services/api";
+import { getFontFamily } from "@/constants/Fonts";
+import {
+  VisaIcon,
+  MastercardIcon,
+  ApplePayIcon,
+  GooglePayIcon,
+  PaypalIcon,
+} from "@/components/images/PaymentIcons";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 const CONTENT_WIDTH = SCREEN_WIDTH - 32;
@@ -50,52 +58,49 @@ export default function PaymentsScreen() {
     }
   }, [user]);
 
+  const fetchTransactions = useCallback(async () => {
+    if (!user) return;
+    try {
+      const userEmail =
+        user?.primaryEmailAddress?.emailAddress ||
+        user?.emailAddresses?.[0]?.emailAddress;
+      if (!userEmail) return;
+
+      const token = await getToken();
+      const res = await api.getTransactions(userEmail, token);
+      if (res?.result && Array.isArray(res.result)) {
+        const mappedTx: Transaction[] = res.result.map((tx: any) => ({
+          id: tx.id?.toString() || Math.random().toString(),
+          type: "purchase",
+          description: tx.packId
+            ? `${tx.packId.charAt(0).toUpperCase() + tx.packId.slice(1)} Pack - ${tx.credits} Credits`
+            : `${tx.credits} Credits Purchase`,
+          amount: Number(tx.amount) || 0,
+          credits: Number(tx.credits) || 0,
+          date: tx.createdAt
+            ? new Date(tx.createdAt).toLocaleDateString("en-US", {
+                year: "numeric",
+                month: "short",
+                day: "numeric",
+              })
+            : "Recent",
+          status: tx.status === "completed" ? "completed" : tx.status === "failed" ? "failed" : "pending",
+        }));
+        setTransactions(mappedTx);
+      }
+    } catch (error) {
+      console.error("Error fetching transactions:", error);
+    }
+  }, [user, getToken]);
+
   useEffect(() => {
     if (user) {
       fetchUserCredits();
-      // Mock transaction data - in production, fetch from API
-      setTransactions([
-        {
-          id: "1",
-          type: "purchase",
-          description: "Popular Pack - 100 Credits",
-          amount: 25,
-          credits: 100,
-          date: "2024-01-15",
-          status: "completed",
-        },
-        {
-          id: "2",
-          type: "usage",
-          description: "Photo Animation",
-          amount: 0,
-          credits: -3,
-          date: "2024-01-14",
-          status: "completed",
-        },
-        {
-          id: "3",
-          type: "usage",
-          description: "Photo Restoration",
-          amount: 0,
-          credits: -1,
-          date: "2024-01-13",
-          status: "completed",
-        },
-        {
-          id: "4",
-          type: "purchase",
-          description: "Starter Pack - 30 Credits",
-          amount: 10,
-          credits: 30,
-          date: "2024-01-10",
-          status: "completed",
-        },
-      ]);
+      fetchTransactions();
     } else {
       setLoading(false);
     }
-  }, [user, fetchUserCredits]);
+  }, [user, fetchUserCredits, fetchTransactions]);
 
   return (
     <ScreenWrapper addBottomPadding={true}>
@@ -103,7 +108,7 @@ export default function PaymentsScreen() {
         {/* Header */}
         <View style={styles.header}>
           <TouchableOpacity
-            onPress={() => router.back()}
+            onPress={() => router.push("/(tabs)/you")}
             style={styles.backButton}
           >
             <Text style={styles.backButtonText}>← Back</Text>
@@ -147,19 +152,18 @@ export default function PaymentsScreen() {
 
           {/* Payment Methods */}
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Payment Methods</Text>
+            <Text style={styles.sectionTitle}>Accepted Payment Methods</Text>
             <View style={styles.infoCard}>
               <Text style={styles.infoText}>
                 We accept all major credit cards, debit cards, and digital
-                payment methods including:
+                wallets powered securely by Stripe:
               </Text>
-              <View style={styles.paymentMethodsList}>
-                <Text style={styles.paymentMethodItem}>• Visa</Text>
-                <Text style={styles.paymentMethodItem}>• Mastercard</Text>
-                <Text style={styles.paymentMethodItem}>• American Express</Text>
-                <Text style={styles.paymentMethodItem}>• PayPal</Text>
-                <Text style={styles.paymentMethodItem}>• Apple Pay</Text>
-                <Text style={styles.paymentMethodItem}>• Google Pay</Text>
+              <View style={styles.paymentIconsRow}>
+                <VisaIcon style={styles.paymentBadge} />
+                <MastercardIcon style={styles.paymentBadge} />
+                <ApplePayIcon style={styles.paymentBadge} />
+                <GooglePayIcon style={styles.paymentBadge} />
+                <PaypalIcon style={styles.paymentBadge} />
               </View>
             </View>
           </View>
@@ -271,12 +275,12 @@ const styles = StyleSheet.create({
   },
   backButtonText: {
     fontSize: 15,
-    fontWeight: "600",
     color: "#000",
+    fontFamily: getFontFamily("600"),
   },
   title: {
     fontSize: 24,
-    fontWeight: "700",
+    fontFamily: getFontFamily("700"),
   },
   placeholder: {
     width: 60,
@@ -296,13 +300,13 @@ const styles = StyleSheet.create({
   },
   creditsCardTitle: {
     fontSize: 14,
-    fontWeight: "500",
     color: "#979797",
-    marginBottom: 12,
+    marginBottom: 8,
+    fontFamily: getFontFamily("500"),
   },
   creditsCardValue: {
-    fontSize: 30,
-    fontWeight: "700",
+    fontSize: 32,
+    fontFamily: getFontFamily("700"),
   },
   buySection: {
     paddingHorizontal: 16,
@@ -314,14 +318,13 @@ const styles = StyleSheet.create({
   },
   buyButtonGradient: {
     paddingVertical: 14,
-    paddingHorizontal: 24,
     alignItems: "center",
     justifyContent: "center",
   },
   buyButtonText: {
-    fontSize: 15,
-    fontWeight: "600",
+    fontSize: 16,
     color: "#fff",
+    fontFamily: getFontFamily("600"),
   },
   section: {
     paddingHorizontal: 16,
@@ -329,50 +332,65 @@ const styles = StyleSheet.create({
   },
   sectionTitle: {
     fontSize: 17,
-    fontWeight: "700",
     color: "#000",
-    marginBottom: 16,
+    marginBottom: 12,
+    fontFamily: getFontFamily("700"),
   },
   infoCard: {
     backgroundColor: "#f8f9fa",
-    borderRadius: 8,
+    borderRadius: 12,
     padding: 16,
     borderWidth: 1,
     borderColor: "#e9ecef",
   },
   infoTitle: {
     fontSize: 15,
-    fontWeight: "600",
     color: "#000",
-    marginBottom: 12,
+    marginBottom: 8,
+    fontFamily: getFontFamily("600"),
   },
   infoText: {
     fontSize: 13,
-    fontWeight: "400",
     color: "#979797",
-    lineHeight: 22,
+    lineHeight: 20,
+    fontFamily: getFontFamily("400"),
   },
-  paymentMethodsList: {
-    marginTop: 12,
+  paymentIconsRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginTop: 14,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: "#e9ecef",
   },
-  paymentMethodItem: {
-    fontSize: 13,
-    fontWeight: "400",
+  paymentBadge: {
+    borderRadius: 4,
+    overflow: "hidden",
+  },
+  emptyState: {
+    paddingVertical: 24,
+    alignItems: "center",
+  },
+  emptyStateText: {
+    fontSize: 14,
     color: "#979797",
-    marginBottom: 8,
+    fontFamily: getFontFamily("400"),
   },
   transactionsList: {
-    gap: 12,
+    backgroundColor: "#fff",
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#e9ecef",
+    overflow: "hidden",
   },
   transactionItem: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    backgroundColor: "#f8f9fa",
-    borderRadius: 8,
     padding: 16,
-    borderWidth: 1,
-    borderColor: "#e9ecef",
+    borderBottomWidth: 1,
+    borderBottomColor: "#e9ecef",
   },
   transactionLeft: {
     flex: 1,
@@ -380,64 +398,59 @@ const styles = StyleSheet.create({
   },
   transactionDescription: {
     fontSize: 14,
-    fontWeight: "600",
     color: "#000",
     marginBottom: 4,
+    fontFamily: getFontFamily("600"),
   },
   transactionDate: {
     fontSize: 12,
-    fontWeight: "400",
     color: "#979797",
+    fontFamily: getFontFamily("400"),
   },
   transactionRight: {
     alignItems: "flex-end",
   },
   transactionAmount: {
     fontSize: 15,
-    fontWeight: "700",
     color: "#28D4FA",
     marginBottom: 4,
+    fontFamily: getFontFamily("700"),
   },
   transactionCredits: {
     fontSize: 14,
-    fontWeight: "600",
     color: "#D229FF",
     marginBottom: 4,
+    fontFamily: getFontFamily("600"),
   },
   statusBadge: {
     paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 4,
+    paddingVertical: 2,
+    borderRadius: 12,
+    backgroundColor: "#f3f4f6",
   },
   statusBadgeCompleted: {
-    backgroundColor: "#d4edda",
+    backgroundColor: "#d1fae5",
   },
   statusBadgePending: {
-    backgroundColor: "#fff3cd",
+    backgroundColor: "#fef3c7",
   },
   statusBadgeFailed: {
-    backgroundColor: "#f8d7da",
+    backgroundColor: "#fee2e2",
   },
   statusText: {
-    fontSize: 10,
-    fontWeight: "600",
+    fontSize: 11,
+    color: "#6b7280",
+    fontFamily: getFontFamily("600"),
   },
   statusTextCompleted: {
-    color: "#155724",
+    color: "#059669",
   },
   statusTextPending: {
-    color: "#856404",
+    color: "#d97706",
   },
   statusTextFailed: {
-    color: "#721c24",
-  },
-  emptyState: {
-    padding: 40,
-    alignItems: "center",
-  },
-  emptyStateText: {
     fontSize: 14,
-    fontWeight: "400",
     color: "#979797",
+    fontFamily: getFontFamily("400"),
   },
 });

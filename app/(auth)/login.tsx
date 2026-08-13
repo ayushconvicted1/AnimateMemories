@@ -76,6 +76,7 @@ const LoginScreen = () => {
 
       if (signInAttempt.status === "complete") {
         await setActive({ session: signInAttempt.createdSessionId });
+        if (router.canDismiss()) router.dismissAll();
         router.replace("/(tabs)");
       } else {
         Alert.alert(
@@ -85,7 +86,18 @@ const LoginScreen = () => {
       }
     } catch (err: any) {
       const errorMessage =
-        err.errors?.[0]?.message || "An error occurred during sign-in.";
+        err.errors?.[0]?.message || err.message || "An error occurred during sign-in.";
+      const errorCode = err.errors?.[0]?.code || "";
+
+      if (
+        errorCode === "session_exists" ||
+        errorMessage.toLowerCase().includes("session already exists") ||
+        errorMessage.toLowerCase().includes("active session")
+      ) {
+        if (router.canDismiss()) router.dismissAll();
+        router.replace("/(tabs)");
+        return;
+      }
 
       // Provide helpful message for development
       if (errorMessage.includes("Invalid authentication credentials")) {
@@ -118,6 +130,8 @@ const LoginScreen = () => {
 
       if (createdSessionId) {
         await setActive({ session: createdSessionId });
+        if (router.canDismiss()) router.dismissAll();
+        // The quick tour shows automatically on first open (TourContext).
         router.replace("/(tabs)");
       } else {
         // User cancelled or error occurred
@@ -126,8 +140,20 @@ const LoginScreen = () => {
     } catch (err: any) {
       console.error("Google OAuth error:", err);
       const errorMessage =
-        err.errors?.[0]?.message ||
+        err.errors?.[0]?.message || err.message ||
         "Failed to sign in with Google. Please try again.";
+      const errorCode = err.errors?.[0]?.code || "";
+
+      if (
+        errorCode === "session_exists" ||
+        errorMessage.toLowerCase().includes("session already exists") ||
+        errorMessage.toLowerCase().includes("active session")
+      ) {
+        if (router.canDismiss()) router.dismissAll();
+        router.replace("/(tabs)");
+        return;
+      }
+
       Alert.alert("Sign In Failed", errorMessage);
     } finally {
       setIsLoading(false);
@@ -160,6 +186,8 @@ const LoginScreen = () => {
 
       if (createdSessionId) {
         await setActive({ session: createdSessionId });
+        if (router.canDismiss()) router.dismissAll();
+        // The quick tour shows automatically on first open (TourContext).
         router.replace("/(tabs)");
       } else {
         // User cancelled or error occurred
@@ -168,8 +196,20 @@ const LoginScreen = () => {
     } catch (err: any) {
       console.error("Apple OAuth error:", err);
       const errorMessage =
-        err.errors?.[0]?.message ||
+        err.errors?.[0]?.message || err.message ||
         "Failed to sign in with Apple. Please try again.";
+      const errorCode = err.errors?.[0]?.code || "";
+
+      if (
+        errorCode === "session_exists" ||
+        errorMessage.toLowerCase().includes("session already exists") ||
+        errorMessage.toLowerCase().includes("active session")
+      ) {
+        if (router.canDismiss()) router.dismissAll();
+        router.replace("/(tabs)");
+        return;
+      }
+
       Alert.alert("Sign In Failed", errorMessage);
     } finally {
       setIsLoading(false);
@@ -241,6 +281,13 @@ const LoginScreen = () => {
           </TouchableOpacity>
         }
       />
+
+      <TouchableOpacity
+        style={{ alignSelf: "flex-end", marginTop: 15, marginRight: 5 }}
+        onPress={() => router.push("/(auth)/forgot-password")}
+      >
+        <Text style={{ color: "#28D4FA", fontSize: 14, fontWeight: "600" }}>Forgot Password?</Text>
+      </TouchableOpacity>
 
       {/* Login button */}
       <TouchableOpacity

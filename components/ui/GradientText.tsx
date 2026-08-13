@@ -1,12 +1,13 @@
 import React from 'react';
-import { Text, StyleSheet, TextStyle } from 'react-native';
+import { Text, StyleSheet, StyleProp, TextStyle } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import MaskedView from '@react-native-masked-view/masked-view';
+import { getFontFamily } from '@/constants/Fonts';
 
 interface GradientTextProps {
   children: React.ReactNode;
-  style?: TextStyle;
-  colors?: string[];
+  style?: StyleProp<TextStyle>;
+  colors?: [string, string, ...string[]];
 }
 
 export function GradientText({ 
@@ -34,6 +35,7 @@ export function GradientText({
 const styles = StyleSheet.create({
   text: {
     backgroundColor: 'transparent',
+    fontFamily: getFontFamily("700"),
   },
 });
 

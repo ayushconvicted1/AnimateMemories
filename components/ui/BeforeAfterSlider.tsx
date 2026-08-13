@@ -27,7 +27,7 @@ export default function BeforeAfterSlider({
 }: BeforeAfterSliderProps) {
   // Use a progress value from 0 to 1 (0 = top, 1 = bottom, 0.5 = center)
   const progress = useSharedValue(0.5);
-  const intervalRef = useRef<NodeJS.Timeout>();
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const hasStartedRef = useRef(false);
 
   useEffect(() => {

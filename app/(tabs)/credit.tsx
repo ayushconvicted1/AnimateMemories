@@ -10,6 +10,7 @@ import {
   ActivityIndicator,
   Dimensions,
 } from "react-native";
+import { getFontFamily } from "@/constants/Fonts";
 import { LinearGradient } from "expo-linear-gradient";
 import { useState, useEffect, useCallback, useRef } from "react";
 import Animated, {
@@ -22,13 +23,18 @@ import ScreenWrapper from "@/components/ui/ScreenWrapper";
 import { IconSymbol } from "@/components/ui/IconSymbol";
 import { useAuth as useAuthContext } from "@/contexts/AuthContext";
 import { useAuth } from "@clerk/clerk-expo";
+import { SvgUri } from 'react-native-svg';
 import { api } from "@/services/api";
 import { useFocusEffect } from "expo-router";
+import * as WebBrowser from "expo-web-browser";
 import { iapService } from "@/services/iap-service";
-import { IAP_PRODUCTS } from "@/constants/iap-config";
+import { IAP_PRODUCTS, IAP_SUBSCRIPTION_PRODUCTS } from "@/constants/iap-config";
+import Slider from '@react-native-community/slider';
 
 const WEBSITE_BASE = "https://animatememories.com";
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
+
+const PAYMENT_ICONS = ["visa", "mastercard", "applepay", "googlepay"];
 
 const PACK_DETAILS = {
   starter: {
@@ -93,13 +99,44 @@ export default function CreditScreen() {
   const { user } = useAuthContext();
   const { getToken } = useAuth();
 
-  const [billingType, setBillingType] = useState<'one-time' | 'subscription'>('one-time');
+  const [billingType, setBillingType] = useState<'one-time' | 'subscription'>('subscription');
   const [selectedPack, setSelectedPack] = useState<'starter' | 'popular' | 'pro'>('popular');
+
+  const [customAmount, setCustomAmount] = useState<number>(100);
+
+  const getOneTimePrice = (credits: number) => {
+    if (credits === 30) return 5.99;
+    if (credits === 100) return 19.99;
+    if (credits === 200) return 34.99;
+    const rate = credits >= 200 ? 0.175 : 0.20;
+    return Number((credits * rate).toFixed(2));
+  };
+
   const [selectedSubPack, setSelectedSubPack] = useState<'basic' | 'standard' | 'premium'>('standard');
   const [userCredits, setUserCredits] = useState<number>(0);
   const [userPlan, setUserPlan] = useState<{ packId: string; credits: number; amount: number; createdAt: string; } | null>(null);
-  const [transactions, setTransactions] = useState<Array<{ id: number; packId: string; credits: number; amount: number; createdAt: string; }>>([]);
   const [isProcessingIAP, setIsProcessingIAP] = useState(false);
+  const [dynamicPricing, setDynamicPricing] = useState<any>({});
+  const [isPricingLoading, setIsPricingLoading] = useState(true);
+
+  useEffect(() => {
+    let isMounted = true;
+    const fetchPricing = async () => {
+      try {
+        const token = await getToken();
+        const data = await api.getPricing(token);
+        if (isMounted && data?.pricing) {
+          setDynamicPricing(data.pricing);
+        }
+      } catch (error) {
+        console.error("Error fetching pricing:", error);
+      } finally {
+        if (isMounted) setIsPricingLoading(false);
+      }
+    };
+    fetchPricing();
+    return () => { isMounted = false; };
+  }, [getToken]);
 
   const translateX = useSharedValue(0);
   const tabWidth = useSharedValue(0);
@@ -176,39 +213,22 @@ export default function CreditScreen() {
     }
   }, [user, getToken]);
 
-  const fetchTransactions = useCallback(async () => {
-    if (!user) return;
-    try {
-      const userEmail =
-        user?.primaryEmailAddress?.emailAddress ||
-        user?.emailAddresses?.[0]?.emailAddress;
-      if (!userEmail) return;
-      const token = await getToken();
-      const result = await api.getTransactions(userEmail, token);
-      if (result.result) {
-        setTransactions(result.result);
-      }
-    } catch (error) {
-      console.error("Error fetching transactions:", error);
-    }
-  }, [user, getToken]);
+
 
   useEffect(() => {
     if (user) {
       fetchUserCredits();
       fetchUserPlan();
-      fetchTransactions();
     }
-  }, [user, fetchUserCredits, fetchUserPlan, fetchTransactions]);
+  }, [user, fetchUserCredits, fetchUserPlan]);
 
   useFocusEffect(
     useCallback(() => {
       if (user) {
         fetchUserCredits();
         fetchUserPlan();
-        fetchTransactions();
       }
-    }, [user, fetchUserCredits, fetchUserPlan, fetchTransactions])
+    }, [user, fetchUserCredits, fetchUserPlan])
   );
 
   useEffect(() => {
@@ -217,12 +237,11 @@ export default function CreditScreen() {
         setTimeout(() => {
           fetchUserCredits();
           fetchUserPlan();
-          fetchTransactions();
         }, 1500);
       }
     });
     return () => subscription.remove();
-  }, [user, fetchUserCredits, fetchUserPlan, fetchTransactions]);
+  }, [user, fetchUserCredits, fetchUserPlan]);
 
   useEffect(() => {
     if (Platform.OS === 'ios' && user) {
@@ -233,67 +252,39 @@ export default function CreditScreen() {
     }
   }, [user]);
 
-  useEffect(() => {
-    const handleDeepLink = async (event: { url: string }) => {
-      const url = event.url;
-      if (url.startsWith("animatememories://payment-cancelled")) {
-        Alert.alert(
-          "Transaction Cancelled",
-          "Your payment was not completed. No charges were made."
-        );
-        return;
-      }
-      if (!url.startsWith("animatememories://payment-success")) return;
-      try {
-        const urlObj = new URL(url);
-        const sessionId = urlObj.searchParams.get("session_id");
-        const emailFromLink = urlObj.searchParams.get("email");
-        const userEmail =
-          emailFromLink ||
-          user?.primaryEmailAddress?.emailAddress ||
-          user?.emailAddresses?.[0]?.emailAddress;
-
-        if (sessionId && userEmail) {
-          try {
-            const token = await getToken();
-            await api.verifyPayment(sessionId, userEmail, token);
-          } catch (_) {}
-        }
-
-        fetchUserCredits();
-        fetchUserPlan();
-        fetchTransactions();
-
-        Alert.alert(
-          "Payment Successful! 🎉",
-          "Your credits have been added to your account."
-        );
-      } catch (err) {
-        console.error("Deep link parse error:", err);
-        fetchUserCredits();
-      }
-    };
-
-    Linking.getInitialURL().then((url) => {
-      if (url) handleDeepLink({ url });
-    });
-
-    const subscription = Linking.addEventListener("url", handleDeepLink);
-    return () => subscription.remove();
-  }, [user, fetchUserCredits, fetchUserPlan, fetchTransactions, getToken]);
-
   const handlePurchasePress = async () => {
     if (!user) {
       Alert.alert("Error", "Please sign in to purchase credits");
       return;
     }
 
-    const currentPack = billingType === 'one-time' ? PACK_DETAILS[selectedPack] : SUBSCRIPTION_DETAILS[selectedSubPack];
-    
-    // Attempt to get product ID from central IAP config, fallback to local default
-    const iapProduct = IAP_PRODUCTS.find(p => p.id === currentPack.id) || 
-                       (await import('@/constants/iap-config')).IAP_SUBSCRIPTION_PRODUCTS.find(p => p.id === currentPack.id);
-    const productId = iapProduct ? iapProduct.productId : currentPack.productId;
+    let purchaseCredits = 0;
+    let purchasePrice = 0;
+    let purchaseId = '';
+    let productId = '';
+
+    if (billingType === 'one-time') {
+      purchaseCredits = customAmount;
+      purchasePrice = getOneTimePrice(customAmount);
+      
+      const nearestPack = 
+        customAmount <= 50 ? PACK_DETAILS.starter : 
+        customAmount <= 150 ? PACK_DETAILS.popular : 
+        PACK_DETAILS.pro;
+        
+      purchaseId = nearestPack.id;
+      
+      const iapProduct = IAP_PRODUCTS.find(p => p.id === purchaseId);
+      productId = iapProduct ? iapProduct.productId : nearestPack.productId;
+    } else {
+      const basePack = SUBSCRIPTION_DETAILS[selectedSubPack];
+      purchaseCredits = dynamicPricing[basePack.id]?.credits ?? basePack.credits;
+      purchasePrice = dynamicPricing[basePack.id]?.amount ?? basePack.price;
+      purchaseId = basePack.id;
+      
+      const iapProduct = IAP_SUBSCRIPTION_PRODUCTS.find(p => p.id === purchaseId);
+      productId = iapProduct ? iapProduct.productId : basePack.productId;
+    }
 
     if (Platform.OS === 'ios') {
       const userEmail =
@@ -317,7 +308,6 @@ export default function CreditScreen() {
           );
           fetchUserCredits();
           fetchUserPlan();
-          fetchTransactions();
         } else if (result.error !== 'Purchase cancelled') {
           Alert.alert("Purchase Failed", result.error || "An unknown error occurred");
         }
@@ -327,28 +317,60 @@ export default function CreditScreen() {
         setIsProcessingIAP(false);
       }
     } else {
-      // Android / Web / Default payment flow via website
+      // Android / Web direct Stripe payment flow
       const userEmail =
         user.primaryEmailAddress?.emailAddress ||
         user.emailAddresses?.[0]?.emailAddress;
       const userName =
         user.fullName ||
         `${user.firstName || ""} ${user.lastName || ""}`.trim() ||
-        "";
+        "User";
 
-      const params = new URLSearchParams({
-        ref: "ios", 
-        pack: currentPack.id,
-        ...(userEmail ? { email: userEmail } : {}),
-        ...(userName ? { name: userName } : {}),
-      });
+      if (!userEmail) {
+        Alert.alert("Error", "Email is required to make a purchase");
+        return;
+      }
 
-      const url = `${WEBSITE_BASE}/buy-credits?${params.toString()}`;
-
+      setIsProcessingIAP(true);
       try {
-        await Linking.openURL(url);
-      } catch (err) {
-        Alert.alert("Error", "Could not open the website. Please try again.");
+        const token = await getToken();
+        let checkoutData;
+
+        if (billingType === "subscription") {
+          checkoutData = await api.createSubscription(
+            purchaseId,
+            userEmail,
+            userName,
+            token,
+            "mobile"
+          );
+        } else {
+          checkoutData = await api.createPaymentIntent(
+            purchasePrice,
+            purchaseCredits,
+            { email: userEmail, name: userName },
+            token,
+            purchaseId,
+            "mobile"
+          );
+        }
+
+        if (checkoutData?.url) {
+          await WebBrowser.openBrowserAsync(checkoutData.url);
+          // Refresh user stats after returning from payment page
+          fetchUserCredits();
+          fetchUserPlan();
+        } else {
+          Alert.alert(
+            "Payment Error",
+            checkoutData?.error || "Failed to create checkout session. Please try again."
+          );
+        }
+      } catch (error: any) {
+        console.error("Direct payment error:", error);
+        Alert.alert("Error", error.message || "Failed to initiate payment. Please try again.");
+      } finally {
+        setIsProcessingIAP(false);
       }
     }
   };
@@ -374,7 +396,6 @@ export default function CreditScreen() {
         );
         fetchUserCredits();
         fetchUserPlan();
-        fetchTransactions();
       } else {
         Alert.alert("Restore Failed", result.error || "An unknown error occurred");
       }
@@ -385,37 +406,47 @@ export default function CreditScreen() {
     }
   };
 
-  const formatTransactionName = (packId: string, amount: number) => {
-    const packNames: Record<string, string> = {
-      starter: "Starter Pack",
-      popular: "Popular Pack",
-      pro: "Pro Pack",
-    };
-    return `$${(amount / 100).toFixed(2)} — ${packNames[packId] || "Pack"}`;
+  const baseSubPack = SUBSCRIPTION_DETAILS[selectedSubPack];
+  const currentSubPack = {
+    ...baseSubPack,
+    price: dynamicPricing[baseSubPack.id]?.amount ?? baseSubPack.price,
+    credits: dynamicPricing[baseSubPack.id]?.credits ?? baseSubPack.credits,
   };
 
-  const formatDate = (dateString: string) => {
-    const date = new Date(dateString);
-    return date.toLocaleDateString("en-US", {
-      day: "2-digit",
-      month: "long",
-      year: "numeric",
-    });
-  };
-
-  const currentPack = PACK_DETAILS[selectedPack];
+  const currentPack = billingType === 'one-time' 
+    ? {
+        name: 'Custom Pack',
+        credits: customAmount,
+        price: getOneTimePrice(customAmount),
+        originalPrice: (customAmount * 0.40).toFixed(2),
+        subtitle: 'Custom credits pack'
+      } 
+    : currentSubPack;
 
   return (
     <ScreenWrapper
       addBottomPadding={true}
       creditsText={userCredits !== null ? `${userCredits} Credits` : "Loading..."}
+      contentContainerStyle={{ justifyContent: 'space-between' }}
     >
+      {isPricingLoading ? (
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', minHeight: 400 }}>
+          <ActivityIndicator size="large" color="#D229FF" />
+          <Text style={{ marginTop: 16, color: '#666', fontFamily: getFontFamily('400') }}>Loading plans...</Text>
+        </View>
+      ) : (
+      <>
       {/* AI-Powered Tag */}
       <View style={styles.tagSection}>
-        <View style={styles.tagContainer}>
+        <LinearGradient
+          colors={['#28D4FA', '#D229FF']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 0 }}
+          style={styles.tagContainer}
+        >
           <Text style={styles.tagIcon}>✨</Text>
           <Text style={styles.tagText}>AI-Powered Photo Restoration</Text>
-        </View>
+        </LinearGradient>
       </View>
 
       {/* Title Section */}
@@ -447,107 +478,101 @@ export default function CreditScreen() {
       </View>
 
       {/* Pack Selection Tabs */}
-      <View style={styles.packTabsContainer}>
-        <View style={styles.packTabsWrapper}>
-          <Animated.View style={[styles.packTabIndicator, animatedIndicatorStyle]}>
-            <LinearGradient
-              colors={['#28D4FA', '#D229FF']}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 0 }}
-              style={styles.packTabIndicatorGradient}
-            />
-          </Animated.View>
-          
-          {billingType === 'one-time' ? (
-            <>
-              <TouchableOpacity
-                style={styles.packTab}
-                onPress={() => setSelectedPack('starter')}
-                onLayout={(event) => {
-                  const { width, x } = event.nativeEvent.layout;
-                  tabLayouts.current.starter = { x, width };
-                }}
-              >
-                <Text style={[
-                  styles.packTabText,
-                  selectedPack === 'starter' && styles.packTabTextSelected
-                ]}>Starter Pack</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.packTab}
-                onPress={() => setSelectedPack('popular')}
-                onLayout={(event) => {
-                  const { width, x } = event.nativeEvent.layout;
-                  tabLayouts.current.popular = { x, width };
-                }}
-              >
-                <Text style={[
-                  styles.packTabText,
-                  selectedPack === 'popular' && styles.packTabTextSelected
-                ]}>Most Popular</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.packTab}
-                onPress={() => setSelectedPack('pro')}
-                onLayout={(event) => {
-                  const { width, x } = event.nativeEvent.layout;
-                  tabLayouts.current.pro = { x, width };
-                }}
-              >
-                <Text style={[
-                  styles.packTabText,
-                  selectedPack === 'pro' && styles.packTabTextSelected
-                ]}>Pro Pack</Text>
-              </TouchableOpacity>
-            </>
-          ) : (
-            <>
-              <TouchableOpacity
-                style={styles.packTab}
-                onPress={() => setSelectedSubPack('basic')}
-                onLayout={(event) => {
-                  const { width, x } = event.nativeEvent.layout;
-                  tabLayouts.current.basic = { x, width };
-                }}
-              >
-                <Text style={[
-                  styles.packTabText,
-                  selectedSubPack === 'basic' && styles.packTabTextSelected
-                ]}>Basic</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.packTab}
-                onPress={() => setSelectedSubPack('standard')}
-                onLayout={(event) => {
-                  const { width, x } = event.nativeEvent.layout;
-                  tabLayouts.current.standard = { x, width };
-                }}
-              >
-                <Text style={[
-                  styles.packTabText,
-                  selectedSubPack === 'standard' && styles.packTabTextSelected
-                ]}>Standard</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.packTab}
-                onPress={() => setSelectedSubPack('premium')}
-                onLayout={(event) => {
-                  const { width, x } = event.nativeEvent.layout;
-                  tabLayouts.current.premium = { x, width };
-                }}
-              >
-                <Text style={[
-                  styles.packTabText,
-                  selectedSubPack === 'premium' && styles.packTabTextSelected
-                ]}>Premium</Text>
-              </TouchableOpacity>
-            </>
-          )}
+      {billingType === 'subscription' ? (
+        <View style={styles.packTabsContainer}>
+          <View style={styles.packTabsWrapper}>
+            <Animated.View style={[styles.packTabIndicator, animatedIndicatorStyle]} pointerEvents="none">
+              <LinearGradient
+                colors={['#28D4FA', '#D229FF']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                style={styles.packTabIndicatorGradient}
+              />
+            </Animated.View>
+            
+            <TouchableOpacity
+              style={styles.packTab}
+              onPress={() => setSelectedSubPack('basic')}
+              onLayout={(event) => {
+                const { width, x } = event.nativeEvent.layout;
+                tabLayouts.current.basic = { x, width };
+                if (selectedSubPack === 'basic') updateIndicator('basic', true);
+              }}
+            >
+              <Text style={[
+                styles.packTabText,
+                selectedSubPack === 'basic' && styles.packTabTextSelected
+              ]}>Basic</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.packTab}
+              onPress={() => setSelectedSubPack('standard')}
+              onLayout={(event) => {
+                const { width, x } = event.nativeEvent.layout;
+                tabLayouts.current.standard = { x, width };
+                if (selectedSubPack === 'standard') updateIndicator('standard', true);
+              }}
+            >
+              <Text style={[
+                styles.packTabText,
+                selectedSubPack === 'standard' && styles.packTabTextSelected
+              ]}>Standard</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.packTab}
+              onPress={() => setSelectedSubPack('premium')}
+              onLayout={(event) => {
+                const { width, x } = event.nativeEvent.layout;
+                tabLayouts.current.premium = { x, width };
+                if (selectedSubPack === 'premium') updateIndicator('premium', true);
+              }}
+            >
+              <Text style={[
+                styles.packTabText,
+                selectedSubPack === 'premium' && styles.packTabTextSelected
+              ]}>Premium</Text>
+            </TouchableOpacity>
+          </View>
         </View>
-      </View>
+      ) : (
+        <View style={styles.sliderContainer}>
+          <Text style={styles.sliderLabel}>{customAmount} Credits</Text>
+          <Slider
+            style={{ width: '100%', height: 40 }}
+            minimumValue={10}
+            maximumValue={1000}
+            step={10}
+            value={customAmount}
+            onValueChange={(val) => setCustomAmount(val)}
+            minimumTrackTintColor="#D229FF"
+            maximumTrackTintColor="#F3F4F6"
+            thumbTintColor="#28D4FA"
+          />
+          <View style={styles.sliderPresets}>
+            <TouchableOpacity 
+              style={[styles.presetBtn, customAmount === 30 && styles.presetBtnActive]} 
+              onPress={() => setCustomAmount(30)}
+            >
+              <Text style={[styles.presetBtnText, customAmount === 30 && styles.presetBtnTextActive]}>Starter (30)</Text>
+            </TouchableOpacity>
+            <TouchableOpacity 
+              style={[styles.presetBtn, customAmount === 100 && styles.presetBtnActive]} 
+              onPress={() => setCustomAmount(100)}
+            >
+              <Text style={[styles.presetBtnText, customAmount === 100 && styles.presetBtnTextActive]}>Popular (100)</Text>
+            </TouchableOpacity>
+            <TouchableOpacity 
+              style={[styles.presetBtn, customAmount === 200 && styles.presetBtnActive]} 
+              onPress={() => setCustomAmount(200)}
+            >
+              <Text style={[styles.presetBtnText, customAmount === 200 && styles.presetBtnTextActive]}>Pro (200)</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
 
       {/* Credit Pack Card */}
-      <View style={{ ...styles.packCard, paddingBottom: 60, marginBottom: 70 }}>
+      <View style={styles.packCard}>
         <View style={styles.packCardContent}>
           {/* Gradient Header Section */}
           <LinearGradient
@@ -593,30 +618,31 @@ export default function CreditScreen() {
               <Text style={styles.featureText}>Premium quality</Text>
             </View>
           </View>
-        </View>
 
-        {/* Absolute Positioned Button - Half Above, Half Below */}
-        <TouchableOpacity 
-          style={styles.upgradeButton} 
-          onPress={handlePurchasePress}
-          disabled={isProcessingIAP}
-        >
-          <LinearGradient
-            colors={['#28D4FA', '#D229FF']}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 0 }}
-            style={styles.upgradeButtonGradient}
+          {/* Purchase Action Button - Fully inside container for 100% reliable touch hit testing */}
+          <TouchableOpacity 
+            style={styles.upgradeButton} 
+            onPress={handlePurchasePress}
+            disabled={isProcessingIAP}
+            activeOpacity={0.8}
           >
-            {isProcessingIAP ? (
-              <ActivityIndicator color="#fff" />
-            ) : (
-              <>
-                <Text style={styles.upgradeButtonText}>Get {currentPack.name}</Text>
-                <IconSymbol name="chevron.right" size={20} color="#fff" />
-              </>
-            )}
-          </LinearGradient>
-        </TouchableOpacity>
+            <LinearGradient
+              colors={['#28D4FA', '#D229FF']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={styles.upgradeButtonGradient}
+            >
+              {isProcessingIAP ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <>
+                  <Text style={styles.upgradeButtonText}>Get {currentPack.name}</Text>
+                  <IconSymbol name="chevron.right" size={20} color="#fff" />
+                </>
+              )}
+            </LinearGradient>
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* Restore Purchases Button for iOS Users */}
@@ -665,33 +691,38 @@ export default function CreditScreen() {
         </View>
       )}
 
-      {/* Transaction History */}
-      <View style={styles.transactionSection}>
-        <Text style={styles.transactionTitle}>Transaction History</Text>
-        {transactions.length === 0 ? (
-          <Text style={styles.noTransactionsText}>
-            No transactions yet. Purchase a credit pack to get started!
-          </Text>
-        ) : (
-          transactions.map((transaction, index) => (
-            <View key={transaction.id}>
-              <View style={styles.transactionItem}>
-                <Text style={styles.transactionName}>{formatTransactionName(transaction.packId, transaction.amount)}</Text>
-                <Text style={styles.transactionDate}>{formatDate(transaction.createdAt)}</Text>
-              </View>
-              {index < transactions.length - 1 && <View style={styles.transactionDivider} />}
-            </View>
-          ))
-        )}
+
+
+      {/* Payment Logos Section */}
+      <View style={{ flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 16, marginBottom: 30, paddingHorizontal: 16, flexWrap: 'wrap' }}>
+        <Text style={{ fontSize: 13, color: '#979797', marginRight: 8, fontFamily: getFontFamily('400') }}>Secured by</Text>
+        {PAYMENT_ICONS.map((icon) => (
+          <SvgUri
+            key={icon}
+            width="36"
+            height="24"
+            uri={`https://www.animatememories.com/payment-icons/${icon}.svg`}
+          />
+        ))}
       </View>
 
       {/* Contact Section */}
       <View style={styles.contactSection}>
         <Text style={styles.contactText}>Need custom solutions?</Text>
-        <TouchableOpacity onPress={() => Linking.openURL("mailto:support@animatememories.com")}>
+        <TouchableOpacity onPress={async () => {
+          const mailtoUrl = "mailto:support@animatememories.com";
+          try {
+            await Linking.openURL(mailtoUrl);
+          } catch (error) {
+            console.error("Error opening email:", error);
+            Alert.alert("Error", "Unable to open email client. Please email us at support@animatememories.com");
+          }
+        }}>
           <GradientText style={styles.contactLink}>Contact Us</GradientText>
         </TouchableOpacity>
       </View>
+      </>
+      )}
     </ScreenWrapper>
   );
 }
@@ -705,20 +736,23 @@ const styles = StyleSheet.create({
   tagContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#28D4FA',
-    borderRadius: 40,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
     gap: 8,
+    paddingHorizontal: 18,
+    paddingVertical: 9,
+    borderRadius: 999,
+    shadowColor: '#D229FF',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.28,
+    shadowRadius: 6,
+    elevation: 3,
   },
   tagIcon: {
-    fontSize: 18,
+    fontSize: 16,
   },
   tagText: {
-    fontSize: 16,
-    fontWeight: '300',
-    color: '#000',
+    fontSize: 14,
+    color: '#fff',
+    fontFamily: getFontFamily('600'),
   },
   titleSection: {
     paddingHorizontal: 16,
@@ -728,19 +762,19 @@ const styles = StyleSheet.create({
   },
   mainTitle: {
     fontSize: 24,
-    fontWeight: '700',
     marginBottom: 8,
+    fontFamily: getFontFamily('700'),
   },
   subtitle: {
     fontSize: 16,
-    fontWeight: '400',
     color: '#000',
     textAlign: 'center',
     lineHeight: 22,
+    fontFamily: getFontFamily('400'),
   },
   subtitleHighlight: {
-    fontWeight: '600',
     color: '#D229FF',
+    fontFamily: getFontFamily('600'),
   },
   billingToggleContainer: {
     flexDirection: 'row',
@@ -766,8 +800,8 @@ const styles = StyleSheet.create({
   },
   billingToggleText: {
     fontSize: 14,
-    fontWeight: '500',
     color: '#6B7280',
+    fontFamily: getFontFamily('500'),
   },
   billingToggleTextActive: {
     color: '#111827',
@@ -806,30 +840,28 @@ const styles = StyleSheet.create({
   },
   packTabText: {
     fontSize: 15,
-    fontWeight: '300',
     color: '#979797',
     textAlign: 'center',
+    fontFamily: getFontFamily('300'),
   },
   packTabTextSelected: {
-    fontWeight: '600',
     color: '#fff',
+    fontFamily: getFontFamily('600'),
   },
   packCard: {
     marginHorizontal: 16,
-    borderRadius: 11,
+    borderRadius: 16,
     backgroundColor: '#fff',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.27,
-    shadowRadius: 31.7,
-    elevation: 8,
-    position: 'relative',
-    overflow: 'visible',
-    padding: 0,
+    shadowOpacity: 0.15,
+    shadowRadius: 16,
+    elevation: 6,
+    marginBottom: 24,
   },
   packCardContent: {
     backgroundColor: '#fff',
-    borderRadius: 11,
+    borderRadius: 16,
     overflow: 'hidden',
   },
   packCardGradientHeader: {
@@ -855,35 +887,35 @@ const styles = StyleSheet.create({
   },
   creditsTagText: {
     fontSize: 15,
-    fontWeight: '600',
     color: '#fff',
+    fontFamily: getFontFamily('600'),
   },
   packCardTitle: {
     fontSize: 16,
-    fontWeight: '600',
     color: '#000',
     marginBottom: 4,
+    fontFamily: getFontFamily('600'),
   },
   packCardSubtitle: {
     fontSize: 13,
-    fontWeight: '400',
     color: '#000',
+    fontFamily: getFontFamily('400'),
   },
   packCardRight: {
     alignItems: 'flex-end',
   },
   packCardPrice: {
     fontSize: 32,
-    fontWeight: '600',
     color: '#000',
     marginBottom: 4,
+    fontFamily: getFontFamily('600'),
   },
   originalPriceContainer: {
     position: 'relative',
   },
   originalPriceText: {
     fontSize: 12.59,
-    fontWeight: '400',
+    fontFamily: getFontFamily('400'),
     color: '#282828',
   },
   strikethrough: {
@@ -913,8 +945,8 @@ const styles = StyleSheet.create({
   },
   featureText: {
     fontSize: 13,
-    fontWeight: '400',
     color: '#000',
+    fontFamily: getFontFamily('400'),
   },
   additionalFeaturesContainer: {
     flexDirection: 'row',
@@ -937,23 +969,20 @@ const styles = StyleSheet.create({
   },
   additionalFeatureText: {
     fontSize: 12,
-    fontWeight: '300',
     color: '#000',
+    fontFamily: getFontFamily('300'),
   },
   upgradeButton: {
-    position: 'absolute',
-    bottom: -25,
-    left: 0,
-    right: 0,
-    borderRadius: 4,
+    marginHorizontal: 16,
+    marginTop: 12,
+    marginBottom: 20,
+    borderRadius: 12,
     overflow: 'hidden',
     shadowColor: '#D229FF',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.26,
     shadowRadius: 12.4,
-    elevation: 5,
-    zIndex: 10,
-    marginHorizontal: 20,
+    elevation: 4,
   },
   upgradeButtonGradient: {
     paddingVertical: 14,
@@ -965,8 +994,8 @@ const styles = StyleSheet.create({
   },
   upgradeButtonText: {
     fontSize: 18,
-    fontWeight: '600',
     color: '#fff',
+    fontFamily: getFontFamily('600'),
   },
   currentCreditsContainer: {
     flexDirection: 'row',
@@ -981,8 +1010,8 @@ const styles = StyleSheet.create({
   },
   currentCreditsText: {
     fontSize: 17.747,
-    fontWeight: '500',
     color: '#28D4FA',
+    fontFamily: getFontFamily('500'),
   },
   myPlanSection: {
     paddingHorizontal: 16,
@@ -991,7 +1020,7 @@ const styles = StyleSheet.create({
   },
   myPlanTitle: {
     fontSize: 28,
-    fontWeight: '700',
+    fontFamily: getFontFamily('700'),
   },
   transactionSection: {
     paddingHorizontal: 16,
@@ -999,7 +1028,7 @@ const styles = StyleSheet.create({
   },
   transactionTitle: {
     fontSize: 20,
-    fontWeight: '400',
+    fontFamily: getFontFamily('400'),
     color: '#000',
     marginBottom: 16,
   },
@@ -1011,13 +1040,13 @@ const styles = StyleSheet.create({
   },
   transactionName: {
     fontSize: 17,
-    fontWeight: '600',
+    fontFamily: getFontFamily('600'),
     color: '#878787',
     flex: 1,
   },
   transactionDate: {
     fontSize: 17,
-    fontWeight: '400',
+    fontFamily: getFontFamily('400'),
     color: '#878787',
   },
   transactionDivider: {
@@ -1030,15 +1059,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   contactText: {
-    fontSize: 15,
-    fontWeight: '400',
+    fontSize: 20,
     color: '#000',
     marginBottom: 8,
+    fontFamily: getFontFamily('400'),
   },
   contactLink: {
-    fontSize: 18,
-    fontWeight: '500',
+    fontSize: 22,
     textDecorationLine: 'underline',
+    fontFamily: getFontFamily('600'),
   },
   restoreButton: {
     alignItems: "center",
@@ -1047,14 +1076,61 @@ const styles = StyleSheet.create({
   restoreText: {
     color: "#666",
     fontSize: 13,
-    fontWeight: "500",
+    fontFamily: getFontFamily("500"),
     textDecorationLine: "underline",
   },
   noTransactionsText: {
     fontSize: 13,
+    fontFamily: getFontFamily("400"),
     color: "#999",
     textAlign: "center",
     paddingVertical: 12,
     lineHeight: 20,
+  },
+  sliderContainer: {
+    marginHorizontal: 16,
+    marginBottom: 20,
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  sliderLabel: {
+    fontSize: 24,
+    textAlign: 'center',
+    marginBottom: 12,
+    color: '#000',
+    fontFamily: getFontFamily('700'),
+  },
+  sliderPresets: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 12,
+    gap: 8,
+  },
+  presetBtn: {
+    flex: 1,
+    paddingVertical: 8,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  presetBtnActive: {
+    borderColor: '#D229FF',
+    backgroundColor: 'rgba(210, 41, 255, 0.05)',
+  },
+  presetBtnText: {
+    fontSize: 12,
+    color: '#6B7280',
+    fontFamily: getFontFamily('500'),
+  },
+  presetBtnTextActive: {
+    color: '#000',
+    fontFamily: getFontFamily('700'),
   },
 });

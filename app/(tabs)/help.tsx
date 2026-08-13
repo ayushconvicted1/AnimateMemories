@@ -12,6 +12,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
 import { GradientText } from "@/components/ui/GradientText";
 import ScreenWrapper from "@/components/ui/ScreenWrapper";
+import { getFontFamily } from "@/constants/Fonts";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 const CONTENT_WIDTH = SCREEN_WIDTH - 32;
@@ -23,15 +24,7 @@ export default function HelpScreen() {
     const mailtoUrl = `mailto:${email}?subject=${encodeURIComponent(subject)}`;
 
     try {
-      const canOpen = await Linking.canOpenURL(mailtoUrl);
-      if (canOpen) {
-        await Linking.openURL(mailtoUrl);
-      } else {
-        Alert.alert(
-          "Error",
-          "Unable to open email client. Please email us at support@animatememories.com"
-        );
-      }
+      await Linking.openURL(mailtoUrl);
     } catch (error) {
       console.error("Error opening email:", error);
       Alert.alert(
@@ -47,7 +40,7 @@ export default function HelpScreen() {
         {/* Header */}
         <View style={styles.header}>
           <TouchableOpacity
-            onPress={() => router.back()}
+            onPress={() => router.push("/(tabs)/you")}
             style={styles.backButton}
           >
             <Text style={styles.backButtonText}>← Back</Text>
@@ -196,25 +189,14 @@ export default function HelpScreen() {
             <Text style={styles.sectionTitle}>Still Need Help?</Text>
             <View style={styles.contactCard}>
               <Text style={styles.contactText}>
-                Our support team is here to help! Contact us via email and we'll
+                Our support team is here to help! Tap below to email us and we'll
                 get back to you within 24 hours.
               </Text>
-              <TouchableOpacity
-                style={styles.contactButton}
-                onPress={handleContactUs}
-              >
-                <LinearGradient
-                  colors={["#28D4FA", "#D229FF"]}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 0 }}
-                  style={styles.contactButtonGradient}
-                >
-                  <Text style={styles.contactButtonText}>Contact Support</Text>
-                </LinearGradient>
+              <TouchableOpacity onPress={handleContactUs}>
+                <Text style={styles.contactEmail}>
+                  support@animatememories.com
+                </Text>
               </TouchableOpacity>
-              <Text style={styles.contactEmail}>
-                support@animatememories.com
-              </Text>
             </View>
           </View>
         </ScrollView>
@@ -242,12 +224,12 @@ const styles = StyleSheet.create({
   },
   backButtonText: {
     fontSize: 15,
-    fontWeight: "600",
     color: "#000",
+    fontFamily: getFontFamily("600"),
   },
   title: {
     fontSize: 24,
-    fontWeight: "700",
+    fontFamily: getFontFamily("700"),
   },
   placeholder: {
     width: 60,
@@ -261,24 +243,24 @@ const styles = StyleSheet.create({
   },
   sectionTitle: {
     fontSize: 17,
-    fontWeight: "700",
     color: "#000",
     marginBottom: 16,
+    fontFamily: getFontFamily("700"),
   },
   helpItem: {
     paddingVertical: 16,
   },
   helpItemTitle: {
     fontSize: 15,
-    fontWeight: "600",
     color: "#000",
     marginBottom: 12,
+    fontFamily: getFontFamily("600"),
   },
   helpItemText: {
     fontSize: 13,
-    fontWeight: "400",
     color: "#979797",
     lineHeight: 22,
+    fontFamily: getFontFamily("400"),
   },
   divider: {
     height: 0.75,
@@ -293,33 +275,18 @@ const styles = StyleSheet.create({
     borderColor: "#e9ecef",
   },
   contactText: {
-    fontSize: 13,
-    fontWeight: "400",
+    fontSize: 14,
     color: "#979797",
     textAlign: "center",
-    marginBottom: 20,
-    lineHeight: 22,
-  },
-  contactButton: {
-    borderRadius: 8,
-    overflow: "hidden",
     marginBottom: 16,
-    width: "100%",
+    lineHeight: 22,
+    fontFamily: getFontFamily("400"),
   },
-  contactButtonGradient: {
-    paddingVertical: 14,
-    paddingHorizontal: 24,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  contactButtonText: {
-    fontSize: 15,
-    fontWeight: "600",
-    color: "#fff",
-  },
+
   contactEmail: {
-    fontSize: 14,
-    fontWeight: "500",
+    fontSize: 16,
     color: "#28D4FA",
+    textDecorationLine: "underline",
+    fontFamily: getFontFamily("600"),
   },
 });

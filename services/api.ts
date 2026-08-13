@@ -184,6 +184,33 @@ export const api = {
     });
   },
 
+  // Get blog posts (public)
+  getBlogs: async (limit?: number, category?: string) => {
+    const params = new URLSearchParams();
+    if (limit) params.append("limit", limit.toString());
+    if (category) params.append("category", category);
+    const queryString = params.toString();
+    return apiRequest(queryString ? `/api/blogs?${queryString}` : "/api/blogs", {
+      method: "GET",
+    });
+  },
+
+  // Get active blog categories (public)
+  getBlogCategories: async () => {
+    return apiRequest("/api/blog-categories", {
+      method: "GET",
+    });
+  },
+
+  // Get a single blog post by slug (public)
+  getBlogBySlug: async (slug: string) => {
+    const result = await apiRequest("/api/blogs", {
+      method: "GET",
+    });
+    const blogs = result?.blogs || [];
+    return blogs.find((b: any) => b.slug === slug) || null;
+  },
+
   // Restore image
   restoreImage: async (
     inputImageUrl: string,
@@ -216,15 +243,92 @@ export const api = {
     inputImageUrl: string,
     userEmail: string,
     customPrompt: string = "",
-    duration: number = 6,
+    duration: number = 5,
     token?: string | null,
-    quality: string = "480p"
+    quality: string = "720p",
+    modelId: string = "kling-v2-1",
+    aspectRatio: string = "vertical"
   ) => {
     return apiRequest("/api/old-photo-animation", {
       method: "POST",
-      body: { inputImageUrl, userEmail, customPrompt, duration, quality },
+      body: {
+        inputImageUrl,
+        userEmail,
+        customPrompt,
+        duration,
+        quality,
+        modelId,
+        aspectRatio,
+      },
       token,
     });
+  },
+
+  // Start an async video generation and get a prediction ID to poll
+  startAnimatePhoto: async (
+    inputImageUrl: string,
+    userEmail: string,
+    customPrompt: string = "",
+    duration: number = 5,
+    token?: string | null,
+    quality: string = "720p",
+    modelId: string = "kling-v2-1",
+    aspectRatio: string = "vertical"
+  ) => {
+    return apiRequest("/api/old-photo-animation/start", {
+      method: "POST",
+      body: {
+        inputImageUrl,
+        userEmail,
+        customPrompt,
+        duration,
+        quality,
+        modelId,
+        aspectRatio,
+      },
+      token,
+    });
+  },
+
+  // Poll the status/progress of an async video generation
+  getAnimationStatus: async (
+    predictionId: string,
+    userEmail: string,
+    creditCost: number = 0
+  ) => {
+    return apiRequest(
+      `/api/old-photo-animation/status?predictionId=${encodeURIComponent(
+        predictionId
+      )}&userEmail=${encodeURIComponent(
+        userEmail
+      )}&creditCost=${creditCost}`,
+      {
+        method: "GET",
+      }
+    );
+  },
+
+  // Alias for animatePhoto
+  animateImage: async (
+    inputImageUrl: string,
+    userEmail: string,
+    customPrompt: string = "",
+    duration: number = 5,
+    token?: string | null,
+    quality: string = "720p",
+    modelId: string = "kling-v2-1",
+    aspectRatio: string = "vertical"
+  ) => {
+    return api.animatePhoto(
+      inputImageUrl,
+      userEmail,
+      customPrompt,
+      duration,
+      token,
+      quality,
+      modelId,
+      aspectRatio
+    );
   },
 
   // Get user gallery/history
@@ -267,6 +371,21 @@ export const api = {
     });
   },
 
+  // Create subscription checkout session
+  createSubscription: async (
+    planId: string,
+    userEmail: string,
+    userName: string = "User",
+    token?: string | null,
+    platform?: string
+  ) => {
+    return apiRequest("/api/create-subscription", {
+      method: "POST",
+      body: { planId, userEmail, userName, platform: platform || "mobile" },
+      token,
+    });
+  },
+
   // Verify payment and update credits (fallback if webhook is delayed)
   verifyPayment: async (
     sessionId: string,
@@ -276,6 +395,14 @@ export const api = {
     return apiRequest("/api/verify-payment", {
       method: "POST",
       body: { sessionId, userEmail },
+      token,
+    });
+  },
+
+  // Get dynamic pricing from backend
+  getPricing: async (token?: string | null) => {
+    return apiRequest("/api/pricing", {
+      method: "GET",
       token,
     });
   },
@@ -378,6 +505,54 @@ export const api = {
   getVideoPresets: async () => {
     return apiRequest("/api/admin/video-presets?activeOnly=true", {
       method: "GET",
+    });
+  },
+
+  // Fetch template categories
+  getTemplateCategories: async () => {
+    return apiRequest("/api/admin/template-categories?activeOnly=true", {
+      method: "GET",
+    });
+  },
+
+  // Fetch admin feature credits list
+  getAdminFeatureCredits: async () => {
+    return apiRequest("/api/admin/feature-credits", {
+      method: "GET",
+    });
+  },
+
+  // Update admin feature credit cost
+  updateAdminFeatureCredit: async (featureName: string, cost: number, token?: string | null) => {
+    return apiRequest("/api/admin/feature-credits", {
+      method: "POST",
+      body: { featureName, cost },
+      token,
+    });
+  },
+
+  // Fetch admin video models list
+  getAdminVideoModels: async () => {
+    return apiRequest("/api/admin/video-model", {
+      method: "GET",
+    });
+  },
+
+  // Update active video model
+  updateActiveVideoModel: async (modelId: string, token?: string | null) => {
+    return apiRequest("/api/admin/video-model", {
+      method: "POST",
+      body: { modelId },
+      token,
+    });
+  },
+
+  // Generate AI Surprise Prompt based on image subject
+  generateSurprisePrompt: async (imageUrl: string, userEmail: string, token?: string | null) => {
+    return apiRequest("/api/generate-surprise-prompt", {
+      method: "POST",
+      body: { imageUrl, userEmail },
+      token,
     });
   },
 };

@@ -12,6 +12,7 @@ import { useState } from "react";
 import { router } from "expo-router";
 import { GradientText } from "@/components/ui/GradientText";
 import ScreenWrapper from "@/components/ui/ScreenWrapper";
+import { getFontFamily } from "@/constants/Fonts";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 const CONTENT_WIDTH = SCREEN_WIDTH - 32;
@@ -31,7 +32,7 @@ export default function NotificationsScreen() {
         {/* Header */}
         <View style={styles.header}>
           <TouchableOpacity
-            onPress={() => router.back()}
+            onPress={() => router.push("/(tabs)/you")}
             style={styles.backButton}
           >
             <Text style={styles.backButtonText}>← Back</Text>
@@ -206,12 +207,12 @@ const styles = StyleSheet.create({
   },
   backButtonText: {
     fontSize: 15,
-    fontWeight: "600",
     color: "#000",
+    fontFamily: getFontFamily("600"),
   },
   title: {
     fontSize: 24,
-    fontWeight: "700",
+    fontFamily: getFontFamily("700"),
   },
   placeholder: {
     width: 60,
@@ -225,9 +226,9 @@ const styles = StyleSheet.create({
   },
   sectionTitle: {
     fontSize: 17,
-    fontWeight: "700",
     color: "#000",
     marginBottom: 16,
+    fontFamily: getFontFamily("700"),
   },
   notificationItem: {
     flexDirection: "row",
@@ -241,15 +242,15 @@ const styles = StyleSheet.create({
   },
   notificationLabel: {
     fontSize: 15,
-    fontWeight: "600",
     color: "#000",
     marginBottom: 4,
+    fontFamily: getFontFamily("600"),
   },
   notificationDescription: {
     fontSize: 12,
-    fontWeight: "400",
     color: "#979797",
     lineHeight: 20,
+    fontFamily: getFontFamily("400"),
   },
   divider: {
     height: 0.75,
@@ -272,7 +273,7 @@ const styles = StyleSheet.create({
   },
   saveButtonText: {
     fontSize: 15,
-    fontWeight: "600",
     color: "#fff",
+    fontFamily: getFontFamily("600"),
   },
 });

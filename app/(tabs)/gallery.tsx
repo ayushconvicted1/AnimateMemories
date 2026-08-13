@@ -24,7 +24,9 @@ import FilterIcon from "@/components/images/FilterIcon";
 import { useAuth as useAuthContext } from "@/contexts/AuthContext";
 import { useAuth } from "@clerk/clerk-expo";
 import { api } from "@/services/api";
-import { Linking } from "react-native";
+import { downloadToDevice } from "@/lib/download";
+import SavedToast from "@/components/ui/SavedToast";
+import { getFontFamily } from "@/constants/Fonts";
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
 const CONTENT_WIDTH = SCREEN_WIDTH - 32;
@@ -49,6 +51,11 @@ export default function GalleryScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [deletingId, setDeletingId] = useState<number | null>(null);
+  const [downloadingId, setDownloadingId] = useState<number | null>(null);
+  const [savedToast, setSavedToast] = useState<{
+    title: string;
+    path: string | null;
+  } | null>(null);
   const [selectedVideo, setSelectedVideo] = useState<GalleryItem | null>(null);
   const [userCredits, setUserCredits] = useState<number | null>(null);
 
@@ -164,17 +171,33 @@ export default function GalleryScreen() {
   };
 
   const handleDownload = async (item: GalleryItem) => {
+    const isVideoItem = isVideo(item);
+    setDownloadingId(item.id);
     try {
-      // Open the URL in browser for download
-      const canOpen = await Linking.canOpenURL(item.aiImage);
-      if (canOpen) {
-        await Linking.openURL(item.aiImage);
-      } else {
-        Alert.alert("Error", "Unable to open download link.");
+      // Download and save straight to the device (no share sheet).
+      const result = await downloadToDevice({
+        url: item.aiImage,
+        fileName: isVideoItem
+          ? "animatememories-video"
+          : "animatememories-image",
+        mimeType: isVideoItem ? "video/mp4" : "image/jpeg",
+      });
+      if (result.saved) {
+        setSavedToast({
+          title: isVideoItem ? "Video saved!" : "Image saved!",
+          path: result.path,
+        });
+      } else if (!result.fallbackUsed) {
+        Alert.alert(
+          "Download failed",
+          "Couldn't save the file to your device. Please try again."
+        );
       }
     } catch (error: any) {
       console.error("Error downloading:", error);
       Alert.alert("Error", "Failed to download file. Please try again.");
+    } finally {
+      setDownloadingId(null);
     }
   };
 
@@ -270,8 +293,13 @@ export default function GalleryScreen() {
             e.stopPropagation();
             handleDownload(item);
           }}
+          disabled={downloadingId === item.id}
         >
-          <Text style={styles.actionButtonText}>⬇</Text>
+          {downloadingId === item.id ? (
+            <ActivityIndicator size="small" color="#fff" />
+          ) : (
+            <Text style={styles.actionButtonText}>⬇</Text>
+          )}
         </TouchableOpacity>
         <TouchableOpacity
           style={[styles.actionButton, styles.deleteButton]}
@@ -449,13 +477,14 @@ export default function GalleryScreen() {
   );
 
   return (
-    <ScreenWrapper
-      addBottomPadding={true}
-      creditsText={
-        userCredits !== null ? `${userCredits} Credits` : "Loading..."
-      }
-      useCustomScroll={true}
-    >
+    <View style={{ flex: 1 }}>
+      <ScreenWrapper
+        addBottomPadding={true}
+        creditsText={
+          userCredits !== null ? `${userCredits} Credits` : "Loading..."
+        }
+        useCustomScroll={true}
+      >
       {loading ? (
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color="#28D4FA" />
@@ -493,9 +522,20 @@ export default function GalleryScreen() {
         onDownload={handleDownloadFromModal}
         onDelete={handleDeleteFromModal}
         isDeleting={deletingId === selectedVideo?.id}
+        isDownloading={downloadingId !== null}
         showDelete={true}
+        toastTitle={savedToast?.title ?? null}
+        toastPath={savedToast?.path ?? null}
+        onToastHide={() => setSavedToast(null)}
       />
-    </ScreenWrapper>
+      </ScreenWrapper>
+
+      <SavedToast
+        title={savedToast?.title ?? null}
+        path={savedToast?.path ?? null}
+        onHide={() => setSavedToast(null)}
+      />
+    </View>
   );
 }
 
@@ -507,12 +547,12 @@ const styles = StyleSheet.create({
   },
   mainTitle: {
     fontSize: 24,
-    fontWeight: "700",
+    fontFamily: getFontFamily("700"),
     marginBottom: 8,
   },
   subtitle: {
     fontSize: 17,
-    fontWeight: "400",
+    fontFamily: getFontFamily("400"),
     color: "#000",
     textAlign: "center",
     lineHeight: 28,
@@ -551,11 +591,11 @@ const styles = StyleSheet.create({
   },
   statNumber: {
     fontSize: 26,
-    fontWeight: "700",
+    fontFamily: getFontFamily("700"),
   },
   statLabel: {
     fontSize: 15,
-    fontWeight: "400",
+    fontFamily: getFontFamily("400"),
     color: "#303030",
     textAlign: "center",
   },
@@ -583,7 +623,7 @@ const styles = StyleSheet.create({
   searchInput: {
     flex: 1,
     fontSize: 15,
-    fontWeight: "300",
+    fontFamily: getFontFamily("400"),
     color: "#000",
   },
   filterButton: {
@@ -625,12 +665,12 @@ const styles = StyleSheet.create({
   },
   tabText: {
     fontSize: 17,
-    fontWeight: "500",
+    fontFamily: getFontFamily("500"),
     color: "#979797",
   },
   tabTextActive: {
     color: "#fff",
-    fontWeight: "600",
+    fontFamily: getFontFamily("700"),
   },
   safeArea: {
     flex: 1,
@@ -693,7 +733,7 @@ const styles = StyleSheet.create({
   videoBadgeText: {
     color: "#fff",
     fontSize: 9,
-    fontWeight: "700",
+    fontFamily: getFontFamily("700"),
   },
   loadingContainer: {
     paddingVertical: 60,
@@ -703,6 +743,7 @@ const styles = StyleSheet.create({
   loadingText: {
     marginTop: 12,
     fontSize: 14,
+    fontFamily: getFontFamily("400"),
     color: "#979797",
   },
   emptyContainer: {
@@ -712,6 +753,7 @@ const styles = StyleSheet.create({
   },
   emptyText: {
     fontSize: 15,
+    fontFamily: getFontFamily("400"),
     color: "#979797",
     textAlign: "center",
   },

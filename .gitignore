@@ -41,3 +41,8 @@ app-example
 # generated native folders
 /ios
 /android
+
+# Play Store signing secrets (never commit)
+/my-upload-key.keystore
+/my-upload-key.keystore.*
+/PLAY_STORE_RELEASE.md

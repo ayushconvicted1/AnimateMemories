@@ -8,10 +8,10 @@ const AuthLayout = () => {
   const insets = useSafeAreaInsets();
 
   return (
-    <View style={{ flex: 1 }}>
+    <View style={{ flex: 1, backgroundColor: "#0B0F19" }}>
       {/* Background Gradient */}
       <Image
-      source={require("@/assets/images/Background.png")}
+        source={require("@/assets/images/Background.png")}
         style={[StyleSheet.absoluteFill, { paddingTop: insets.top }]}
       />
 
@@ -20,11 +20,13 @@ const AuthLayout = () => {
         screenOptions={{
           headerShown: false,
           contentStyle: { backgroundColor: "transparent" },
+          animation: "fade",
         }}
       >
         <Stack.Screen name="index" />
         <Stack.Screen name="login" />
         <Stack.Screen name="signup" />
+        <Stack.Screen name="forgot-password" />
       </Stack>
     </View>
   );

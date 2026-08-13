@@ -1,30 +1,32 @@
 import {
   StyleSheet,
   ScrollView,
+  FlatList,
   View,
   Text,
   TouchableOpacity,
-  Image,
   Dimensions,
-  ActivityIndicator,
   Alert,
   Platform,
 } from "react-native";
+import { Image } from "expo-image";
 import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback, useRef, memo, useMemo } from "react";
 import * as ImagePicker from "expo-image-picker";
 import { GradientText } from "@/components/ui/GradientText";
-import AnimateMemoriesLogo from "@/components/images/AnimateMemoriesLogo";
-import UploadIcon from "@/components/images/UploadIcon";
-import HomeArrow from "@/components/images/HomeArrow";
-import NotificationsIcon from "@/components/images/NotificationsIcon";
 import ScreenWrapper from "@/components/ui/ScreenWrapper";
 import { useAuth as useAuthContext } from "@/contexts/AuthContext";
 import { useAuth } from "@clerk/clerk-expo";
 import { api } from "@/services/api";
-import { BlurView } from "expo-blur";
 import { getFontFamily } from "@/constants/Fonts";
+import { useTour } from "@/contexts/TourContext";
+import { Video, ResizeMode } from "expo-av";
+import TransformationGrid from "@/components/ui/TransformationGrid";
+import HomeArrow from "@/components/images/HomeArrow";
+import StarIcon from "@/components/images/StarIcon";
+import TemplateExplorerModal from "@/components/ui/TemplateExplorerModal";
+import BlogCard from "@/components/ui/BlogCard";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 const CONTENT_WIDTH = SCREEN_WIDTH - 32;
@@ -33,12 +35,154 @@ const CONTENT_WIDTH = SCREEN_WIDTH - 32;
 const API_BASE_URL =
   process.env.EXPO_PUBLIC_API_BASE_URL || "https://www.animatememories.com";
 
+const formatImageUrl = (url?: string) => {
+  if (!url) return "";
+  if (
+    url.startsWith("http://") ||
+    url.startsWith("https://") ||
+    url.startsWith("data:")
+  ) {
+    return url;
+  }
+  return `${API_BASE_URL}${url.startsWith("/") ? "" : "/"}${url}`;
+};
+
+const CATEGORIES = [
+  "Trending",
+  "Family",
+  "Funny",
+  "Birthday",
+  "Wedding",
+  "Hug",
+  "Dance",
+  "Kiss",
+];
+
+const DEFAULT_TEMPLATES = [
+  { id: "warm-hug", name: "Warm Hug", image: require("@/assets/images/Home1.webp"), isStar: false, category: "Couples" },
+  { id: "fighting-pose", name: "Fighting Pose", image: require("@/assets/images/Home2.webp"), isStar: true, category: "Funny" },
+  { id: "head-lean", name: "Head Lean", image: require("@/assets/images/Home3.webp"), isStar: true, category: "Couples" },
+  { id: "classic-wedding", name: "Classic Wedding", image: require("@/assets/images/ClassicWedding.jpg"), isStar: true, category: "Wedding" },
+  { id: "family-memories", name: "Family Memories", image: require("@/assets/images/FamilyPhoto.jpg"), isStar: false, category: "Family" },
+  { id: "vintage-portrait", name: "Vintage Portrait", image: require("@/assets/images/VintagePortrait.jpg"), isStar: true, category: "Trending" },
+];
+
+const TemplateCard = memo(
+  ({ item, onSelect }: { item: any; onSelect: (id: string) => void }) => {
+    const id = item.slug || item.id;
+    const uri = item.image
+      ? typeof item.image === "number" || typeof item.image === "object"
+        ? item.image
+        : { uri: formatImageUrl(item.thumbnailUrl || item.image) }
+      : item.thumbnailUrl
+      ? { uri: formatImageUrl(item.thumbnailUrl) }
+      : undefined;
+
+    return (
+      <TouchableOpacity
+        style={styles.templateCard}
+        onPress={() => onSelect(id)}
+        activeOpacity={0.85}
+      >
+        <View style={styles.templateImageContainer}>
+          {uri ? (
+            <Image
+              source={uri}
+              style={styles.templateImage}
+              contentFit="cover"
+              transition={150}
+            />
+          ) : (
+            <View style={styles.templatePlaceholder} />
+          )}
+          {(item.isStar || item.isFeatured || item.is_featured) && (
+            <View style={styles.starBadgeContainer}>
+              <StarIcon width={11} height={11} color="#F59E0B" />
+            </View>
+          )}
+        </View>
+        <Text style={styles.templateName} numberOfLines={1} ellipsizeMode="tail">
+          {item.name}
+        </Text>
+      </TouchableOpacity>
+    );
+  }
+);
+
+// Step demo videos are always mounted with a poster frame (never an empty
+// tile) and play only while their section is on screen. Playback is driven
+// both by the shouldPlay prop and an explicit playAsync()/pauseAsync() call,
+// because expo-av's shouldPlay alone is unreliable on Android when the
+// visibility changes mid-scroll.
+const StepVideo = memo(
+  ({ source, poster, isVisible }: { source: any; poster: any; isVisible: boolean }) => {
+    const videoRef = useRef<Video>(null);
+
+    useEffect(() => {
+      const video = videoRef.current;
+      if (!video) return;
+      if (isVisible) {
+        video.playAsync().catch(() => {});
+      } else {
+        video.pauseAsync().catch(() => {});
+      }
+    }, [isVisible]);
+
+    return (
+      <Video
+        ref={videoRef}
+        source={source}
+        style={styles.stepVideo}
+        resizeMode={ResizeMode.CONTAIN}
+        shouldPlay={isVisible}
+        isLooping
+        isMuted
+        useNativeControls={false}
+        usePoster
+        posterSource={poster}
+        posterStyle={{ resizeMode: "contain" }}
+        onError={(error) => console.log("Step video failed to load:", error)}
+      />
+    );
+  }
+);
+StepVideo.displayName = "StepVideo";
+
 export default function HomeScreen() {
   const { user } = useAuthContext();
   const { getToken } = useAuth();
+  const { startTour, endTour, isActive, currentStep } = useTour();
   const [userCredits, setUserCredits] = useState<number | null>(null);
+  const [latestBlogs, setLatestBlogs] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [animationTemplates, setAnimationTemplates] = useState<any[]>([]);
+  const [animationTemplates, setAnimationTemplates] = useState<any[]>(DEFAULT_TEMPLATES);
+  const [selectedCategory, setSelectedCategory] = useState("Trending");
+  const [scrollOffset, setScrollOffset] = useState(0);
+  const [isTemplateModalVisible, setTemplateModalVisible] = useState(false);
+
+  const filteredTemplates = useMemo(() => {
+    if (selectedCategory === "Trending") {
+      return animationTemplates;
+    }
+    const filtered = animationTemplates.filter((t) => {
+      const catStr = (t.category || t.categoryId || "").toLowerCase();
+      return catStr === selectedCategory.toLowerCase();
+    });
+    // Fallback to all if category has no templates
+    return filtered.length > 0 ? filtered : animationTemplates;
+  }, [animationTemplates, selectedCategory]);
+
+  const handleScroll = useCallback((event: any) => {
+    const y = event.nativeEvent?.contentOffset?.y || 0;
+    setScrollOffset(y);
+  }, []);
+
+  const isHeroVisible = scrollOffset < 600;
+  const isTransformationsVisible = scrollOffset > 300 && scrollOffset < 2400;
+  // Play the step demo videos only while the user is in this section of the
+  // page, so they don't stack on top of the hero/transformation videos that
+  // are already decoding (the 256MB Android heap OOMs otherwise).
+  const isStepsVisible = scrollOffset > 200 && scrollOffset < 2600;
 
   useEffect(() => {
     const fetchUserCredits = async () => {
@@ -48,7 +192,6 @@ export default function HomeScreen() {
       }
 
       try {
-        // Get Clerk session token
         const token = await getToken();
         const result = await api.verifyUser(user, token);
         setUserCredits(result.result?.credits || 0);
@@ -62,14 +205,29 @@ export default function HomeScreen() {
     const fetchTemplates = async () => {
       try {
         const response = await api.getVideoPresets();
-        if (response && response.presets) {
-          setAnimationTemplates(response.presets);
+        const presets =
+          response?.result ||
+          response?.presets ||
+          (Array.isArray(response) ? response : []);
+        if (presets && presets.length > 0) {
+          setAnimationTemplates(presets);
         }
       } catch (error) {
         console.error("Failed to fetch templates", error);
       }
     };
 
+    const fetchBlogs = async () => {
+      try {
+        const response = await api.getBlogs(3);
+        const blogs = response?.blogs || [];
+        if (blogs.length > 0) setLatestBlogs(blogs);
+      } catch (error) {
+        console.error("Failed to fetch blogs", error);
+      }
+    };
+
+    fetchBlogs();
     fetchTemplates();
 
     if (user) {
@@ -77,9 +235,12 @@ export default function HomeScreen() {
     } else {
       setLoading(false);
     }
+
+    startTour();
   }, [user]);
 
   const handleTryForFree = () => {
+    endTour();
     router.push("/(tabs)/animate");
   };
 
@@ -119,7 +280,6 @@ export default function HomeScreen() {
         return;
       }
 
-      // Navigate to create tab with image URI as param
       router.push({
         pathname: "/(tabs)/animate",
         params: {
@@ -135,678 +295,820 @@ export default function HomeScreen() {
     }
   };
 
-  const handleTemplateSelect = (templateId: string) => {
+  const handleTemplateSelect = useCallback((templateId: string) => {
     router.push({
       pathname: "/(tabs)/animate",
       params: {
         templateId: templateId,
       },
     });
-  };
+  }, []);
+
+  const renderTemplateItem = useCallback(
+    ({ item }: { item: any }) => (
+      <TemplateCard item={item} onSelect={handleTemplateSelect} />
+    ),
+    [handleTemplateSelect]
+  );
+
+  const templateKeyExtractor = useCallback(
+    (item: any, index: number) => item.slug || item.id || `tpl-${index}`,
+    []
+  );
+
+  // Background Image Height based on 1080x1920 ratio scaled to screen width
+  const bgHeight = (SCREEN_WIDTH * 1920) / 1080;
 
   return (
-    <ScreenWrapper
-      addBottomPadding={true}
-      creditsText={
-        loading
-          ? "Loading..."
-          : userCredits !== null
-          ? `${userCredits} Credits`
-          : "0 Credits"
-      }
-    >
-      {/* Hero Image Section */}
-      <View style={styles.heroSection}>
-        <View style={styles.heroImageContainer}>
-          <Image
-            source={{
-              uri: "https://images.unsplash.com/photo-1518568814500-bf0f8d125f46",
-            }}
-            style={styles.heroImage}
-            resizeMode="cover"
-          />
-        </View>
-        <GradientText style={styles.heroTitle}>
-          Animate Old Photos with AI
-        </GradientText>
-        <Text style={styles.heroDescription}>
-          Easily create viral AI videos from your images and text with Animate
-          Memories. Start making trendy{" "}
-          <Text style={styles.highlightText}>
-            AI Kiss, Hug, or Dance videos
-          </Text>{" "}
-          — all with just one click!
-        </Text>
-      </View>
+    <View style={styles.outerContainer} pointerEvents={isActive && currentStep === 1 ? "none" : "auto"}>
+      <ScreenWrapper
+        backgroundColor="transparent"
+        addBottomPadding={true}
+        onScroll={handleScroll}
+        scrollEventThrottle={32}
+        scrollEnabled={!(isActive && currentStep === 1) && !isTemplateModalVisible}
+        creditsText={
+          userCredits !== null
+            ? `${userCredits} Credits`
+            : "Loading..."
+        }
+      >
+        {/* Background Image inside ScrollView so it scrolls with the screen */}
+        <Image
+          source={require("@/assets/images/HomeBG.jpeg")}
+          style={[styles.backgroundImage, { height: bgHeight }]}
+          contentFit="cover"
+          priority="high"
+        />
 
-      {/* Upload Section */}
-      <View style={styles.uploadSection}>
-        <TouchableOpacity
-          style={styles.uploadContainer}
-          onPress={handleUploadImage}
-          activeOpacity={0.7}
-        >
-          <View style={styles.uploadArea}>
-            <View style={styles.uploadIconContainer}>
-              <Text style={styles.uploadIcon}>
-                <UploadIcon />
-              </Text>
+        {/* Hero Section */}
+        <View style={styles.heroSection}>
+          {/* Photos Composition Box */}
+          <View style={styles.photoCompositionContainer}>
+            {/* Top Left Small Old Vintage Photo */}
+            <View style={styles.smallPhotoCard}>
+              <Image
+                source={require("@/assets/images/HomePhoto.jpeg")}
+                style={styles.smallPhotoImage}
+                contentFit="cover"
+              />
             </View>
-            <Text style={styles.uploadText}>Upload a file here</Text>
-            <Text style={styles.uploadSubtext}>
-              Supported formats: jpg, jpeg, png{"\n"}Max file size: 10MB. Min
-              resolution 300x300px.
-            </Text>
+
+            {/* Arrow pointing to main photo */}
+            <View style={styles.arrowContainer}>
+              <HomeArrow width={34} height={32} />
+            </View>
+
+            {/* Main Hero Video from web */}
+            <View style={styles.mainHeroPhotoCard}>
+              <Video
+                source={require("@/assets/videos/HomeVideo.mp4")}
+                style={styles.mainHeroImage}
+                resizeMode={ResizeMode.COVER}
+                isLooping
+                shouldPlay={isHeroVisible}
+                isMuted
+                useNativeControls={false}
+                usePoster={true}
+                posterSource={require("@/assets/images/HomePhoto.jpeg")}
+                posterStyle={{ resizeMode: "cover" }}
+              />
+            </View>
           </View>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={styles.tryForFreeButton}
-          onPress={handleTryForFree}
-        >
-          <LinearGradient
-            colors={["#28D4FA", "#D229FF"]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 0 }}
-            style={styles.tryForFreeGradient}
+
+          {/* Main Hero Headline */}
+          <GradientText style={styles.heroTitle}>
+            {"Turn your Old Pictures\ninto Live Moments"}
+          </GradientText>
+
+          {/* Hero Subtitle */}
+          <Text style={styles.heroDescription}>
+            Upload your photo, and let AI bring{"\n"}
+            your memories to life in seconds.
+          </Text>
+
+          {/* Upload Your Photo Button */}
+          <TouchableOpacity
+            style={styles.uploadButtonContainer}
+            onPress={handleUploadImage}
+            activeOpacity={0.85}
           >
-            <Text style={styles.tryForFreeText}>Try For Free</Text>
-          </LinearGradient>
-        </TouchableOpacity>
-        <Text style={styles.orTryText}>Or try animating an example</Text>
-      </View>
-
-      {/* Animation Templates */}
-      <View style={styles.templatesSection}>
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          style={styles.templatesScroll}
-        >
-          {animationTemplates.map((template, index) => (
-            <TouchableOpacity
-              key={template.slug || template.id}
-              style={[
-                styles.templateCard,
-                index === 0 && { marginLeft: 16 },
-                index === animationTemplates.length - 1 && { marginRight: 16 },
-              ]}
-              onPress={() => handleTemplateSelect(template.slug || template.id)}
+            <LinearGradient
+              colors={["#38BDF8", "#A855F7", "#D229FF"]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={styles.uploadGradientButton}
             >
-              <View style={styles.templateImageContainer}>
-                <Image
-                  source={{ uri: template.thumbnailUrl || template.image }}
-                  style={styles.templateImage}
-                  resizeMode="cover"
-                />
-              </View>
-              <Text style={styles.templateName}>{template.name}</Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
-      </View>
+              <Text style={styles.uploadButtonText}>Upload Your Photo</Text>
+            </LinearGradient>
+          </TouchableOpacity>
+        </View>
 
-      {/* How to Section */}
-      <View style={styles.howToSection}>
-        <Text style={styles.howToTitle}>
-          How to Animate Old Pictures with AI?
-        </Text>
+        {/* Explore 100+ Viral AI Templates */}
+        <View style={styles.templatesSection}>
+          <GradientText style={styles.templatesSectionTitle}>
+            {"Explore 100+\nViral AI Templates"}
+          </GradientText>
 
-        {/* Step 1 */}
-        <View style={styles.stepContainer}>
-          <View style={styles.stepContent}>
+          {/* Category Filter Pills */}
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.categoryContainer}
+          >
+            {CATEGORIES.map((cat) => {
+              const isSelected = selectedCategory === cat;
+              return (
+                <TouchableOpacity
+                  key={cat}
+                  onPress={() => setSelectedCategory(cat)}
+                  activeOpacity={0.8}
+                  style={styles.categoryPillTouchable}
+                >
+                  {isSelected ? (
+                    <LinearGradient
+                      colors={["#38BDF8", "#D229FF"]}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 0 }}
+                      style={styles.activePillGradient}
+                    >
+                      <Text style={styles.activePillText}>{cat}</Text>
+                    </LinearGradient>
+                  ) : (
+                    <View style={styles.inactivePill}>
+                      <Text style={styles.inactivePillText}>{cat}</Text>
+                    </View>
+                  )}
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+
+          {/* Template Cards Horizontal Scroll */}
+          <FlatList
+            horizontal
+            data={filteredTemplates}
+            renderItem={renderTemplateItem}
+            keyExtractor={templateKeyExtractor}
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={{ paddingLeft: 16, paddingRight: 16 }}
+            initialNumToRender={5}
+            maxToRenderPerBatch={5}
+            windowSize={3}
+            removeClippedSubviews={Platform.OS === "android"}
+          />
+
+          {/* View All Link */}
+          <TouchableOpacity
+            style={styles.viewAllButton}
+            onPress={() => setTemplateModalVisible(true)}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.viewAllText}>View All {"\u203A"}</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* How to Animate Section */}
+        <View style={styles.howToSection}>
+          <Text style={styles.howToTitle}>
+            How to Animate Old Pictures with AI?
+          </Text>
+
+          {/* Step 1 */}
+          <View style={styles.stepRow}>
             <View style={styles.stepImageWrapper}>
-              {/* Tilted gradient background */}
-              <View
-                style={[styles.gradientBackground, styles.gradientTiltLeft]}
-              >
-                <LinearGradient
-                  colors={[
-                    "rgba(147, 51, 234, 0.4)",
-                    "rgba(59, 130, 246, 0.4)",
-                  ]}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 1 }}
-                  style={styles.gradientFill}
-                />
-              </View>
-              <View style={styles.stepImageContainer}>
-                <Image
-                  source={require("@/assets/images/Home1.webp")}
-                  style={styles.stepImage}
-                  resizeMode="cover"
-                />
-              </View>
-              {/* Arrow pointing to frame */}
-              <View style={styles.arrowContainer}>
-                <HomeArrow width={25} height={12} />
-                <View style={styles.uploadIconFrame}>
-                  <BlurView
-                    intensity={20}
-                    tint="light"
-                    style={styles.uploadIconBlur}
-                  >
-                    <UploadIcon color="#4A4A4A" width={20} height={22} />
-                  </BlurView>
-                </View>
-              </View>
+              <Image
+                source={require("@/assets/images/1.png")}
+                style={styles.stepPngImage}
+                contentFit="contain"
+              />
             </View>
-            <View style={[styles.stepTextContainer, styles.stepTextRight]}>
-              <Text style={[styles.stepNumber, styles.textRight]}>Step 1</Text>
-              <GradientText style={[styles.stepTitle, styles.textRight]}>
+            <View style={styles.stepTextWrapper}>
+              <Text style={styles.stepNumber}>Step 1</Text>
+              <GradientText style={styles.stepHeaderTitle}>
                 Upload Your Image
               </GradientText>
-              <Text style={[styles.stepDescription, styles.textRight]}>
-                Click "<Text style={styles.stepHighlight}>Try for Free</Text>"
+              <Text style={styles.stepDescription}>
+                Click "<Text style={styles.highlightPink}>Try for Free</Text>"
                 and import your old photos effortlessly.
               </Text>
             </View>
           </View>
-        </View>
 
-        {/* Step 2 */}
-        <View style={styles.stepContainer}>
-          <View style={styles.stepContent}>
-            <View style={styles.stepTextContainer}>
+          {/* Step 2 */}
+          <View style={styles.stepRow}>
+            <View style={styles.stepTextWrapper}>
               <Text style={styles.stepNumber}>Step 2</Text>
-              <GradientText style={styles.stepTitle}>
+              <GradientText style={styles.stepHeaderTitle}>
                 Animate Your Photo
               </GradientText>
               <Text style={styles.stepDescription}>
-                Ether Choose the template or choose custom for desired output &{" "}
-                <Text style={styles.stepHighlight}>let AI do the magic</Text>
+                Either Choose the template or choose custom for desired output &{" "}
+                <Text style={styles.highlightPink}>let AI do the magic</Text>
               </Text>
             </View>
             <View style={styles.stepImageWrapper}>
-              {/* Tilted gradient background - opposite direction */}
-              <View
-                style={[styles.gradientBackground, styles.gradientTiltRight]}
-              >
-                <LinearGradient
-                  colors={[
-                    "rgba(59, 130, 246, 0.4)",
-                    "rgba(147, 51, 234, 0.4)",
-                  ]}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 1 }}
-                  style={styles.gradientFill}
-                />
-              </View>
-              <View style={styles.stepImageContainer}>
-                <Image
-                  source={require("@/assets/images/Home2.webp")}
-                  style={styles.stepImage}
-                  resizeMode="cover"
-                />
-              </View>
-              {/* <View style={styles.templateBadge}>
-                <Text style={styles.templateBadgeText}>T</Text>
-                <Text style={styles.templateBadgeLabel}>
-                  Let the girl sit down
-                </Text>
-              </View> */}
+              <StepVideo
+                source={require("@/assets/videos/2.mp4")}
+                poster={require("@/assets/images/2.png")}
+                isVisible={isStepsVisible}
+              />
             </View>
           </View>
-        </View>
 
-        {/* Step 3 */}
-        <View style={styles.stepContainer}>
-          <View style={styles.stepContent}>
+          {/* Step 3 */}
+          <View style={styles.stepRow}>
             <View style={styles.stepImageWrapper}>
-              {/* Tilted gradient background */}
-              <View
-                style={[styles.gradientBackground, styles.gradientTiltLeft]}
-              >
-                <LinearGradient
-                  colors={[
-                    "rgba(147, 51, 234, 0.4)",
-                    "rgba(59, 130, 246, 0.4)",
-                  ]}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 1 }}
-                  style={styles.gradientFill}
-                />
-              </View>
-              <View style={styles.stepImageContainer}>
-                <Image
-                  source={require("@/assets/images/Home3.webp")}
-                  style={styles.stepImage}
-                  resizeMode="cover"
-                />
-              </View>
-              <View style={styles.downloadBadge}>
-                <Text style={styles.downloadIcon}>⬇</Text>
-              </View>
+              <StepVideo
+                source={require("@/assets/videos/GirlVideo.mp4")}
+                poster={require("@/assets/images/3.png")}
+                isVisible={isStepsVisible}
+              />
             </View>
-            <View style={[styles.stepTextContainer, styles.stepTextRight]}>
-              <Text style={[styles.stepNumber, styles.textRight]}>Step 3</Text>
-              <GradientText style={[styles.stepTitle, styles.textRight]}>
+            <View style={styles.stepTextWrapper}>
+              <Text style={styles.stepNumber}>Step 3</Text>
+              <GradientText style={styles.stepHeaderTitle}>
                 Export and Download
               </GradientText>
-              <Text style={[styles.stepDescription, styles.textRight]}>
+              <Text style={styles.stepDescription}>
                 Preview and download your animated videos instantly.
               </Text>
             </View>
           </View>
-        </View>
-      </View>
 
-      {/* Gallery Preview */}
-      <View style={styles.gallerySection}>
-        <TouchableOpacity onPress={() => router.push("/(tabs)/animate")}>
-          <GradientText style={styles.viewMoreText}>View More</GradientText>
-        </TouchableOpacity>
-      </View>
-    </ScreenWrapper>
+          {/* Big Try For Free Button */}
+          <TouchableOpacity
+            style={styles.bigTryButtonContainer}
+            onPress={handleTryForFree}
+            activeOpacity={0.85}
+          >
+            <LinearGradient
+              colors={["#38BDF8", "#A855F7", "#D229FF"]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={styles.bigTryGradient}
+            >
+              <Text style={styles.bigTryButtonText}>Try For Free</Text>
+            </LinearGradient>
+          </TouchableOpacity>
+        </View>
+
+        {/* Incredible Transformations */}
+        <View style={styles.transformationsSection}>
+          <GradientText style={styles.sectionHeadingTitle}>
+            Incredible Transformations
+          </GradientText>
+          <Text style={styles.sectionSubtitle}>
+            See what our AI can do. Discover stunning results from real photos.
+          </Text>
+
+          {/* 2x2 Transformation Grid with Scroll-Optimized Video Playback */}
+          <TransformationGrid isVisible={isTransformationsVisible} />
+        </View>
+
+        {/* Trusted by Professionals */}
+        <View style={styles.trustedSection}>
+          <GradientText style={styles.sectionHeadingTitle}>
+            Trusted by Professionals
+          </GradientText>
+          <Text style={styles.sectionSubtitle}>
+            How businesses and creators use Animate Memories to scale their content.
+          </Text>
+
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={[styles.proCardsContainer, { paddingBottom: 24, paddingTop: 12 }]}
+          >
+            {/* Card 1: Entertainment */}
+            <View style={styles.proCard}>
+              <View style={styles.proCardInner}>
+                <Image
+                  source={require("@/assets/images/EntertainmentIndustry.jpeg")}
+                  style={styles.proCardImage}
+                  contentFit="cover"
+                />
+                <View style={styles.proCardContent}>
+                  <Text style={styles.proCardTitle}>
+                    Entertainment Industry
+                  </Text>
+                  <Text style={styles.proCardDesc}>
+                    Major film studios and creators use AnimateMemories for image colorization and historical video enhancement
+                  </Text>
+                  <View style={styles.proCardStats}>
+                    <Text style={styles.proCardStatsText}>500+ projects completed</Text>
+                  </View>
+                </View>
+              </View>
+            </View>
+
+            {/* Card 2: Gifts & Events */}
+            <View style={styles.proCard}>
+              <View style={styles.proCardInner}>
+                <Image
+                  source={require("@/assets/images/GiftsAndEvents.jpeg")}
+                  style={styles.proCardImage}
+                  contentFit="cover"
+                />
+                <View style={styles.proCardContent}>
+                  <Text style={styles.proCardTitle}>
+                    Gifts & Event Business
+                  </Text>
+                  <Text style={styles.proCardDesc}>
+                    Event planners and gift businesses turn cherished photos into animated keepsakes and shareable content
+                  </Text>
+                  <View style={styles.proCardStats}>
+                    <Text style={styles.proCardStatsText}>95% engagement rate</Text>
+                  </View>
+                </View>
+              </View>
+            </View>
+
+            {/* Card 3: Social Media */}
+            <View style={styles.proCard}>
+              <View style={styles.proCardInner}>
+                <Image
+                  source={require("@/assets/images/SocialMediaCampaigns.jpeg")}
+                  style={styles.proCardImage}
+                  contentFit="cover"
+                />
+                <View style={styles.proCardContent}>
+                  <Text style={styles.proCardTitle}>
+                    Social Media & Creators
+                  </Text>
+                  <Text style={styles.proCardDesc}>
+                    Creators bring viral AI trends, photo motion, and engaging interactive content to millions of followers
+                  </Text>
+                  <View style={styles.proCardStats}>
+                    <Text style={styles.proCardStatsText}>10M+ views generated</Text>
+                  </View>
+                </View>
+              </View>
+            </View>
+          </ScrollView>
+        </View>
+
+        {/* Latest Blogs feed */}
+        {latestBlogs.length > 0 && (
+          <View style={styles.blogsSection}>
+            <GradientText style={styles.sectionHeadingTitle}>
+              Latest Blogs
+            </GradientText>
+            <Text style={styles.sectionSubtitle}>
+              Tips, stories & updates on AI photo animation.
+            </Text>
+
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.blogsContainer}
+            >
+              {latestBlogs.map((blog) => (
+                <BlogCard key={blog.id} blog={blog} width={280} />
+              ))}
+            </ScrollView>
+
+            <TouchableOpacity
+              style={styles.blogsViewAllButton}
+              onPress={() => router.push("/blogs")}
+              activeOpacity={0.85}
+            >
+              <LinearGradient
+                colors={["#38BDF8", "#A855F7", "#D229FF"]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.blogsViewAllGradient}
+              >
+                <Text style={styles.blogsViewAllText}>View All Blogs</Text>
+              </LinearGradient>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        <TemplateExplorerModal 
+          visible={isTemplateModalVisible} 
+          onClose={() => setTemplateModalVisible(false)} 
+          templates={animationTemplates} 
+          onSelect={handleTemplateSelect} 
+        />
+      </ScreenWrapper>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  outerContainer: {
     flex: 1,
-    backgroundColor: "#fff",
+    backgroundColor: "#FFFFFF",
   },
-  scrollView: {
-    flex: 1,
-  },
-  header: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingHorizontal: 16,
-    paddingTop: 16,
-    paddingBottom: 12,
-  },
-  logoContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
-  logoIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  logoIconText: {
-    fontSize: 15,
-    fontFamily: getFontFamily("700"),
-    fontWeight: "700",
-    color: "#fff",
-  },
-  logoDot: {
-    width: 4,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: "#fff",
-    marginTop: 2,
-  },
-  logoTextContainer: {
-    marginLeft: 4,
-  },
-  logoTextTop: {
-    fontSize: 14,
-    fontFamily: getFontFamily("700"),
-    fontWeight: "700",
-    color: "#000",
-  },
-  logoTextBottom: {
-    fontSize: 10,
-    fontFamily: getFontFamily("400"),
-    fontWeight: "400",
-    color: "#000",
-  },
-  headerRight: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-  },
-  creditsButton: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 8,
-  },
-  creditsButtonText: {
-    fontSize: 10,
-    fontFamily: getFontFamily("600"),
-    fontWeight: "600",
-    color: "#fff",
-  },
-  bellButton: {
-    padding: 4,
-  },
-  bellIcon: {
-    fontSize: 17,
+  backgroundImage: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    width: SCREEN_WIDTH,
+    zIndex: 0,
   },
   heroSection: {
     width: CONTENT_WIDTH,
-    marginHorizontal: 16,
-    marginTop: 16,
-    overflow: "hidden",
-    marginBottom: 20,
-  },
-  heroImageContainer: {
-    width: "100%",
-    height: 265,
-    position: "relative",
-  },
-  heroImage: {
-    width: "100%",
-    borderRadius: 10,
-    height: "100%",
-  },
-  heroGradient: {
-    position: "absolute",
-    bottom: 0,
-    left: 0,
-    right: 0,
-    height: 100,
-  },
-  heroTitle: {
-    fontSize: 24,
-    fontFamily: getFontFamily("700"),
-    fontWeight: "700",
-    textAlign: "center",
-    marginTop: 19,
-    marginBottom: 10,
-  },
-  heroDescription: {
-    fontSize: 17,
-    fontFamily: getFontFamily("400"),
-    fontWeight: "400",
-    color: "#000",
-    textAlign: "center",
-    lineHeight: 30,
-    paddingHorizontal: 16,
-    marginBottom: 20,
-  },
-  highlightText: {
-    fontWeight: "700",
-  },
-  uploadSection: {
-    width: CONTENT_WIDTH,
-    marginHorizontal: 16,
-    marginBottom: 20,
-  },
-  uploadContainer: {
-    backgroundColor: "#fff",
-    borderRadius: 7,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.3,
-    shadowRadius: 17.1,
-    elevation: 5,
-    marginBottom: 16,
-    overflow: "hidden",
-  },
-  uploadArea: {
-    borderWidth: 0.75,
-    borderColor: "#979797",
-    borderStyle: "dashed",
-    borderRadius: 7,
-    padding: 20,
-    alignItems: "center",
-    margin: 9,
-    minHeight: 168,
-    justifyContent: "center",
-  },
-  uploadIconContainer: {
-    marginBottom: 8,
-  },
-  uploadIcon: {
-    fontSize: 34,
-  },
-  uploadText: {
-    fontSize: 15,
-    fontFamily: getFontFamily("400"),
-    fontWeight: "400",
-    color: "#000",
-    marginBottom: 8,
-  },
-  uploadSubtext: {
-    fontSize: 11,
-    fontFamily: getFontFamily("400"),
-    fontWeight: "400",
-    color: "#979797",
-    textAlign: "center",
-  },
-  tryForFreeButton: {
-    borderRadius: 7,
-    overflow: "hidden",
-    marginBottom: 12,
     alignSelf: "center",
-  },
-  tryForFreeGradient: {
-    paddingVertical: 10,
-    paddingHorizontal: 27,
     alignItems: "center",
-    justifyContent: "center",
+    marginTop: 10,
+    marginBottom: 36,
   },
-  tryForFreeText: {
-    fontSize: 17,
-    fontFamily: getFontFamily("600"),
-    fontWeight: "600",
-    color: "#fff",
-  },
-  orTryText: {
-    fontSize: 17,
-    fontFamily: getFontFamily("400"),
-    fontWeight: "400",
-    color: "#000",
-    textAlign: "center",
-  },
-  templatesSection: {
-    marginBottom: 20,
-  },
-  templatesScroll: {
-    paddingLeft: 16,
-  },
-  templateCard: {
-    width: 93,
-    marginRight: 24,
-    alignItems: "center",
-  },
-  templateImageContainer: {
-    width: 93,
-    height: 93,
-    borderRadius: 5,
-    overflow: "hidden",
-    marginBottom: 5,
-  },
-  templateImage: {
+  photoCompositionContainer: {
     width: "100%",
-    height: "100%",
-  },
-  templateName: {
-    fontSize: 13,
-    fontFamily: getFontFamily("400"),
-    fontWeight: "400",
-    color: "#000",
-    textAlign: "center",
-  },
-  howToSection: {
-    width: CONTENT_WIDTH,
-    marginHorizontal: 16,
-    marginBottom: 20,
-  },
-  howToTitle: {
-    fontSize: 17,
-    fontFamily: getFontFamily("700"),
-    fontWeight: "700",
-    color: "#000",
-    textAlign: "center",
-    marginBottom: 24,
-  },
-  stepContainer: {
-    marginBottom: 20,
-    backgroundColor: "transparent",
-  },
-  stepNumber: {
-    fontSize: 17,
-    fontFamily: getFontFamily("700"),
-    fontWeight: "700",
-    color: "#000",
-    textDecorationLine: "underline",
-    marginBottom: 10,
-  },
-  stepContent: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: 10,
-    paddingRight: 4,
-  },
-  stepImageWrapper: {
-    width: "50%",
+    height: 250,
     position: "relative",
-    alignItems: "center",
-    justifyContent: "flex-start",
-    paddingVertical: 6,
-    overflow: "visible",
+    marginBottom: 16,
   },
-  gradientBackground: {
+  smallPhotoCard: {
     position: "absolute",
-    width: "100%",
-    height: "85%",
-    borderRadius: 10,
+    top: 0,
+    left: 4,
+    width: 104,
+    height: 76,
+    borderRadius: 14,
     overflow: "hidden",
-    opacity: 0.8,
-    zIndex: 0,
-    top: "10%",
-  },
-  gradientTiltLeft: {
-    transform: [{ rotate: "-12deg" }],
-  },
-  gradientTiltRight: {
-    transform: [{ rotate: "12deg" }],
-  },
-  gradientFill: {
-    width: "100%",
-    height: "100%",
-  },
-  stepImageContainer: {
-    width: "75%",
-    aspectRatio: 79.3 / 118.72,
-    borderRadius: 2.185,
-    overflow: "hidden",
+    zIndex: 1,
     shadowColor: "#000",
-    shadowOffset: { width: 6, height: 6 },
-    shadowOpacity: 0.2,
-    shadowRadius: 10,
-    elevation: 4,
-    backgroundColor: "transparent",
-    zIndex: 2,
-    alignSelf: "flex-start",
-    marginLeft: 8,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.12,
+    shadowRadius: 6,
+    elevation: 3,
   },
-  stepImage: {
+  smallPhotoImage: {
     width: "100%",
     height: "100%",
   },
   arrowContainer: {
     position: "absolute",
-    right: -30,
-    top: "35%",
-    zIndex: 3,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
+    top: 10,
+    left: 114,
+    zIndex: 10,
   },
-  uploadIconFrame: {
-    width: 32,
-    height: 32,
-    borderRadius: 6,
+  mainHeroPhotoCard: {
+    position: "absolute",
+    top: 42,
+    right: 0,
+    width: CONTENT_WIDTH * 0.80,
+    height: 198,
+    borderRadius: 20,
     overflow: "hidden",
+    zIndex: 5,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.15,
+    shadowRadius: 16,
+    elevation: 6,
   },
-  uploadIconBlur: {
+  mainHeroImage: {
     width: "100%",
     height: "100%",
+  },
+  heroTitle: {
+    fontSize: SCREEN_WIDTH < 380 ? 22 : 25,
+    fontFamily: getFontFamily("800"),
+    textAlign: "center",
+    lineHeight: 32,
+    marginBottom: 10,
+  },
+  heroDescription: {
+    fontSize: 13.5,
+    fontFamily: getFontFamily("400"),
+    color: "#475569",
+    textAlign: "center",
+    lineHeight: 20,
+    marginBottom: 20,
+  },
+  uploadButtonContainer: {
+    borderRadius: 12,
+    overflow: "hidden",
+    shadowColor: "#D229FF",
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  uploadGradientButton: {
+    paddingVertical: 12,
+    paddingHorizontal: 28,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(74, 74, 74, 0.4)",
   },
-  stepTextContainer: {
-    width: "50%",
-    flexShrink: 0,
-  },
-  stepTextRight: {
-    alignItems: "flex-end",
-  },
-  textRight: {
-    textAlign: "right",
-  },
-  stepTitle: {
-    fontSize: 14,
+  uploadButtonText: {
+    fontSize: 15,
     fontFamily: getFontFamily("700"),
-    fontWeight: "700",
+    color: "#FFFFFF",
+  },
+  templatesSection: {
+    marginBottom: 44,
+  },
+  templatesSectionTitle: {
+    fontSize: 22,
+    fontFamily: getFontFamily("800"),
+    textAlign: "center",
+    lineHeight: 29,
+    marginBottom: 18,
+  },
+  categoryContainer: {
+    paddingHorizontal: 16,
+    gap: 10,
+    marginBottom: 20,
+  },
+  categoryPillTouchable: {
+    borderRadius: 20,
+    overflow: "hidden",
+  },
+  activePillGradient: {
+    paddingHorizontal: 18,
+    paddingVertical: 8,
+    borderRadius: 20,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  activePillText: {
+    fontSize: 13,
+    fontFamily: getFontFamily("700"),
+    color: "#FFFFFF",
+  },
+  inactivePill: {
+    paddingHorizontal: 18,
+    paddingVertical: 8,
+    borderRadius: 20,
+    backgroundColor: "rgba(255, 255, 255, 0.9)",
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  inactivePillText: {
+    fontSize: 13,
+    fontFamily: getFontFamily("500"),
+    color: "#475569",
+  },
+  templateCard: {
+    width: 116,
+    marginRight: 12,
+    alignItems: "center",
+  },
+  templateImageContainer: {
+    width: 116,
+    height: 152,
+    borderRadius: 16,
+    overflow: "hidden",
+    backgroundColor: "#F1F5F9",
+    position: "relative",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    elevation: 2,
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+  },
+  templateImage: {
+    width: "100%",
+    height: "100%",
+  },
+  templatePlaceholder: {
+    width: "100%",
+    height: "100%",
+    backgroundColor: "#E2E8F0",
+  },
+  starBadgeContainer: {
+    position: "absolute",
+    top: 8,
+    right: 8,
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: "#FFFFFF",
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.2,
+    shadowRadius: 2,
+    elevation: 3,
+  },
+  templateName: {
+    fontSize: 13,
+    fontFamily: getFontFamily("600"),
+    color: "#0F172A",
+    textAlign: "center",
+    marginTop: 8,
+    width: 116,
+  },
+  viewAllButton: {
+    alignSelf: "center",
+    marginTop: 16,
+    paddingVertical: 6,
+    paddingHorizontal: 16,
+  },
+  viewAllText: {
+    fontSize: 13.5,
+    fontFamily: getFontFamily("600"),
+    color: "#475569",
+  },
+  howToSection: {
+    width: CONTENT_WIDTH,
+    alignSelf: "center",
+    marginBottom: 44,
+  },
+  howToTitle: {
+    fontSize: 20,
+    fontFamily: getFontFamily("800"),
+    color: "#0F172A",
+    textAlign: "center",
+    marginBottom: 26,
+  },
+  stepRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 18,
+  },
+  stepImageWrapper: {
+    width: "52%",
+    height: 180,
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "hidden",
+  },
+  stepPngImage: {
+    width: "100%",
+    height: "100%",
+  },
+  stepVideo: {
+    width: "100%",
+    height: "100%",
+  },
+  stepTextWrapper: {
+    width: "44%",
+  },
+  stepNumber: {
+    fontSize: 17,
+    fontFamily: getFontFamily("800"),
+    color: "#0F172A",
+    textDecorationLine: "underline",
+    marginBottom: 4,
+  },
+  stepHeaderTitle: {
+    fontSize: 18,
+    fontFamily: getFontFamily("700"),
     marginBottom: 6,
   },
   stepDescription: {
-    fontSize: 11,
+    fontSize: 11.5,
     fontFamily: getFontFamily("400"),
-    fontWeight: "400",
-    color: "#000",
-    lineHeight: 18,
+    color: "#475569",
+    lineHeight: 17,
   },
-  stepHighlight: {
+  highlightPink: {
+    fontFamily: getFontFamily("700"),
     color: "#D229FF",
-    fontWeight: "600",
   },
-  templateBadge: {
-    position: "absolute",
-    bottom: 8,
-    left: 8,
-    right: 8,
-    backgroundColor: "rgba(255,255,255,0.72)",
-    borderRadius: 4,
-    padding: 4,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
-    backdropFilter: "blur(1.8px)",
-    zIndex: 10,
+  bigTryButtonContainer: {
+    alignSelf: "center",
+    borderRadius: 12,
+    overflow: "hidden",
+    marginTop: 8,
+    shadowColor: "#D229FF",
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 3,
   },
-  templateBadgeText: {
-    fontSize: 9,
-    fontFamily: getFontFamily("500"),
-    fontWeight: "500",
-    color: "#000",
-    borderWidth: 0.5,
-    borderColor: "#000",
-    borderRadius: 2,
-    paddingHorizontal: 4,
-    paddingVertical: 2,
-  },
-  templateBadgeLabel: {
-    fontSize: 9,
-    fontFamily: getFontFamily("400"),
-    fontWeight: "400",
-    color: "#000",
-  },
-  downloadBadge: {
-    position: "absolute",
-    bottom: 8,
-    left: 8,
-    right: 8,
-    backgroundColor: "rgba(255,255,255,0.72)",
-    borderRadius: 1.5,
-    padding: 4,
-    flexDirection: "row",
+  bigTryGradient: {
+    paddingVertical: 12,
+    paddingHorizontal: 40,
     alignItems: "center",
     justifyContent: "center",
-    backdropFilter: "blur(1.8px)",
   },
-  downloadIcon: {
-    fontSize: 9,
+  bigTryButtonText: {
+    fontSize: 16,
+    fontFamily: getFontFamily("700"),
+    color: "#FFFFFF",
   },
-  gallerySection: {
+  transformationsSection: {
     width: CONTENT_WIDTH,
-    marginHorizontal: 16,
-    marginBottom: 20,
-    alignItems: "center",
+    alignSelf: "center",
+    marginBottom: 44,
   },
-  viewMoreText: {
-    fontSize: 15,
+  sectionHeadingTitle: {
+    fontSize: 24,
+    fontFamily: getFontFamily("800"),
+    textAlign: "center",
+    marginBottom: 6,
+  },
+  sectionSubtitle: {
+    fontSize: 14,
+    fontFamily: getFontFamily("400"),
+    color: "#475569",
+    textAlign: "center",
+    lineHeight: 20,
+    paddingHorizontal: 12,
+    marginBottom: 20,
+  },
+  gridContainer: {
+    gap: 12,
+  },
+  gridRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+  },
+  gridCard: {
+    width: (CONTENT_WIDTH - 12) / 2,
+    height: 170,
+    borderRadius: 16,
+    overflow: "hidden",
+    backgroundColor: "#F1F5F9",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.08,
+    shadowRadius: 6,
+    elevation: 2,
+  },
+  gridImage: {
+    width: "100%",
+    height: "100%",
+  },
+  trustedSection: {
+    width: CONTENT_WIDTH,
+    alignSelf: "center",
+    marginBottom: 24,
+  },
+  proCardsContainer: {
+    paddingRight: 16,
+    gap: 16,
+  },
+  proCard: {
+    width: 280,
+    backgroundColor: "#FFFFFF",
+    borderRadius: 18,
+  },
+  proCardInner: {
+    width: "100%",
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+    overflow: "hidden",
+  },
+  proCardImage: {
+    width: "100%",
+    height: 140,
+  },
+  proCardContent: {
+    padding: 16,
+  },
+  proCardTitle: {
+    fontSize: 16,
+    fontFamily: getFontFamily("700"),
+    color: "#04001F",
+    marginBottom: 6,
+  },
+  proCardDesc: {
+    fontSize: 12,
+    fontFamily: getFontFamily("400"),
+    color: "#64748B",
+    lineHeight: 18,
+    marginBottom: 12,
+  },
+  proCardStats: {
+    alignSelf: "flex-start",
+    backgroundColor: "#F3E8FF",
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  proCardStatsText: {
+    fontSize: 11,
     fontFamily: getFontFamily("600"),
-    fontWeight: "600",
+    color: "#7C3AED",
+  },
+  blogsSection: {
+    width: CONTENT_WIDTH,
+    alignSelf: "center",
+    marginBottom: 32,
+  },
+  blogsContainer: {
+    paddingRight: 16,
+    gap: 14,
+  },
+  blogsViewAllButton: {
+    alignSelf: "center",
+    marginTop: 20,
+    borderRadius: 999,
+    overflow: "hidden",
+  },
+  blogsViewAllGradient: {
+    paddingHorizontal: 28,
+    paddingVertical: 13,
+  },
+  blogsViewAllText: {
+    fontSize: 14,
+    fontFamily: getFontFamily("700"),
+    color: "#FFFFFF",
   },
 });

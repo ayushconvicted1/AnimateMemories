@@ -7,26 +7,36 @@ import {
   Image,
   Dimensions,
   ScrollView,
+  FlatList,
   ActivityIndicator,
   Alert,
   Platform,
+  PanResponder,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import * as ImagePicker from "expo-image-picker";
 import { Video, ResizeMode } from "expo-av";
 import ScreenWrapper from "@/components/ui/ScreenWrapper";
 import { GradientText } from "@/components/ui/GradientText";
 import FullScreenVideoViewer from "@/components/ui/FullScreenVideoViewer";
+import GeneratingModal from "@/components/ui/GeneratingModal";
+import SavedToast from "@/components/ui/SavedToast";
+import DurationSlider from "@/components/ui/DurationSlider";
 import UploadIcon from "@/components/images/UploadIcon";
 import SurpriseMeIcon from "@/components/images/SurpriseMeIcon";
 import GenerateIcon from "@/components/images/GenerateIcon";
 import GenerateCreditIcon from "@/components/images/GenerateCreditIcon";
+import SearchIcon from "@/components/images/SearchIcon";
+import EditIcon from "@/components/images/EditIcon";
 import { useAuth as useAuthContext } from "@/contexts/AuthContext";
 import { useAuth } from "@clerk/clerk-expo";
 import { api } from "@/services/api";
-import { Linking } from "react-native";
-import { useLocalSearchParams } from "expo-router";
+import { downloadToDevice } from "@/lib/download";
+import { useLocalSearchParams, router } from "expo-router";
+import { useTour } from "@/contexts/TourContext";
+import TourStepWrapper from "@/components/tour/TourStepWrapper";
+import { getFontFamily } from "@/constants/Fonts";
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
 const CONTENT_WIDTH = SCREEN_WIDTH - 32;
@@ -34,6 +44,14 @@ const CONTENT_WIDTH = SCREEN_WIDTH - 32;
 // API base URL for template images
 const API_BASE_URL =
   process.env.EXPO_PUBLIC_API_BASE_URL || "https://www.animatememories.com";
+
+const formatImageUrl = (url?: string) => {
+  if (!url) return "";
+  if (url.startsWith("http://") || url.startsWith("https://") || url.startsWith("data:")) {
+    return url;
+  }
+  return `${API_BASE_URL}${url.startsWith("/") ? "" : "/"}${url}`;
+};
 
 const promptExamples = [
   "slowly turns head left and right, blinks softly, gentle smile",
@@ -43,10 +61,74 @@ const promptExamples = [
   "playful dancing with shoulder movements, happy facial expressions",
 ];
 
+const VIDEO_MODELS = [
+  {
+    id: "kling-v2-1",
+    name: "⚡ Kling v2.1",
+    badge: "Default",
+    desc: "Fast, realistic motion & face preservation",
+    minDuration: 4,
+    maxDuration: 10,
+    allowedDurations: [5, 10],
+    supportedResolutions: ["720p", "1080p"],
+    costPerSecond: 0.05,
+    creditsPerSecond: { "720p": 1.2, "1080p": 2.25 },
+  },
+  {
+    id: "seedance-2-fast",
+    name: "🚀 Seedance 2.0 Fast",
+    badge: "Quick",
+    desc: "High detail & smooth motion",
+    minDuration: 4,
+    maxDuration: 10,
+    supportedResolutions: ["720p"],
+    costPerSecond: 0.08,
+    creditsPerSecond: { "720p": 2.0 },
+  },
+  {
+    id: "seedance-2",
+    name: "✨ Seedance 2.0 Premium",
+    badge: "Pro",
+    desc: "Ultra-cinematic motion quality",
+    minDuration: 4,
+    maxDuration: 10,
+    supportedResolutions: ["720p", "1080p"],
+    costPerSecond: 0.15,
+    creditsPerSecond: { "720p": 3.0, "1080p": 5.0 },
+  },
+];
+
+function calculateCreditCost(modelId: string, quality: string, duration: number, featureCosts?: any) {
+  const model = VIDEO_MODELS.find((m) => m.id === modelId);
+  const dur = Number(duration) || 5;
+  if (!model) return 3;
+
+  if (featureCosts) {
+    const key = `model_${modelId.replace(/-/g, "_")}_${quality}`;
+    if (featureCosts[key] !== undefined && featureCosts[key] !== null) {
+      return Math.ceil(Number(featureCosts[key]) * dur);
+    }
+  }
+
+  if (model.creditsPerSecond) {
+    const perSec = (model.creditsPerSecond as any)[quality] || Object.values(model.creditsPerSecond)[0];
+    if (perSec) return Math.ceil(perSec * dur);
+  }
+
+  const costPerSec = model.costPerSecond || 0.05;
+  const totalCost = costPerSec * dur;
+  const targetRevenue = totalCost * 4;
+  return Math.ceil(targetRevenue / 0.16);
+}
+
 export default function AnimateScreen() {
   const { user } = useAuthContext();
   const { getToken } = useAuth();
+  const { currentStep, isActive, nextStep, endTour } = useTour();
   const params = useLocalSearchParams();
+  const mainScrollViewRef = useRef<ScrollView>(null);
+  const [templatesLayoutY, setTemplatesLayoutY] = useState(0);
+
   // Default to animate tool and jump scare template
   const [selectedTool, setSelectedTool] = useState<
     "restore" | "animate" | "enhance" | null
@@ -55,25 +137,222 @@ export default function AnimateScreen() {
     "A person in costume suddenly lunges forward with a spooky expression, arms extended as if to grab the viewer."
   );
   const [uploadedImage, setUploadedImage] = useState<string | null>(null);
+
+  const hasAutoScrolledRef = useRef(false);
+  const isActiveRef = useRef(isActive);
+  const currentStepRef = useRef(currentStep);
+  const uploadedImageRef = useRef(uploadedImage);
+  const templatesLayoutYRef = useRef(templatesLayoutY);
+
+  useEffect(() => {
+    isActiveRef.current = isActive;
+    currentStepRef.current = currentStep;
+    uploadedImageRef.current = uploadedImage;
+    templatesLayoutYRef.current = templatesLayoutY;
+  }, [isActive, currentStep, uploadedImage, templatesLayoutY]);
+
+  useEffect(() => {
+    if (currentStep !== 2) {
+      hasAutoScrolledRef.current = false;
+    }
+  }, [currentStep]);
+
+  const triggerAutoScrollToTemplates = useCallback(() => {
+    if (
+      isActiveRef.current &&
+      currentStepRef.current === 2 &&
+      uploadedImageRef.current &&
+      !hasAutoScrolledRef.current
+    ) {
+      hasAutoScrolledRef.current = true;
+      mainScrollViewRef.current?.scrollTo({
+        y: Math.max(0, (templatesLayoutYRef.current || 680) - 40),
+        animated: true,
+      });
+      setTimeout(() => {
+        nextStep();
+      }, 400); // Wait for scroll animation to complete
+    }
+  }, [nextStep]);
+
+  const panResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponderCapture: () => false,
+      onMoveShouldSetPanResponderCapture: (_, gestureState) => {
+        const isSwipe = Math.abs(gestureState.dx) > 5 || Math.abs(gestureState.dy) > 5;
+        return (
+          isActiveRef.current &&
+          currentStepRef.current === 2 &&
+          !!uploadedImageRef.current &&
+          isSwipe
+        );
+      },
+      onPanResponderGrant: () => {
+        triggerAutoScrollToTemplates();
+      },
+      onPanResponderMove: () => {
+        triggerAutoScrollToTemplates();
+      },
+    })
+  ).current;
   const [restoredImage, setRestoredImage] = useState<string | null>(null);
   const [animatedVideo, setAnimatedVideo] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const isSubmittingRef = useRef(false);
   const [uploading, setUploading] = useState(false);
   const [userCredits, setUserCredits] = useState<number>(0);
+  const [isSurpriseLoading, setIsSurpriseLoading] = useState<boolean>(false);
+  const [uploadHighlighted, setUploadHighlighted] = useState<boolean>(false);
+  const [surpriseSubject, setSurpriseSubject] = useState<string>("");
   const [selectedTemplate, setSelectedTemplate] = useState<string | null>(
     "jump-scare"
   );
+  const [activeTabMode, setActiveTabMode] = useState<"template" | "custom">("template");
   const [enhanceOptions, setEnhanceOptions] = useState({
     upscale: true,
     faceEnhance: false,
     colorize: false,
   });
   const [showFullScreenVideo, setShowFullScreenVideo] = useState(false);
+  // Real progress (0-100) reported by the backend for the animate tool
+  const [genProgress, setGenProgress] = useState<number | null>(null);
+  const [downloading, setDownloading] = useState(false);
+  const [savedToast, setSavedToast] = useState<{
+    title: string;
+    path: string | null;
+  } | null>(null);
   const [hasProcessedInitialImage, setHasProcessedInitialImage] = useState(false);
   const [isPreviewPlaying, setIsPreviewPlaying] = useState(false);
   const previewVideoRef = useRef<Video>(null);
   const [featureCosts, setFeatureCosts] = useState<any>(null);
-  const [selectedQuality, setSelectedQuality] = useState<"480p" | "720p" | "1080p">("480p");
+  const [selectedQuality, setSelectedQuality] = useState<"480p" | "720p" | "1080p">("720p");
+  const [selectedModel, setSelectedModel] = useState<string>("kling-v2-1");
+  const [selectedDuration, setSelectedDuration] = useState<number>(5);
+  const [selectedAspectRatio, setSelectedAspectRatio] = useState<"vertical" | "horizontal" | "square">("vertical");
+
+  const [categories, setCategories] = useState<any[]>([]);
+  const [selectedCategory, setSelectedCategory] = useState<string>("all");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [animationTemplates, setAnimationTemplates] = useState<any[]>([]);
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const ITEMS_PER_PAGE = 6;
+
+  const isCategoryMatch = useCallback((template: any, targetCategoryVal: string) => {
+    if (!targetCategoryVal || targetCategoryVal.toLowerCase() === "all") return true;
+    const selLower = targetCategoryVal.toLowerCase();
+
+    const tCat = (template.category || "").toString().toLowerCase();
+    const tCatId = (template.categoryId || "").toString().toLowerCase();
+
+    if (tCat === selLower || tCatId === selLower) return true;
+
+    const catObj = categories.find(
+      (c) => (c.slug || c.name || c.id || "").toString().toLowerCase() === selLower
+    );
+
+    if (catObj) {
+      const slug = (catObj.slug || "").toString().toLowerCase();
+      const name = (catObj.name || "").toString().toLowerCase();
+      const id = (catObj.id || "").toString().toLowerCase();
+      return tCat === slug || tCat === name || tCatId === id || tCatId === slug;
+    }
+
+    return false;
+  }, [categories]);
+
+  const categoryPillsScrollRef = useRef<ScrollView>(null);
+
+  const allCatList = useMemo(() => [
+    { id: "all", name: "All", slug: "all" },
+    ...categories
+  ], [categories]);
+
+  const handleCategoryPillPress = useCallback((catValue: string) => {
+    setSelectedCategory(catValue);
+    setCurrentPage(1);
+  }, []);
+
+  const handleSearchChange = useCallback((text: string) => {
+    setSearchQuery(text);
+    setCurrentPage(1);
+  }, []);
+
+  const filteredTemplates = useMemo(() => {
+    let result = animationTemplates.filter((t) => isCategoryMatch(t, selectedCategory));
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      result = result.filter(
+        (t) =>
+          t.name?.toLowerCase().includes(q) ||
+          t.prompt?.toLowerCase().includes(q) ||
+          t.category?.toLowerCase().includes(q)
+      );
+    }
+    return result;
+  }, [animationTemplates, selectedCategory, searchQuery, isCategoryMatch]);
+
+  const allItems = useMemo(() => {
+    return filteredTemplates;
+  }, [filteredTemplates]);
+
+  const totalPages = useMemo(() => {
+    return Math.max(1, Math.ceil(allItems.length / ITEMS_PER_PAGE));
+  }, [allItems]);
+
+  const currentPageItems = useMemo(() => {
+    const startIdx = (currentPage - 1) * ITEMS_PER_PAGE;
+    return allItems.slice(startIdx, startIdx + ITEMS_PER_PAGE);
+  }, [allItems, currentPage]);
+
+  const currentModel = VIDEO_MODELS.find((m) => m.id === selectedModel) || VIDEO_MODELS[0];
+
+  // Auto-advance from Step 1 to Step 2 upon entering Animate screen during tour
+  useEffect(() => {
+    if (isActive && currentStep === 1) {
+      nextStep();
+    }
+  }, [isActive, currentStep, nextStep]);
+
+  // Auto-scroll to templates section when onboarding tour reaches Step 3 or 4
+  useEffect(() => {
+    if (isActive && currentStep === 3) {
+      const targetY = Math.max(0, (templatesLayoutYRef.current || templatesLayoutY || 680) - 40);
+      mainScrollViewRef.current?.scrollTo({ y: targetY, animated: true });
+      const t1 = setTimeout(() => {
+        mainScrollViewRef.current?.scrollTo({ y: targetY, animated: true });
+      }, 50);
+      const t2 = setTimeout(() => {
+        mainScrollViewRef.current?.scrollTo({ y: targetY, animated: true });
+      }, 250);
+      return () => {
+        clearTimeout(t1);
+        clearTimeout(t2);
+      };
+    } else if (isActive && currentStep === 4) {
+      mainScrollViewRef.current?.scrollToEnd({ animated: true });
+      const t1 = setTimeout(() => {
+        mainScrollViewRef.current?.scrollToEnd({ animated: true });
+      }, 100);
+      return () => clearTimeout(t1);
+    }
+  }, [isActive, currentStep, templatesLayoutY]);
+
+  // Auto-clamp duration and adjust quality when model changes
+  useEffect(() => {
+    if (currentModel) {
+      if (currentModel.allowedDurations && !currentModel.allowedDurations.includes(selectedDuration)) {
+        setSelectedDuration(currentModel.allowedDurations[0]);
+      } else if (selectedDuration < currentModel.minDuration) {
+        setSelectedDuration(currentModel.minDuration);
+      } else if (selectedDuration > currentModel.maxDuration) {
+        setSelectedDuration(currentModel.maxDuration);
+      }
+
+      if (!currentModel.supportedResolutions.includes(selectedQuality as any)) {
+        setSelectedQuality(currentModel.supportedResolutions[0] as any);
+      }
+    }
+  }, [selectedModel]);
 
   useEffect(() => {
     const fetchCosts = async () => {
@@ -89,13 +368,13 @@ export default function AnimateScreen() {
     const fetchTemplates = async () => {
       try {
         const response = await api.getVideoPresets();
-        if (response && response.presets) {
-          setAnimationTemplates(response.presets);
-          
-          // Select the first template if none is selected
-          if (!selectedTemplate && response.presets.length > 0) {
-            setSelectedTemplate(response.presets[0].slug || response.presets[0].id);
-            setCustomPrompt(response.presets[0].prompt || "");
+        const presetsList = response?.result || response?.presets || (Array.isArray(response) ? response : []);
+        if (presetsList.length > 0) {
+          setAnimationTemplates(presetsList);
+
+          if (!selectedTemplate) {
+            setSelectedTemplate(presetsList[0].slug || presetsList[0].id);
+            setCustomPrompt(presetsList[0].prompt || "");
           }
         }
       } catch (error) {
@@ -103,10 +382,19 @@ export default function AnimateScreen() {
       }
     };
     fetchTemplates();
+
+    const fetchCategories = async () => {
+      try {
+        const response = await api.getTemplateCategories();
+        if (response && response.result) {
+          setCategories(response.result);
+        }
+      } catch (error) {
+        console.error("Failed to fetch categories", error);
+      }
+    };
+    fetchCategories();
   }, []);
-
-  const [animationTemplates, setAnimationTemplates] = useState<any[]>([]);
-
 
   const fetchUserCredits = useCallback(async () => {
     if (!user) return;
@@ -117,7 +405,7 @@ export default function AnimateScreen() {
     } catch (error) {
       console.error("Error fetching credits:", error);
     }
-  }, [user]); // Removed getToken from dependencies
+  }, [user]);
 
   useEffect(() => {
     if (user) {
@@ -125,40 +413,21 @@ export default function AnimateScreen() {
     }
   }, [user, fetchUserCredits]);
 
-  // Ensure preview video is paused when fullscreen opens
-  useEffect(() => {
-    if (showFullScreenVideo && previewVideoRef.current) {
-      previewVideoRef.current.pauseAsync().then(() => {
-        setIsPreviewPlaying(false);
-      }).catch(console.error);
-    }
-  }, [showFullScreenVideo]);
-
-  // Ensure preview video stays paused when it's not supposed to play
-  useEffect(() => {
-    if (!showFullScreenVideo && previewVideoRef.current && isPreviewPlaying) {
-      previewVideoRef.current.pauseAsync().then(() => {
-        setIsPreviewPlaying(false);
-      }).catch(console.error);
-    }
-  }, [showFullScreenVideo, isPreviewPlaying]);
-
-  // Handle incoming image from route params (from home screen or onboarding)
+  // Handle incoming image from route params
   useEffect(() => {
     const imageUri = params.imageUri as string | undefined;
-    
+
     if (imageUri && !hasProcessedInitialImage && user) {
       setHasProcessedInitialImage(true);
-      // Decode the URI if it's encoded
       const decodedUri = decodeURIComponent(imageUri);
       uploadImageFromUri(decodedUri);
     }
-  }, [params.imageUri, hasProcessedInitialImage, user, uploadImageFromUri]);
+  }, [params.imageUri, hasProcessedInitialImage, user]);
 
-  // Handle incoming template ID from route params (from home screen)
+  // Handle incoming template ID from route params
   useEffect(() => {
     const templateId = params.templateId as string | undefined;
-    
+
     if (templateId && animationTemplates.length > 0) {
       const template = animationTemplates.find((t) => (t.slug || t.id) === templateId);
       if (template) {
@@ -186,7 +455,7 @@ export default function AnimateScreen() {
   // Helper function to upload image from URI
   const uploadImageFromUri = useCallback(async (imageUri: string) => {
     if (!imageUri) return;
-    
+
     setUploading(true);
     try {
       const token = await getToken();
@@ -197,8 +466,7 @@ export default function AnimateScreen() {
       setUploadedImage(cloudinaryUrl);
       setRestoredImage(null);
       setAnimatedVideo(null);
-      
-      // Auto-select first template if available
+
       if (animationTemplates && animationTemplates.length > 0) {
         setSelectedTemplate(animationTemplates[0].slug || animationTemplates[0].id);
         setCustomPrompt(animationTemplates[0].prompt || "");
@@ -208,12 +476,12 @@ export default function AnimateScreen() {
       Alert.alert(
         "Upload Error",
         uploadError.message ||
-          "Failed to upload image. Please check your internet connection and try again."
+        "Failed to upload image. Please check your internet connection and try again."
       );
     } finally {
       setUploading(false);
     }
-  }, [getToken]);
+  }, [getToken, animationTemplates, currentStep, nextStep]);
 
   const pickImage = async () => {
     try {
@@ -226,12 +494,7 @@ export default function AnimateScreen() {
         quality: 0.8,
       });
 
-      if (result.canceled) {
-        return;
-      }
-
-      if (!result.assets || !result.assets[0]) {
-        Alert.alert("Error", "No image selected.");
+      if (result.canceled || !result.assets || !result.assets[0]) {
         return;
       }
 
@@ -242,7 +505,6 @@ export default function AnimateScreen() {
         throw new Error("Image URI is missing");
       }
 
-      // Use the helper function to upload
       await uploadImageFromUri(imageUri);
     } catch (error: any) {
       console.error("Error picking image:", error);
@@ -254,19 +516,94 @@ export default function AnimateScreen() {
     }
   };
 
-  const handleSurpriseMe = () => {
-    const randomPrompt =
-      promptExamples[Math.floor(Math.random() * promptExamples.length)];
-    setCustomPrompt(randomPrompt);
-    setSelectedTemplate(null);
+  const handleSurpriseMe = async () => {
+    if (!uploadedImage) {
+      setUploadHighlighted(true);
+      mainScrollViewRef.current?.scrollTo({ y: 0, animated: true });
+      Alert.alert(
+        "Upload Required",
+        "Please upload a photo first so AI can detect the subject and generate a custom prompt for you!",
+        [
+          { text: "Cancel", style: "cancel" },
+          { text: "Upload Photo", onPress: () => pickImage() },
+        ]
+      );
+      setTimeout(() => {
+        pickImage();
+      }, 350);
+      setTimeout(() => setUploadHighlighted(false), 4500);
+      return;
+    }
+
+    if (!user) {
+      Alert.alert("Sign In Required", "Please sign in to use Surprise Me.");
+      return;
+    }
+
+    const userEmail =
+      user?.primaryEmailAddress?.emailAddress ||
+      user?.emailAddresses?.[0]?.emailAddress;
+
+    if (!userEmail) {
+      Alert.alert("Error", "Unable to get user email.");
+      return;
+    }
+
+    if (userCredits < 1) {
+      Alert.alert(
+        "Insufficient Credits",
+        `You need at least 1 credit to use Surprise Me. You currently have ${userCredits} credit(s).`,
+        [
+          { text: "Cancel", style: "cancel" },
+          { text: "Buy Credits", onPress: () => router.push("/(tabs)/credit") },
+        ]
+      );
+      return;
+    }
+
+    setIsSurpriseLoading(true);
+    setSurpriseSubject("");
+
+    try {
+      const token = await getToken();
+      const res = await api.generateSurprisePrompt(uploadedImage, userEmail, token);
+
+      if (res?.success && res?.prompt) {
+        setCustomPrompt(res.prompt);
+        setActiveTabMode("custom");
+        setSelectedTemplate(null);
+
+        if (res.subject) {
+          setSurpriseSubject(res.subject);
+        }
+
+        if (typeof res.remainingCredits === "number") {
+          setUserCredits(res.remainingCredits);
+        } else {
+          setUserCredits((prev) => Math.max(0, prev - 1));
+        }
+      } else {
+        throw new Error(res?.error || "Failed to generate AI prompt");
+      }
+    } catch (error: any) {
+      console.error("Error generating surprise prompt:", error);
+      Alert.alert(
+        "Surprise Me Error",
+        error.message || "Failed to generate AI prompt. Please try again."
+      );
+    } finally {
+      setIsSurpriseLoading(false);
+    }
   };
 
-  const handleTemplateSelect = (template: (typeof animationTemplates)[0]) => {
-    setSelectedTemplate(template.id);
-    setCustomPrompt(template.prompt);
+  const handleReset = () => {
+    setUploadedImage(null);
+    setRestoredImage(null);
+    setAnimatedVideo(null);
   };
 
   const handleRestore = async () => {
+    if (loading || isSubmittingRef.current) return;
     if (!uploadedImage) {
       Alert.alert("No Image", "Please upload an image first.");
       return;
@@ -285,23 +622,23 @@ export default function AnimateScreen() {
       return;
     }
 
-    const requiredCredits = featureCosts?.restore_image || 1;
-
-    if (userCredits < requiredCredits) {
+    const cost = featureCosts?.restore_photo || 1;
+    if (userCredits < cost) {
       Alert.alert(
         "Insufficient Credits",
-        `You need at least ${requiredCredits} credits to restore images. Please purchase more credits to continue.`
+        `You need at least ${cost} credit(s) to restore images. You currently have ${userCredits} credit(s).`
       );
       return;
     }
 
+    isSubmittingRef.current = true;
     setLoading(true);
     try {
       const token = await getToken();
       const result = await api.restoreImage(uploadedImage, userEmail, token);
       setRestoredImage(result.result);
       await fetchUserCredits();
-      Alert.alert("Success", "Image restored successfully!");
+      Alert.alert("Success", "Photo restored successfully!");
     } catch (error: any) {
       console.error("Error restoring image:", error);
       Alert.alert(
@@ -310,10 +647,12 @@ export default function AnimateScreen() {
       );
     } finally {
       setLoading(false);
+      isSubmittingRef.current = false;
     }
   };
 
   const handleEnhance = async () => {
+    if (loading || isSubmittingRef.current) return;
     if (!uploadedImage) {
       Alert.alert("No Image", "Please upload an image first.");
       return;
@@ -350,11 +689,12 @@ export default function AnimateScreen() {
       return;
     }
 
+    isSubmittingRef.current = true;
     setLoading(true);
     try {
       const token = await getToken();
       const result = await api.enhanceImage(uploadedImage, userEmail, enhanceOptions, token);
-      setRestoredImage(result.result); // Using restoredImage state to show image output
+      setRestoredImage(result.result);
       await fetchUserCredits();
       Alert.alert("Success", "Image enhanced successfully!");
     } catch (error: any) {
@@ -365,10 +705,15 @@ export default function AnimateScreen() {
       );
     } finally {
       setLoading(false);
+      isSubmittingRef.current = false;
     }
   };
 
   const handleAnimate = async () => {
+    if (loading || isSubmittingRef.current) return;
+    if (isActive && currentStep === 4) {
+      endTour();
+    }
     if (!uploadedImage) {
       Alert.alert("No Image", "Please upload an image first.");
       return;
@@ -387,64 +732,80 @@ export default function AnimateScreen() {
       return;
     }
 
-    // Check credits - cost depends on selected quality tier
-    const qualityCostKeys: Record<string, string> = { "480p": "animate_photo", "720p": "animate_photo_hd", "1080p": "animate_photo_uhd" };
-    const qualityDefaults: Record<string, number> = { "480p": 3, "720p": 5, "1080p": 8 };
-    const requiredCredits = featureCosts?.[qualityCostKeys[selectedQuality]] || qualityDefaults[selectedQuality];
+    let prompt = customPrompt;
+    if (selectedTemplate) {
+      const template = animationTemplates.find(
+        (t) => (t.slug || t.id) === selectedTemplate
+      );
+      if (template) {
+        prompt = template.prompt;
+      }
+    }
+
+    const requiredCredits = calculateCreditCost(selectedModel, selectedQuality, selectedDuration, featureCosts);
     if (userCredits < requiredCredits) {
       Alert.alert(
         "Insufficient Credits",
-        `You need at least ${requiredCredits} credits to animate images at ${selectedQuality}. Please purchase more credits to continue.`
+        `You need at least ${requiredCredits} credit(s) to animate images. You currently have ${userCredits} credit(s).`,
+        [
+          { text: "Cancel", style: "cancel" },
+          { text: "Buy Credits", onPress: () => router.push("/(tabs)/credit") },
+        ]
       );
       return;
     }
 
+    isSubmittingRef.current = true;
     setLoading(true);
+    setGenProgress(null);
     try {
       const token = await getToken();
       const imageToAnimate = restoredImage || uploadedImage;
-      const prompt =
-        customPrompt ||
-        "Two people see each other, smile warmly, and share a gentle, affectionate hug.";
-      const result = await api.animatePhoto(
+
+      // Start the async prediction and poll its real progress
+      const startResult = await api.startAnimatePhoto(
         imageToAnimate,
         userEmail,
         prompt,
-        10,
+        selectedDuration,
         token,
-        selectedQuality
+        selectedQuality,
+        selectedModel,
+        selectedAspectRatio
       );
-      setAnimatedVideo(result.result);
+      const predictionId = startResult?.predictionId;
+      if (!predictionId) {
+        throw new Error(
+          startResult?.error || "Failed to start video generation."
+        );
+      }
+
+      const result = await pollAnimationStatus(
+        predictionId,
+        userEmail,
+        startResult?.creditCost || 0
+      );
+      setGenProgress(100);
+      setAnimatedVideo(result);
       await fetchUserCredits();
-      // Don't auto-open fullscreen - let user tap to open
     } catch (error: any) {
       console.error("Error animating image:", error);
+      await fetchUserCredits(); // Credits may have been refunded on failure
       Alert.alert(
         "Error",
         error.message || "Failed to animate image. Please try again."
       );
     } finally {
       setLoading(false);
+      isSubmittingRef.current = false;
+      setGenProgress(null);
     }
   };
 
-  const handleReset = () => {
-    setUploadedImage(null);
-    setRestoredImage(null);
-    setAnimatedVideo(null);
-    setShowFullScreenVideo(false);
-    // Reset to defaults: animate tool and warm hug template
-    setSelectedTool("animate");
-    setCustomPrompt(
-      "Two people see each other, smile warmly, and share a gentle, affectionate hug."
-    );
-    setSelectedTemplate("warm-hug");
-    setEnhanceOptions({ upscale: true, faceEnhance: false, colorize: false });
-    setSelectedQuality("480p");
-  };
-
   const getCreditCost = () => {
-    if (selectedTool === "restore") return featureCosts?.restore_image || 1;
+    if (selectedTool === "restore") {
+      return featureCosts?.restore_photo || 1;
+    }
     if (selectedTool === "enhance") {
       let cost = 0;
       if (enhanceOptions.upscale) cost += featureCosts?.enhance_upscale || 1;
@@ -453,159 +814,402 @@ export default function AnimateScreen() {
       return cost;
     }
     if (selectedTool === "animate") {
-      const qKeys: Record<string, string> = { "480p": "animate_photo", "720p": "animate_photo_hd", "1080p": "animate_photo_uhd" };
-      const qDefaults: Record<string, number> = { "480p": 3, "720p": 5, "1080p": 8 };
-      return featureCosts?.[qKeys[selectedQuality]] || qDefaults[selectedQuality];
+      return calculateCreditCost(selectedModel, selectedQuality, selectedDuration, featureCosts);
     }
     return 0;
   };
 
   const handleDownload = async (url: string, type: "image" | "video") => {
+    setDownloading(true);
     try {
-      const canOpen = await Linking.canOpenURL(url);
-      if (canOpen) {
-        await Linking.openURL(url);
-      } else {
-        Alert.alert("Error", "Unable to open download link.");
+      // Download and save straight to the device (no share sheet).
+      const result = await downloadToDevice({
+        url,
+        fileName:
+          type === "video" ? "animatememories-video" : "animatememories-image",
+        mimeType: type === "video" ? "video/mp4" : "image/jpeg",
+      });
+      if (result.saved) {
+        setSavedToast({
+          title: type === "video" ? "Video saved!" : "Image saved!",
+          path: result.path,
+        });
+      } else if (!result.fallbackUsed) {
+        Alert.alert(
+          "Download failed",
+          "Couldn't save the file to your device. Please try again."
+        );
       }
     } catch (error: any) {
       console.error("Error downloading:", error);
       Alert.alert("Error", "Failed to download file. Please try again.");
+    } finally {
+      setDownloading(false);
     }
   };
 
+  // Poll the backend until the video prediction finishes, feeding real
+  // progress back into the generating modal.
+  const pollAnimationStatus = useCallback(
+    async (predictionId: string, userEmail: string, creditCost: number) => {
+      const POLL_INTERVAL = 3000;
+      const MAX_DURATION = 10 * 60 * 1000; // 10 minutes
+      const startedAt = Date.now();
+
+      while (Date.now() - startedAt < MAX_DURATION) {
+        let data: any;
+        try {
+          data = await api.getAnimationStatus(
+            predictionId,
+            userEmail,
+            creditCost
+          );
+        } catch (err: any) {
+          // Transient network error — keep polling
+          await new Promise((r) => setTimeout(r, POLL_INTERVAL));
+          continue;
+        }
+
+        const status = data?.status;
+        if (status === "succeeded") {
+          return data.result;
+        }
+        if (status === "failed" || status === "error") {
+          throw new Error(
+            data?.error || "Video generation failed. Please try again."
+          );
+        }
+
+        // Real progress from Replicate (null → modal uses its estimate)
+        if (typeof data?.progress === "number") {
+          setGenProgress(data.progress);
+        }
+        await new Promise((r) => setTimeout(r, POLL_INTERVAL));
+      }
+
+      throw new Error("Video generation timed out. Please try again.");
+    },
+    []
+  );
+
   return (
-    <ScreenWrapper 
-      addBottomPadding={true}
-      creditsText={userCredits !== null ? `${userCredits} Credits` : "Loading..."}
-    >
-      <ScrollView showsVerticalScrollIndicator={false}>
+    <View style={{ flex: 1 }} {...panResponder.panHandlers}>
+      <ScreenWrapper
+        addBottomPadding={true}
+        creditsText={userCredits !== null ? `${userCredits} Credits` : "Loading..."}
+        useCustomScroll={true}
+      >
+        <ScrollView
+          ref={mainScrollViewRef}
+          style={{ flex: 1 }}
+          contentContainerStyle={{ paddingBottom: 30 }}
+          showsVerticalScrollIndicator={false}
+          scrollEnabled={true}
+          onScrollBeginDrag={triggerAutoScrollToTemplates}
+          onScroll={(e) => {
+            if (e.nativeEvent?.contentOffset?.y > 0) {
+              triggerAutoScrollToTemplates();
+            }
+          }}
+          scrollEventThrottle={16}
+        >
         {/* Title Section */}
         <View style={styles.titleSection}>
           <GradientText style={styles.mainTitle}>
             Choose Your AI Tool
           </GradientText>
-          <Text style={styles.subtitle}>
-            Restore old photos or bring them to life with animation
+          <Text style={styles.mainSubtitle}>
+            View and manage all your{" "}
+            <Text style={styles.mainSubtitleHighlight}>
+              AI-generated masterpieces
+            </Text>{" "}
+            in one place
           </Text>
         </View>
 
-        {/* AI Tool Selection */}
-        <View style={styles.toolSelection}>
-          <TouchableOpacity
-            style={[
-              styles.toolCard,
-              selectedTool === "restore" && styles.toolCardSelected,
-            ]}
-            onPress={() => {
-              setSelectedTool("restore");
-              setAnimatedVideo(null);
-            }}
-          >
-            <View style={styles.toolImageContainer}>
-              <Image
-                source={{
-                  uri: "https://images.unsplash.com/photo-1518568814500-bf0f8d125f46",
-                }}
-                style={styles.toolImage}
-                resizeMode="cover"
-              />
-            </View>
-            <Text style={styles.toolLabel}>Restore Photo</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[
-              styles.toolCard,
-              selectedTool === "animate" && styles.toolCardSelected,
-            ]}
-            onPress={() => setSelectedTool("animate")}
-          >
-            <View style={styles.toolImageContainer}>
-              <Image
-                source={{
-                  uri: "https://images.unsplash.com/photo-1518568814500-bf0f8d125f46",
-                }}
-                style={styles.toolImage}
-                resizeMode="cover"
-              />
-            </View>
-            <Text style={styles.toolLabel}>Animate Photo</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[
-              styles.toolCard,
-              selectedTool === "enhance" && styles.toolCardSelected,
-            ]}
-            onPress={() => setSelectedTool("enhance")}
-          >
-            <View style={styles.toolImageContainer}>
-              <Image
-                source={{
-                  uri: "https://images.unsplash.com/photo-1518568814500-bf0f8d125f46",
-                }}
-                style={styles.toolImage}
-                resizeMode="cover"
-              />
-            </View>
-            <Text style={styles.toolLabel}>Enhance Photo</Text>
-          </TouchableOpacity>
+        {/* AI Tool Selection - Clean Text Buttons */}
+        <View style={styles.toolSelection} pointerEvents={isActive ? "none" : "auto"}>
+          {[
+            { id: "restore" as const, label: "Restore", onPress: () => { setSelectedTool("restore"); setAnimatedVideo(null); } },
+            { id: "animate" as const, label: "Animate", onPress: () => setSelectedTool("animate") },
+            { id: "enhance" as const, label: "Enhance", onPress: () => setSelectedTool("enhance") },
+          ].map((tool) => {
+            const isSelected = selectedTool === tool.id;
+            return (
+              <TouchableOpacity
+                key={tool.id}
+                style={[styles.toolTextCard, isSelected && styles.toolTextCardSelected]}
+                onPress={tool.onPress}
+                activeOpacity={0.75}
+              >
+                {isSelected ? (
+                  <LinearGradient
+                    colors={["#38BDF8", "#A855F7", "#D229FF"]}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 0 }}
+                    style={styles.toolTextGradient}
+                  >
+                    <Text style={styles.toolTextLabelSelected}>{tool.label}</Text>
+                  </LinearGradient>
+                ) : (
+                  <View style={styles.toolTextInner}>
+                    <Text style={styles.toolTextLabel}>{tool.label}</Text>
+                  </View>
+                )}
+              </TouchableOpacity>
+            );
+          })}
         </View>
 
-        {/* Upload Section */}
-        <View style={styles.uploadSection}>
-          <View style={styles.uploadContainer}>
-            <LinearGradient
-              colors={["rgba(40, 212, 250, 0.15)", "rgba(210, 41, 255, 0.15)"]}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={styles.uploadGradient}
+        {/* Main Card Container (Elevated Region) matching UI Screenshot */}
+        <View style={styles.mainCardContainer}>
+          {/* Upload Section */}
+          <TourStepWrapper
+            step={2}
+            overrideTitle={uploadedImage ? "Image Uploaded! 🎉" : undefined}
+            overrideDesc={
+              uploadedImage
+                ? "Awesome! Now swipe down to explore AI animation templates."
+                : undefined
+            }
+          >
+            <View
+              style={[
+                styles.uploadSectionCard,
+                uploadHighlighted && { borderWidth: 2, borderColor: "#D229FF", borderRadius: 20 },
+              ]}
+              pointerEvents={isActive && currentStep !== 2 ? "none" : "auto"}
             >
-              <TouchableOpacity
-                style={styles.uploadArea}
-                onPress={pickImage}
-                disabled={uploading}
-              >
-              {uploading ? (
-                <ActivityIndicator size="large" color="#28D4FA" />
-              ) : uploadedImage ? (
-                <View style={styles.uploadedImageContainer}>
-                  <Image
-                    source={{ uri: uploadedImage }}
-                    style={styles.uploadedImage}
-                    resizeMode="contain"
-                  />
-                  <TouchableOpacity
-                    style={styles.removeButton}
-                    onPress={(e) => {
-                      e.stopPropagation();
-                      handleReset();
-                    }}
-                  >
-                    <Text style={styles.removeButtonText}>×</Text>
-                  </TouchableOpacity>
-                </View>
-              ) : (
-                <View style={styles.uploadContent}>
-                  <View style={styles.uploadLeftSection}>
-                    <Text style={styles.uploadTitle}>Upload a file here</Text>
-                    <View style={styles.uploadSeparator} />
-                    <Text style={styles.uploadSubtext}>
-                      Supported formats: jpg, jpeg, png{"\n"}Max file size:
-                      10MB. Min resolution 300x300px.
-                    </Text>
-                  </View>
-                  <View style={styles.uploadRightSection}>
-                    <View style={styles.uploadIconContainer}>
-                      <UploadIcon color={"#fff"} />
-                    </View>
-                  </View>
+              {uploadHighlighted && (
+                <View style={{ backgroundColor: "#F59E0B", paddingVertical: 8, paddingHorizontal: 12, borderRadius: 12, marginBottom: 8, flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+                  <Text style={{ color: "#FFFFFF", fontSize: 12, fontFamily: getFontFamily("700") }}>⚠️ Please Upload an Image First!</Text>
+                  <Text style={{ color: "#FFFFFF", fontSize: 10, fontFamily: getFontFamily("700"), textTransform: "uppercase" }}>Required</Text>
                 </View>
               )}
-              </TouchableOpacity>
-            </LinearGradient>
-          </View>
+              <LinearGradient
+                colors={["#E0F2FE", "#EFF6FF", "#F3E8FF"]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.uploadCardGradient}
+              >
+                <TouchableOpacity
+                  style={styles.uploadTouchArea}
+                  onPress={pickImage}
+                  disabled={uploading}
+                  activeOpacity={0.75}
+                >
+                  {uploading ? (
+                    <ActivityIndicator size="large" color="#28D4FA" />
+                  ) : uploadedImage ? (
+                    <View style={styles.uploadedImageContainer}>
+                      <Image
+                        source={{ uri: uploadedImage }}
+                        style={styles.uploadedImage}
+                        resizeMode="contain"
+                      />
+                      <TouchableOpacity
+                        style={styles.removeButton}
+                        onPress={(e) => {
+                          e.stopPropagation();
+                          handleReset();
+                        }}
+                      >
+                        <Text style={styles.removeButtonText}>×</Text>
+                      </TouchableOpacity>
+                    </View>
+                  ) : (
+                    <View style={styles.uploadCardContent}>
+                      <View style={styles.uploadCardLeft}>
+                        <Text style={styles.uploadCardTitle}>Upload a file here</Text>
+                        <View style={styles.uploadTitleUnderline} />
+                        <Text style={styles.uploadCardSubtext}>
+                          Supported formats: jpg, jpeg, png{"\n"}
+                          Max file size: 10MB. Min resolution 300x300px.
+                        </Text>
+                      </View>
+                      <View style={styles.uploadCardRight}>
+                        <View style={styles.uploadIconShadowWrapper}>
+                          <UploadIcon color="#FFFFFF" width={44} height={48} />
+                        </View>
+                      </View>
+                    </View>
+                  )}
+                </TouchableOpacity>
+              </LinearGradient>
+            </View>
+          </TourStepWrapper>
+
+          {/* AI Model, Duration, Quality, and Aspect Ratio inside Elevated Region */}
+          {selectedTool === "animate" && !animatedVideo && (
+            <View style={styles.elevatedControlsSection} pointerEvents={isActive ? "none" : "auto"}>
+              {/* AI Generation Model */}
+              <View style={styles.qualitySectionCard}>
+                <Text style={styles.qualitySectionTitleCard}>AI Model</Text>
+                <View style={styles.modelChipsRow}>
+                  {VIDEO_MODELS.map((model) => {
+                    const isSelected = selectedModel === model.id;
+                    const creditCost = calculateCreditCost(model.id, selectedQuality, selectedDuration, featureCosts);
+                    return (
+                      <TouchableOpacity
+                        key={model.id}
+                        style={[styles.modelChip, isSelected && styles.modelChipSelected]}
+                        onPress={() => setSelectedModel(model.id)}
+                        activeOpacity={0.75}
+                      >
+                        {isSelected ? (
+                          <LinearGradient
+                            colors={["#38BDF8", "#A855F7", "#D229FF"]}
+                            start={{ x: 0, y: 0 }}
+                            end={{ x: 1, y: 0 }}
+                            style={styles.modelChipGradient}
+                          >
+                            <Text style={styles.modelChipNameSelected}>{model.name}</Text>
+                            <Text style={styles.modelChipCostSelected}>{creditCost}cr</Text>
+                          </LinearGradient>
+                        ) : (
+                          <View style={styles.modelChipInner}>
+                            <Text style={styles.modelChipName}>{model.name}</Text>
+                            <Text style={styles.modelChipCost}>{creditCost}cr</Text>
+                          </View>
+                        )}
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </View>
+
+              {/* Duration Slider */}
+              <View style={styles.qualitySectionCard}>
+                <DurationSlider
+                  value={selectedDuration}
+                  min={currentModel?.minDuration || 4}
+                  max={currentModel?.maxDuration || 10}
+                  step={1}
+                  allowedValues={currentModel?.allowedDurations}
+                  onValueChange={(val) => setSelectedDuration(val)}
+                />
+              </View>
+
+              {/* Output Quality */}
+              <View style={styles.qualitySectionCard}>
+                <Text style={styles.qualitySectionTitleCard}>Output Quality</Text>
+                <View style={styles.qualityRow}>
+                  {(["480p", "720p", "1080p"] as const).map((res) => {
+                    if (!currentModel?.supportedResolutions.includes(res)) return null;
+                    const cost = calculateCreditCost(selectedModel, res, selectedDuration, featureCosts);
+                    const label = res === "480p" ? "SD" : res === "720p" ? "HD" : "FHD";
+                    const isSelected = selectedQuality === res;
+                    const gradientColors: [string, string] =
+                      res === "480p" ? ["#28A4F0", "#38BDF8"] :
+                        res === "720p" ? ["#A855F7", "#EC4899"] :
+                          ["#F59E0B", "#F97316"];
+                    return (
+                      <TouchableOpacity
+                        key={res}
+                        style={[styles.qualityCard, isSelected && styles.qualityCardSelected]}
+                        onPress={() => setSelectedQuality(res)}
+                        activeOpacity={0.75}
+                      >
+                        {isSelected ? (
+                          <LinearGradient
+                            colors={gradientColors}
+                            start={{ x: 0, y: 0 }}
+                            end={{ x: 1, y: 1 }}
+                            style={styles.qualityCardGradient}
+                          >
+                            <Text style={[styles.qualityLabel, { color: "#fff" }]}>{label}</Text>
+                            <Text style={[styles.qualityRes, { color: "rgba(255,255,255,0.8)" }]}>{res}</Text>
+                            <Text style={[styles.qualityCredits, { color: "rgba(255,255,255,0.9)" }]}>{cost}cr</Text>
+                          </LinearGradient>
+                        ) : (
+                          <View style={styles.qualityCardInner}>
+                            <Text style={styles.qualityLabel}>{label}</Text>
+                            <Text style={styles.qualityRes}>{res}</Text>
+                            <Text style={styles.qualityCredits}>{cost}cr</Text>
+                          </View>
+                        )}
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </View>
+
+              {/* Output Aspect Ratio */}
+              <View style={styles.qualitySectionCard}>
+                <Text style={styles.qualitySectionTitleCard}>Output Aspect Ratio</Text>
+                <View style={styles.aspectRatioRow}>
+                  {[
+                    { id: "vertical" as const, label: "Vertical", ratio: "9:16", iconWidth: 12, iconHeight: 18 },
+                    { id: "horizontal" as const, label: "Horizontal", ratio: "16:9", iconWidth: 18, iconHeight: 12 },
+                    { id: "square" as const, label: "Square", ratio: "1:1", iconWidth: 14, iconHeight: 14 },
+                  ].map((item) => {
+                    const isSelected = selectedAspectRatio === item.id;
+                    return (
+                      <TouchableOpacity
+                        key={item.id}
+                        style={[styles.aspectRatioCard, isSelected && styles.aspectRatioCardSelected]}
+                        onPress={() => setSelectedAspectRatio(item.id)}
+                        activeOpacity={0.75}
+                      >
+                        <View style={styles.aspectRatioCardInner}>
+                          <View
+                            style={[
+                              styles.aspectRatioIcon,
+                              { width: item.iconWidth, height: item.iconHeight, borderColor: isSelected ? "#D229FF" : "#64748B" },
+                            ]}
+                          />
+                          <Text style={[styles.aspectRatioLabel, isSelected && styles.aspectRatioLabelSelected]}>
+                            {item.label}
+                          </Text>
+                          <Text style={[styles.aspectRatioSub, isSelected && styles.aspectRatioSubSelected]}>
+                            ({item.ratio})
+                          </Text>
+                        </View>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </View>
+            </View>
+          )}
+
+          {/* Enhancement Options Section (Only for Enhance tool) */}
+          {selectedTool === "enhance" && !restoredImage && (
+            <View style={{ marginTop: 12 }}>
+              <Text style={{ fontSize: 13, fontFamily: getFontFamily("700"), color: "#6b7280", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 8 }}>Enhancement Options</Text>
+              <View style={{ gap: 8 }}>
+                <TouchableOpacity
+                  style={{ flexDirection: "row", alignItems: "center" }}
+                  onPress={() => setEnhanceOptions(prev => ({ ...prev, upscale: !prev.upscale }))}
+                >
+                  <View style={{ width: 22, height: 22, borderRadius: 4, borderWidth: 2, borderColor: enhanceOptions.upscale ? "#28D4FA" : "#94A3B8", backgroundColor: enhanceOptions.upscale ? "#28D4FA" : "transparent", marginRight: 10, alignItems: "center", justifyContent: "center" }}>
+                    {enhanceOptions.upscale && <Text style={{ color: "#fff", fontSize: 14, fontFamily: getFontFamily("700") }}>✓</Text>}
+                  </View>
+                  <Text style={{ fontSize: 14, color: "#1E293B", fontFamily: getFontFamily("400") }}>{`4K Upscale (${featureCosts?.enhance_upscale || 1} credit${(featureCosts?.enhance_upscale || 1) !== 1 ? 's' : ''})`}</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={{ flexDirection: "row", alignItems: "center" }}
+                  onPress={() => setEnhanceOptions(prev => ({ ...prev, faceEnhance: !prev.faceEnhance }))}
+                >
+                  <View style={{ width: 22, height: 22, borderRadius: 4, borderWidth: 2, borderColor: enhanceOptions.faceEnhance ? "#28D4FA" : "#94A3B8", backgroundColor: enhanceOptions.faceEnhance ? "#28D4FA" : "transparent", marginRight: 10, alignItems: "center", justifyContent: "center" }}>
+                    {enhanceOptions.faceEnhance && <Text style={{ color: "#fff", fontSize: 14, fontFamily: getFontFamily("700") }}>✓</Text>}
+                  </View>
+                  <Text style={{ fontSize: 14, color: "#1E293B", fontFamily: getFontFamily("400") }}>{`Face Enhancement (${featureCosts?.enhance_face || 1} credit${(featureCosts?.enhance_face || 1) !== 1 ? 's' : ''})`}</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={{ flexDirection: "row", alignItems: "center" }}
+                  onPress={() => setEnhanceOptions(prev => ({ ...prev, colorize: !prev.colorize }))}
+                >
+                  <View style={{ width: 22, height: 22, borderRadius: 4, borderWidth: 2, borderColor: enhanceOptions.colorize ? "#28D4FA" : "#94A3B8", backgroundColor: enhanceOptions.colorize ? "#28D4FA" : "transparent", marginRight: 10, alignItems: "center", justifyContent: "center" }}>
+                    {enhanceOptions.colorize && <Text style={{ color: "#fff", fontSize: 14, fontFamily: getFontFamily("700") }}>✓</Text>}
+                  </View>
+                  <Text style={{ fontSize: 14, color: "#1E293B", fontFamily: getFontFamily("400") }}>{`Colorize B&W (${featureCosts?.enhance_colorize || 1} credit${(featureCosts?.enhance_colorize || 1) !== 1 ? 's' : ''})`}</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
         </View>
 
         {/* Result Display */}
@@ -621,7 +1225,6 @@ export default function AnimateScreen() {
                 <TouchableOpacity
                   activeOpacity={0.9}
                   onPress={() => {
-                    // Pause preview video before opening fullscreen
                     previewVideoRef.current?.pauseAsync().then(() => {
                       setIsPreviewPlaying(false);
                       setShowFullScreenVideo(true);
@@ -636,9 +1239,11 @@ export default function AnimateScreen() {
                     useNativeControls={false}
                     resizeMode={ResizeMode.CONTAIN}
                     isLooping
-                    shouldPlay={false}
-                    onPlaybackStatusUpdate={(status) => {
-                      setIsPreviewPlaying(status.isPlaying);
+                    shouldPlay={true}
+                    onPlaybackStatusUpdate={(status: any) => {
+                      if (status && "isPlaying" in status) {
+                        setIsPreviewPlaying(status.isPlaying);
+                      }
                     }}
                   />
                 </TouchableOpacity>
@@ -666,7 +1271,11 @@ export default function AnimateScreen() {
                   end={{ x: 1, y: 0 }}
                   style={styles.downloadButtonGradient}
                 >
-                  <Text style={styles.downloadButtonText}>Download</Text>
+                  {downloading ? (
+                    <ActivityIndicator size="small" color="#fff" />
+                  ) : (
+                    <Text style={styles.downloadButtonText}>Download</Text>
+                  )}
                 </LinearGradient>
               </TouchableOpacity>
               <TouchableOpacity
@@ -679,255 +1288,14 @@ export default function AnimateScreen() {
           </View>
         )}
 
-        {/* Custom Animation Section - Only show for animate */}
-        {selectedTool === "animate" && !animatedVideo && (
-          <View style={styles.customSection}>
-            <View style={styles.customHeader}>
-              <Text style={styles.customTitle}>Custom Animation</Text>
-              <View style={styles.optionalTagWrapper}>
-                <LinearGradient
-                  colors={["#28D4FA", "#D229FF"]}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 0 }}
-                  style={styles.optionalTagGradient}
-                >
-                  <View style={styles.optionalTag}>
-                    <GradientText style={styles.optionalText}>
-                      Optional
-                    </GradientText>
-                  </View>
-                </LinearGradient>
-              </View>
-            </View>
-            <View style={styles.customInputContainer}>
-              <TextInput
-                style={styles.customInput}
-                placeholder="Describe how you want your photo to move...(e.g gentle smile, slow blink, head turn)"
-                placeholderTextColor="#9d9d9d"
-                multiline
-                numberOfLines={4}
-                value={customPrompt}
-                onChangeText={(text) => {
-                  setCustomPrompt(text);
-                  setSelectedTemplate(null);
-                }}
-              />
-              <TouchableOpacity
-                style={styles.surpriseButton}
-                onPress={handleSurpriseMe}
-              >
-                <LinearGradient
-                  colors={["#28D4FA", "#D229FF"]}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 0 }}
-                  style={styles.surpriseButtonGradient}
-                >
-                  <SurpriseMeIcon />
-                  <Text style={styles.surpriseText}>Surprise Me</Text>
-                </LinearGradient>
-              </TouchableOpacity>
-            </View>
-          </View>
-        )}
-
-        {/* Enhance Options Section - Only show for enhance */}
-        {selectedTool === "enhance" && !restoredImage && (
-          <View style={styles.customSection}>
-             <View style={styles.customHeader}>
-               <Text style={styles.customTitle}>Enhancement Options</Text>
-             </View>
-             <View style={[styles.customInputContainer, { minHeight: "auto", paddingVertical: 12 }]}>
-               <TouchableOpacity 
-                 style={{ flexDirection: "row", alignItems: "center", marginBottom: 12 }}
-                 onPress={() => setEnhanceOptions(prev => ({...prev, upscale: !prev.upscale}))}
-               >
-                 <View style={{ width: 24, height: 24, borderRadius: 4, borderWidth: 2, borderColor: enhanceOptions.upscale ? "#28D4FA" : "#9d9d9d", backgroundColor: enhanceOptions.upscale ? "#28D4FA" : "transparent", marginRight: 12, alignItems: "center", justifyContent: "center" }}>
-                   {enhanceOptions.upscale && <Text style={{ color: "#fff", fontSize: 16, fontWeight: "bold" }}>✓</Text>}
-                 </View>
-                 <Text style={{ fontSize: 16, color: "#000" }}>4K Upscale ({featureCosts?.enhance_upscale || 1} credit{(featureCosts?.enhance_upscale || 1) !== 1 ? 's' : ''})</Text>
-               </TouchableOpacity>
-
-               <TouchableOpacity 
-                 style={{ flexDirection: "row", alignItems: "center", marginBottom: 12 }}
-                 onPress={() => setEnhanceOptions(prev => ({...prev, faceEnhance: !prev.faceEnhance}))}
-               >
-                 <View style={{ width: 24, height: 24, borderRadius: 4, borderWidth: 2, borderColor: enhanceOptions.faceEnhance ? "#28D4FA" : "#9d9d9d", backgroundColor: enhanceOptions.faceEnhance ? "#28D4FA" : "transparent", marginRight: 12, alignItems: "center", justifyContent: "center" }}>
-                   {enhanceOptions.faceEnhance && <Text style={{ color: "#fff", fontSize: 16, fontWeight: "bold" }}>✓</Text>}
-                 </View>
-                 <Text style={{ fontSize: 16, color: "#000" }}>Face Enhancement ({featureCosts?.enhance_face || 1} credit{(featureCosts?.enhance_face || 1) !== 1 ? 's' : ''})</Text>
-               </TouchableOpacity>
-
-               <TouchableOpacity 
-                 style={{ flexDirection: "row", alignItems: "center" }}
-                 onPress={() => setEnhanceOptions(prev => ({...prev, colorize: !prev.colorize}))}
-               >
-                 <View style={{ width: 24, height: 24, borderRadius: 4, borderWidth: 2, borderColor: enhanceOptions.colorize ? "#28D4FA" : "#9d9d9d", backgroundColor: enhanceOptions.colorize ? "#28D4FA" : "transparent", marginRight: 12, alignItems: "center", justifyContent: "center" }}>
-                   {enhanceOptions.colorize && <Text style={{ color: "#fff", fontSize: 16, fontWeight: "bold" }}>✓</Text>}
-                 </View>
-                 <Text style={{ fontSize: 16, color: "#000" }}>Colorize B&W ({featureCosts?.enhance_colorize || 1} credit{(featureCosts?.enhance_colorize || 1) !== 1 ? 's' : ''})</Text>
-               </TouchableOpacity>
-             </View>
-          </View>
-        )}
-
-        {/* Quality Selection - Only show for animate */}
-        {selectedTool === "animate" && !animatedVideo && (
-          <View style={styles.qualitySection}>
-            <Text style={styles.qualitySectionTitle}>Output Quality</Text>
-            <View style={styles.qualityRow}>
-              {/* Standard 480p */}
-              <TouchableOpacity
-                style={[
-                  styles.qualityCard,
-                  selectedQuality === "480p" && styles.qualityCardSelected,
-                ]}
-                onPress={() => setSelectedQuality("480p")}
-              >
-                {selectedQuality === "480p" ? (
-                  <LinearGradient
-                    colors={["#28A4F0", "#38BDF8"]}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 1 }}
-                    style={styles.qualityCardGradient}
-                  >
-                    <Text style={[styles.qualityLabel, { color: "#fff" }]}>Standard</Text>
-                    <Text style={[styles.qualityRes, { color: "rgba(255,255,255,0.8)" }]}>480p</Text>
-                    <Text style={[styles.qualityCredits, { color: "rgba(255,255,255,0.9)" }]}>
-                      {featureCosts?.animate_photo || 3} credits
-                    </Text>
-                  </LinearGradient>
-                ) : (
-                  <View style={styles.qualityCardInner}>
-                    <Text style={styles.qualityLabel}>Standard</Text>
-                    <Text style={styles.qualityRes}>480p</Text>
-                    <Text style={styles.qualityCredits}>
-                      {featureCosts?.animate_photo || 3} credits
-                    </Text>
-                  </View>
-                )}
-              </TouchableOpacity>
-              {/* HD 720p */}
-              <TouchableOpacity
-                style={[
-                  styles.qualityCard,
-                  selectedQuality === "720p" && styles.qualityCardSelected,
-                ]}
-                onPress={() => setSelectedQuality("720p")}
-              >
-                {selectedQuality === "720p" ? (
-                  <LinearGradient
-                    colors={["#A855F7", "#EC4899"]}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 1 }}
-                    style={styles.qualityCardGradient}
-                  >
-                    <Text style={[styles.qualityLabel, { color: "#fff" }]}>HD</Text>
-                    <Text style={[styles.qualityRes, { color: "rgba(255,255,255,0.8)" }]}>720p</Text>
-                    <Text style={[styles.qualityCredits, { color: "rgba(255,255,255,0.9)" }]}>
-                      {featureCosts?.animate_photo_hd || 5} credits
-                    </Text>
-                  </LinearGradient>
-                ) : (
-                  <View style={styles.qualityCardInner}>
-                    <Text style={styles.qualityLabel}>HD</Text>
-                    <Text style={styles.qualityRes}>720p</Text>
-                    <Text style={styles.qualityCredits}>
-                      {featureCosts?.animate_photo_hd || 5} credits
-                    </Text>
-                  </View>
-                )}
-              </TouchableOpacity>
-              {/* Ultra HD 1080p */}
-              <TouchableOpacity
-                style={[
-                  styles.qualityCard,
-                  selectedQuality === "1080p" && styles.qualityCardSelected,
-                ]}
-                onPress={() => setSelectedQuality("1080p")}
-              >
-                {selectedQuality === "1080p" ? (
-                  <LinearGradient
-                    colors={["#F59E0B", "#F97316"]}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 1 }}
-                    style={styles.qualityCardGradient}
-                  >
-                    <Text style={[styles.qualityLabel, { color: "#fff" }]}>Ultra HD</Text>
-                    <Text style={[styles.qualityRes, { color: "rgba(255,255,255,0.8)" }]}>1080p</Text>
-                    <Text style={[styles.qualityCredits, { color: "rgba(255,255,255,0.9)" }]}>
-                      {featureCosts?.animate_photo_uhd || 8} credits
-                    </Text>
-                  </LinearGradient>
-                ) : (
-                  <View style={styles.qualityCardInner}>
-                    <Text style={styles.qualityLabel}>Ultra HD</Text>
-                    <Text style={styles.qualityRes}>1080p</Text>
-                    <Text style={styles.qualityCredits}>
-                      {featureCosts?.animate_photo_uhd || 8} credits
-                    </Text>
-                  </View>
-                )}
-              </TouchableOpacity>
-            </View>
-          </View>
-        )}
-
-        {/* Generate Button */}
-        {!animatedVideo && !restoredImage && (
-          <View style={styles.generateSection}>
-            <TouchableOpacity
-              style={styles.generateButton}
-              onPress={
-                selectedTool === "restore" 
-                  ? handleRestore 
-                  : selectedTool === "enhance"
-                    ? handleEnhance
-                    : handleAnimate
-              }
-              disabled={loading || !uploadedImage || !selectedTool}
-            >
-              <LinearGradient
-                colors={["#28D4FA", "#D229FF"]}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 0 }}
-                style={styles.generateButtonGradient}
-              >
-                {loading ? (
-                  <ActivityIndicator color="#fff" />
-                ) : (
-                  <>
-                    <GenerateIcon />
-                    <Text style={styles.generateText}>Generate</Text>
-                    <View style={styles.creditsBadge}>
-                      <GenerateCreditIcon />
-                      <Text style={styles.creditsBadgeText}>
-                        {getCreditCost()} Credits
-                      </Text>
-                    </View>
-                  </>
-                )}
-              </LinearGradient>
-            </TouchableOpacity>
-          </View>
-        )}
-
-        {/* Current Credits */}
-        <View style={styles.creditsDisplay}>
-          <GenerateCreditIcon color={"#28D4FA"} height={12} width={12} />
-          <GradientText style={styles.creditsText}>
-            Current Credits: {userCredits}
-          </GradientText>
-        </View>
-
         {/* Full Screen Video Modal */}
         <FullScreenVideoViewer
           visible={showFullScreenVideo}
           videoUri={animatedVideo}
           onClose={() => {
             setShowFullScreenVideo(false);
-            // Ensure preview video is paused when closing fullscreen
-            previewVideoRef.current?.pauseAsync().then(() => {
-              setIsPreviewPlaying(false);
+            previewVideoRef.current?.playAsync().then(() => {
+              setIsPreviewPlaying(true);
             }).catch(console.error);
           }}
           onDownload={() => {
@@ -935,201 +1303,676 @@ export default function AnimateScreen() {
               handleDownload(animatedVideo, "video");
             }
           }}
+          isDownloading={downloading}
+          toastTitle={savedToast?.title ?? null}
+          toastPath={savedToast?.path ?? null}
+          onToastHide={() => setSavedToast(null)}
           onPreviewVideoPause={() => {
-            // Pause preview video when fullscreen opens
             previewVideoRef.current?.pauseAsync().then(() => {
               setIsPreviewPlaying(false);
             }).catch(console.error);
           }}
         />
 
+        {/* Generating Modal */}
+        <GeneratingModal
+          visible={loading}
+          tool={selectedTool}
+          photo={uploadedImage}
+          progress={selectedTool === "animate" ? genProgress : null}
+        />
+
         {/* Animation Templates - Only show for animate */}
         {selectedTool === "animate" && !animatedVideo && (
-          <View style={styles.templatesSection}>
-            <Text style={styles.templatesTitle}>Animation Templates</Text>
-            <Text style={styles.templatesSubtitle}>
-              Choose a template or create custom animation
-            </Text>
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              style={styles.templatesScroll}
+          <TourStepWrapper step={3} tooltipPosition="none">
+            <View
+              style={styles.templatesSection}
+              onLayout={(e) => setTemplatesLayoutY(e.nativeEvent.layout.y)}
             >
-              <TouchableOpacity
-                style={[
-                  styles.templateCard,
-                  selectedTemplate === null && styles.templateCardSelected,
-                ]}
-                onPress={() => {
-                  setSelectedTemplate(null);
-                  setCustomPrompt("");
-                }}
-              >
-                <View
-                  style={[
-                    styles.templateImageContainer,
-                    styles.customTemplateContainer,
-                  ]}
-                >
-                  <Text style={styles.customTemplateText}>+</Text>
-                </View>
-                <Text style={styles.templateName}>Custom</Text>
-              </TouchableOpacity>
-              {animationTemplates.map((template) => {
-                const templateId = template.slug || template.id;
-                return (
+              {/* Header matching UI screenshot */}
+              <View style={styles.templatesHeaderStack}>
+                <Text style={styles.templatesTitle}>Animation Templates</Text>
+                <Text style={styles.templatesSubtitle}>
+                  Choose a template or create custom animation
+                </Text>
+              </View>
+
+              {/* 2-Tab Segmented Switcher Bar Slider */}
+              <View style={{ flexDirection: "row", backgroundColor: "#E2E8F0", borderRadius: 14, padding: 3, marginBottom: 16 }}>
                 <TouchableOpacity
-                  key={templateId}
-                  style={[
-                    styles.templateCard,
-                    selectedTemplate === templateId &&
-                      styles.templateCardSelected,
-                  ]}
-                  onPress={() => handleTemplateSelect(template)}
+                  style={{ flex: 1, paddingVertical: 10, alignItems: "center", borderRadius: 12, overflow: "hidden" }}
+                  onPress={() => {
+                    setActiveTabMode("template");
+                    if (selectedTemplate === null && animationTemplates.length > 0) {
+                      setSelectedTemplate(animationTemplates[0].slug || animationTemplates[0].id);
+                      setCustomPrompt(animationTemplates[0].prompt || "");
+                    }
+                  }}
+                  activeOpacity={0.8}
                 >
-                  <View style={styles.templateImageContainer}>
-                    <Image
-                      source={{ uri: template.thumbnailUrl || template.image }}
-                      style={styles.templateImage}
-                      resizeMode="cover"
+                  {activeTabMode === "template" ? (
+                    <LinearGradient
+                      colors={["#38BDF8", "#A855F7", "#D229FF"]}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 0 }}
+                      style={{ ...StyleSheet.absoluteFillObject, justifyContent: "center", alignItems: "center" }}
+                    >
+                      <Text style={{ color: "#FFFFFF", fontSize: 13, fontFamily: getFontFamily("700"), textTransform: "uppercase" }}>
+                        PICK A TEMPLATE
+                      </Text>
+                    </LinearGradient>
+                  ) : (
+                    <Text style={{ color: "#475569", fontSize: 13, fontFamily: getFontFamily("700"), textTransform: "uppercase" }}>
+                      PICK A TEMPLATE
+                    </Text>
+                  )}
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={{ flex: 1, paddingVertical: 10, alignItems: "center", borderRadius: 12, overflow: "hidden" }}
+                  onPress={() => {
+                    setActiveTabMode("custom");
+                    setSelectedTemplate(null);
+                  }}
+                  activeOpacity={0.8}
+                >
+                  {activeTabMode === "custom" ? (
+                    <LinearGradient
+                      colors={["#38BDF8", "#A855F7", "#D229FF"]}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 0 }}
+                      style={{ ...StyleSheet.absoluteFillObject, justifyContent: "center", alignItems: "center" }}
+                    >
+                      <Text style={{ color: "#FFFFFF", fontSize: 13, fontFamily: getFontFamily("700"), textTransform: "uppercase" }}>
+                        CUSTOM PROMPT ✨
+                      </Text>
+                    </LinearGradient>
+                  ) : (
+                    <Text style={{ color: "#475569", fontSize: 13, fontFamily: getFontFamily("700"), textTransform: "uppercase" }}>
+                      CUSTOM PROMPT ✨
+                    </Text>
+                  )}
+                </TouchableOpacity>
+              </View>
+
+              {/* TAB 1: PICK A TEMPLATE CONTENT */}
+              {activeTabMode === "template" && (
+                <>
+                  {/* Search */}
+                  <View style={styles.templateSearchWrapper} pointerEvents={isActive && currentStep !== 3 ? "none" : "auto"}>
+                    <SearchIcon color="#a78bfa" width={18} height={18} strokeWidth={2} />
+                    <TextInput
+                      style={styles.templateSearchInputFull}
+                      placeholder="Search templates..."
+                      placeholderTextColor="#b0b0c0"
+                      value={searchQuery}
+                      onChangeText={handleSearchChange}
                     />
                   </View>
-                  <Text style={styles.templateName}>{template.name}</Text>
-                </TouchableOpacity>
-                );
-              })}
-            </ScrollView>
-          </View>
+
+                  {/* Category Pills */}
+                  <ScrollView
+                    ref={categoryPillsScrollRef}
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    style={styles.categoryPillsScroll}
+                    contentContainerStyle={styles.categoryPillsContainer}
+                    pointerEvents={isActive && currentStep !== 3 ? "none" : "auto"}
+                  >
+                    {allCatList.map((cat) => {
+                      const catValue = cat.slug || cat.name || cat.id;
+                      const isSelected = selectedCategory.toLowerCase() === catValue.toLowerCase();
+                      return (
+                        <TouchableOpacity
+                          key={cat.id || catValue}
+                          style={[styles.categoryPill, isSelected && styles.categoryPillSelected]}
+                          onPress={() => handleCategoryPillPress(catValue)}
+                          activeOpacity={0.75}
+                        >
+                          {isSelected ? (
+                            <LinearGradient
+                              colors={["#28D4FA", "#D229FF"]}
+                              start={{ x: 0, y: 0 }}
+                              end={{ x: 1, y: 0 }}
+                              style={styles.categoryPillGradient}
+                            >
+                              <Text style={styles.categoryPillTextSelected}>
+                                {cat.name}
+                              </Text>
+                            </LinearGradient>
+                          ) : (
+                            <Text style={styles.categoryPillText}>
+                              {cat.name}
+                            </Text>
+                          )}
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </ScrollView>
+
+                  {/* 3-column Grid for Current Page */}
+                  <View style={styles.templatesGrid} pointerEvents={isActive && currentStep !== 3 ? "none" : "auto"}>
+                    {currentPageItems.map((item: any, idx: number) => {
+                      const templateId = item.slug || item.id;
+                      const isSelected = selectedTemplate === templateId;
+                      return (
+                        <View key={templateId || idx} style={styles.templateGridItem}>
+                          <TouchableOpacity
+                            style={[
+                              styles.templateCardGrid,
+                              isSelected && styles.templateCardSelectedGrid,
+                            ]}
+                            onPress={() => {
+                              setSelectedTemplate(templateId);
+                              if (item.prompt) {
+                                setCustomPrompt(item.prompt);
+                              }
+                              if (isActive && currentStep === 3) {
+                                mainScrollViewRef.current?.scrollToEnd({ animated: true });
+                                setTimeout(() => {
+                                  if (currentStep === 3) {
+                                    nextStep();
+                                  }
+                                }, 400);
+                              }
+                            }}
+                          >
+                            <View style={styles.templateImageContainerGrid}>
+                              <Image
+                                source={{ uri: formatImageUrl(item.thumbnailUrl || item.image) }}
+                                style={styles.templateImageGrid}
+                                resizeMode="cover"
+                              />
+                            </View>
+                            {isSelected && (
+                              <View style={styles.selectedCheckBadge}>
+                                <Text style={styles.selectedCheckText}>✓</Text>
+                              </View>
+                            )}
+                          </TouchableOpacity>
+                          <Text style={styles.templateNameGrid} numberOfLines={1}>{item.name}</Text>
+                        </View>
+                      );
+                    })}
+
+                    {currentPageItems.length === 0 && (
+                      <View style={{ width: "100%", paddingVertical: 24, alignItems: "center" }}>
+                        <Text style={{ color: "#9ca3af", fontSize: 14 }}>No templates found</Text>
+                      </View>
+                    )}
+                  </View>
+
+                  {/* Pagination Controls */}
+                  {totalPages > 1 && (
+                    <View style={styles.paginationBar} pointerEvents={isActive && currentStep !== 3 ? "none" : "auto"}>
+                      <TouchableOpacity
+                        style={[styles.pageButton, currentPage === 1 && styles.pageButtonDisabled]}
+                        onPress={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
+                        disabled={currentPage === 1}
+                      >
+                        <Text style={[styles.pageButtonText, currentPage === 1 && styles.pageButtonTextDisabled]}>
+                          ‹ Previous
+                        </Text>
+                      </TouchableOpacity>
+
+                      <Text style={styles.pageIndicatorText}>
+                        Page {currentPage} of {totalPages}
+                      </Text>
+
+                      <TouchableOpacity
+                        style={[styles.pageButton, currentPage === totalPages && styles.pageButtonDisabled]}
+                        onPress={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
+                        disabled={currentPage === totalPages}
+                      >
+                        <Text style={[styles.pageButtonText, currentPage === totalPages && styles.pageButtonTextDisabled]}>
+                          Next ›
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+                  )}
+                </>
+              )}
+
+              {/* Confirmation Banner */}
+              <View style={styles.confirmationBanner} pointerEvents={isActive && currentStep !== 3 ? "none" : "auto"}>
+                <View style={styles.confirmationLeft}>
+                  <View style={styles.confirmationCheckBg}>
+                    <Text style={styles.confirmationCheck}>✓</Text>
+                  </View>
+                  <View style={styles.confirmationTextContainer}>
+                    <Text style={styles.confirmationLabel}>Template Selected</Text>
+                    <Text style={styles.confirmationValue} numberOfLines={1}>
+                      {activeTabMode === "custom" || selectedTemplate === null
+                        ? "Custom Animation Prompt"
+                        : (animationTemplates.find(t => (t.slug || t.id) === selectedTemplate)?.name || "Selected Preset")}
+                    </Text>
+                  </View>
+                </View>
+                <View style={styles.confirmedPill}>
+                  <Text style={styles.confirmedPillText}>✓ Active</Text>
+                </View>
+              </View>
+
+              {/* TAB 2: CUSTOM PROMPT CONTENT */}
+              {activeTabMode === "custom" && (
+                <View style={styles.customSectionInline} pointerEvents={isActive && currentStep !== 3 ? "none" : "auto"}>
+                  <View style={styles.customHeaderInline}>
+                    <Text style={styles.customTitleInline}>Custom Animation Prompt</Text>
+                  </View>
+
+                  {surpriseSubject !== "" && (
+                    <View style={{ backgroundColor: "#F3E8FF", borderColor: "#D8B4FE", borderWidth: 1, paddingVertical: 6, paddingHorizontal: 12, borderRadius: 10, marginBottom: 10, alignSelf: "flex-start", flexDirection: "row", alignItems: "center", gap: 4 }}>
+                      <Text style={{ fontSize: 12, fontFamily: getFontFamily("600"), color: "#6B21A8" }}>
+                        ✨ Detected Subject: <Text style={{ fontFamily: getFontFamily("700"), color: "#581C87" }}>{surpriseSubject}</Text>
+                      </Text>
+                    </View>
+                  )}
+
+                  {/* Suggestion Chips */}
+                  <View style={{ marginBottom: 10 }}>
+                    <Text style={{ fontSize: 11, fontFamily: getFontFamily("600"), color: "#64748B", marginBottom: 6, textTransform: "uppercase", letterSpacing: 0.5 }}>Prompt Ideas</Text>
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
+                      {promptExamples.map((ex, idx) => (
+                        <TouchableOpacity
+                          key={idx}
+                          style={{ backgroundColor: "#F1F5F9", borderColor: "#CBD5E1", borderWidth: 1, paddingVertical: 5, paddingHorizontal: 10, borderRadius: 14 }}
+                          onPress={() => setCustomPrompt(ex)}
+                          activeOpacity={0.75}
+                        >
+                          <Text style={{ fontSize: 11, fontFamily: getFontFamily("500"), color: "#334155" }} numberOfLines={1}>
+                            "{ex}"
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </ScrollView>
+                  </View>
+
+                  <View style={styles.customInputContainerInline}>
+                    <TextInput
+                      style={styles.customInputInline}
+                      placeholder="Describe how you want your photo to move...(e.g. gentle smile, slow blink)"
+                      placeholderTextColor="#9d9d9d"
+                      multiline
+                      numberOfLines={4}
+                      value={customPrompt}
+                      onChangeText={setCustomPrompt}
+                    />
+                    <TouchableOpacity
+                      style={[styles.surpriseButtonInline, isSurpriseLoading && { opacity: 0.7 }]}
+                      onPress={handleSurpriseMe}
+                      disabled={isSurpriseLoading}
+                    >
+                      <LinearGradient
+                        colors={["#28D4FA", "#D229FF"]}
+                        start={{ x: 0, y: 0 }}
+                        end={{ x: 1, y: 0 }}
+                        style={styles.surpriseButtonGradientInline}
+                      >
+                        {isSurpriseLoading ? (
+                          <ActivityIndicator size="small" color="#FFFFFF" />
+                        ) : (
+                          <>
+                            <SurpriseMeIcon />
+                            <Text style={styles.surpriseTextInline}>Surprise Me (1 Cr)</Text>
+                          </>
+                        )}
+                      </LinearGradient>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              )}
+
+              {/* Generate Button for Animate / Restore / Enhance - final call-to-action */}
+              {!animatedVideo && !restoredImage && (
+                <TourStepWrapper step={4} tooltipPosition="top">
+                  <View style={[styles.generateSection, { marginTop: 16, marginHorizontal: 0 }]} pointerEvents={isActive && currentStep !== 4 ? "none" : "auto"}>
+                    <TouchableOpacity
+                      style={[styles.generateButton, { opacity: (!uploadedImage || loading || uploading || isSubmittingRef.current) ? 0.6 : 1 }]}
+                      onPress={
+                        selectedTool === "restore"
+                          ? handleRestore
+                          : selectedTool === "enhance"
+                            ? handleEnhance
+                            : handleAnimate
+                      }
+                      disabled={loading || uploading || isSubmittingRef.current || !uploadedImage}
+                    >
+                      <LinearGradient
+                        colors={["#38BDF8", "#A855F7", "#D229FF"]}
+                        start={{ x: 0, y: 0 }}
+                        end={{ x: 1, y: 0 }}
+                        style={styles.generateButtonGradient}
+                      >
+                        {loading ? (
+                          <ActivityIndicator color="#fff" />
+                        ) : (
+                          <>
+                            <GenerateIcon />
+                            <Text style={styles.generateText}>Generate</Text>
+                            <View style={styles.creditsBadge}>
+                              <GenerateCreditIcon />
+                              <Text style={styles.creditsBadgeText}>
+                                {getCreditCost()} Credits
+                              </Text>
+                            </View>
+                          </>
+                        )}
+                      </LinearGradient>
+                    </TouchableOpacity>
+                    <View style={styles.creditsDisplay}>
+                      <GenerateCreditIcon color={"#38BDF8"} height={14} width={14} />
+                      <GradientText style={styles.creditsText}>
+                        {`Current Credits: ${userCredits ?? 0}`}
+                      </GradientText>
+                    </View>
+                  </View>
+                </TourStepWrapper>
+              )}
+            </View>
+          </TourStepWrapper>
         )}
       </ScrollView>
     </ScreenWrapper>
-  );
+
+    <SavedToast
+      title={savedToast?.title ?? null}
+      path={savedToast?.path ?? null}
+      onHide={() => setSavedToast(null)}
+    />
+  </View>
+);
 }
 
 const styles = StyleSheet.create({
   titleSection: {
     paddingHorizontal: 16,
-    paddingTop: 20,
-    paddingBottom: 12,
+    paddingTop: 16,
+    paddingBottom: 8,
     alignItems: "center",
   },
   mainTitle: {
     fontSize: 24,
-    fontWeight: "700",
-    marginBottom: 8,
-  },
-  subtitle: {
-    fontSize: 17,
-    fontWeight: "400",
-    color: "#000",
+    fontFamily: getFontFamily("800"),
+    color: "#0F172A",
+    marginBottom: 6,
     textAlign: "center",
-    lineHeight: 28,
   },
-  subtitleHighlight: {
-    fontWeight: "500",
+  mainSubtitle: {
+    fontSize: 14,
+    fontFamily: getFontFamily("400"),
+    color: "#334155",
+    textAlign: "center",
+    marginBottom: 16,
+    lineHeight: 20,
+  },
+  mainSubtitleHighlight: {
+    fontFamily: getFontFamily("700"),
     color: "#D229FF",
   },
   toolSelection: {
     flexDirection: "row",
     paddingHorizontal: 16,
-    gap: 12,
+    gap: 10,
     marginBottom: 20,
   },
-  toolCard: {
+  toolTextCard: {
     flex: 1,
-    borderRadius: 4,
+    borderRadius: 12,
     overflow: "hidden",
-    borderWidth: 2,
+    borderWidth: 1.5,
+    borderColor: "#E2E8F0",
+  },
+  toolTextCardSelected: {
     borderColor: "transparent",
+    shadowColor: "#D229FF",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 6,
+    elevation: 3,
   },
-  toolCardSelected: {
-    borderColor: "#D229FF",
-  },
-  toolImageContainer: {
-    width: "100%",
-    height: 155,
-    borderRadius: 4,
-    overflow: "hidden",
-    marginBottom: 8,
-  },
-  toolImage: {
-    width: "100%",
-    height: "100%",
-  },
-  toolLabel: {
-    fontSize: 14,
-    fontWeight: "700",
-    color: "#000",
-    textAlign: "center",
-    paddingTop: 12,
-  },
-  uploadSection: {
-    paddingHorizontal: 16,
-    marginBottom: 20,
-  },
-  uploadContainer: {
-    borderRadius: 7,
-    backgroundColor: "#fff",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.3,
-    shadowRadius: 17.1,
-    elevation: 5,
-    margin: 9,
-    overflow: "hidden",
-  },
-  uploadGradient: {
-    borderRadius: 7,
-    flex: 1,
-  },
-  uploadArea: {
-    borderWidth: 0.75,
-    borderColor: "#979797",
-    borderStyle: "dashed",
-    borderRadius: 7,
-    paddingTop: 20,
-    paddingHorizontal: 20,
-    paddingBottom: 20,
-    minHeight: 168,
+  toolTextGradient: {
+    paddingVertical: 12,
+    paddingHorizontal: 8,
+    alignItems: "center",
     justifyContent: "center",
-    margin: 9,
   },
-  uploadContent: {
+  toolTextInner: {
+    paddingVertical: 12,
+    paddingHorizontal: 8,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#F8FAFC",
+  },
+  toolTextLabel: {
+    fontSize: 14,
+    fontFamily: getFontFamily("700"),
+    color: "#475569",
+    textAlign: "center",
+  },
+  toolTextLabelSelected: {
+    fontSize: 14,
+    fontFamily: getFontFamily("700"),
+    color: "#FFFFFF",
+    textAlign: "center",
+  },
+  mainCardContainer: {
+    marginHorizontal: 16,
+    backgroundColor: "#FFFFFF",
+    borderRadius: 18,
+    padding: 14,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    elevation: 3,
+    marginBottom: 20,
+    borderWidth: 1,
+    borderColor: "#F1F5F9",
+  },
+  uploadSectionCard: {
+    borderRadius: 14,
+    overflow: "hidden",
+    marginBottom: 0,
+  },
+  elevatedControlsSection: {
+    marginTop: 14,
+    gap: 12,
+  },
+  qualitySectionCard: {
+    marginBottom: 4,
+  },
+  qualitySectionTitleCard: {
+    fontSize: 12,
+    fontFamily: getFontFamily("700"),
+    color: "#64748B",
+    marginBottom: 6,
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+  },
+  aspectRatioRow: {
+    flexDirection: "row",
+    gap: 8,
+  },
+  aspectRatioCard: {
+    flex: 1,
+    borderRadius: 10,
+    overflow: "hidden",
+    borderWidth: 1.5,
+    borderColor: "#E2E8F0",
+    backgroundColor: "#FFFFFF",
+  },
+  aspectRatioCardSelected: {
+    borderColor: "#D229FF",
+    backgroundColor: "#FFFFFF",
+    shadowColor: "#D229FF",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.18,
+    shadowRadius: 5,
+    elevation: 3,
+  },
+  aspectRatioCardInner: {
+    paddingVertical: 10,
+    paddingHorizontal: 4,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#FFFFFF",
+  },
+  aspectRatioIcon: {
+    borderWidth: 2,
+    borderRadius: 3,
+    marginBottom: 4,
+  },
+  aspectRatioLabel: {
+    fontSize: 11,
+    fontFamily: getFontFamily("700"),
+    color: "#334155",
+    textAlign: "center",
+  },
+  aspectRatioLabelSelected: {
+    fontSize: 11,
+    fontFamily: getFontFamily("800"),
+    color: "#D229FF",
+    textAlign: "center",
+  },
+  aspectRatioSub: {
+    fontSize: 10,
+    fontFamily: getFontFamily("500"),
+    color: "#94A3B8",
+    marginTop: 1,
+  },
+  aspectRatioSubSelected: {
+    fontSize: 10,
+    fontFamily: getFontFamily("700"),
+    color: "#C084FC",
+    marginTop: 1,
+  },
+  uploadCardGradient: {
+    borderRadius: 14,
+    padding: 16,
+  },
+  uploadTouchArea: {
+    width: "100%",
+  },
+  uploadCardContent: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    width: "100%",
   },
-  uploadRightSection: {
-    justifyContent: "center",
-    alignItems: "center",
-    alignSelf: "center",
-  },
-  uploadIconContainer: {
-    marginLeft: 16,
-  },
-  uploadLeftSection: {
+  uploadCardLeft: {
     flex: 1,
-    alignItems: "flex-start",
+    paddingRight: 12,
   },
-  uploadTitle: {
-    fontSize: 15,
-    fontWeight: "400",
-    color: "#000",
-    marginBottom: 8,
+  uploadCardTitle: {
+    fontSize: 17,
+    fontFamily: getFontFamily("700"),
+    color: "#0F172A",
+    letterSpacing: -0.2,
   },
-  uploadSeparator: {
+  uploadTitleUnderline: {
+    width: 140,
     height: 1,
-    backgroundColor: "#979797",
-    marginBottom: 6,
-    width: "85%",
+    backgroundColor: "#1E293B",
+    opacity: 0.25,
+    marginTop: 3,
+    marginBottom: 4,
+    borderRadius: 0.5,
   },
-  uploadSubtext: {
+  uploadCardSubtext: {
     fontSize: 11,
-    fontWeight: "400",
-    color: "#979797",
-    lineHeight: 18,
-    marginBottom: 18,
+    color: "#64748B",
+    lineHeight: 17,
+    fontFamily: getFontFamily("400"),
+  },
+  uploadCardRight: {
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  uploadIconShadowWrapper: {
+    shadowColor: "#0F172A",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.35,
+    shadowRadius: 8,
+    elevation: 6,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  uploadIconBadge: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: "rgba(255, 255, 255, 0.85)",
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#38BDF8",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 6,
+    elevation: 2,
+  },
+  customAnimationSection: {
+    marginTop: 4,
+  },
+  customAnimationHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 10,
+  },
+  customAnimationTitle: {
+    fontSize: 16,
+    fontFamily: getFontFamily("700"),
+    color: "#0F172A",
+  },
+  optionalBadge: {
+    borderWidth: 1,
+    borderColor: "#C084FC",
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    backgroundColor: "#FAF5FF",
+  },
+  optionalBadgeText: {
+    fontSize: 11,
+    fontFamily: getFontFamily("600"),
+    color: "#C084FC",
+  },
+  customDashedBox: {
+    borderWidth: 1.5,
+    borderColor: "#CBD5E1",
+    borderStyle: "dashed",
+    borderRadius: 12,
+    backgroundColor: "#FFFFFF",
+    padding: 12,
+    minHeight: 115,
+    position: "relative",
+  },
+  customDashedInput: {
+    fontSize: 13,
+    color: "#334155",
+    textAlignVertical: "top",
+    minHeight: 65,
+    padding: 0,
+    marginBottom: 28,
+    fontFamily: getFontFamily("400"),
+  },
+  surpriseButtonBadge: {
+    position: "absolute",
+    bottom: 10,
+    right: 10,
+    borderRadius: 8,
+    overflow: "hidden",
+  },
+  surpriseButtonGradientBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+  },
+  surpriseTextBadge: {
+    fontSize: 12,
+    fontFamily: getFontFamily("700"),
+    color: "#FFFFFF",
   },
   uploadedImageContainer: {
     width: "100%",
@@ -1139,96 +1982,24 @@ const styles = StyleSheet.create({
   uploadedImage: {
     width: "100%",
     height: "100%",
+    borderRadius: 8,
   },
   removeButton: {
     position: "absolute",
     top: 8,
     right: 8,
     backgroundColor: "rgba(0,0,0,0.6)",
-    borderRadius: 20,
-    width: 32,
-    height: 32,
-    justifyContent: "center",
+    width: 28,
+    height: 28,
+    borderRadius: 14,
     alignItems: "center",
+    justifyContent: "center",
   },
   removeButtonText: {
     color: "#fff",
-    fontSize: 20,
-    fontWeight: "bold",
-  },
-  resultSection: {
-    paddingHorizontal: 16,
-    marginBottom: 20,
-  },
-  resultTitle: {
-    fontSize: 17,
-    fontWeight: "700",
-    color: "#000",
-    textAlign: "center",
-    marginBottom: 16,
-  },
-  resultContainer: {
-    width: "100%",
-    height: 300,
-    borderRadius: 8,
-    overflow: "hidden",
-    backgroundColor: "#000",
-    marginBottom: 16,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  resultImage: {
-    width: "100%",
-    height: "100%",
-  },
-  resultVideoContainer: {
-    width: "100%",
-    height: "100%",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  resultVideo: {
-    width: "100%",
-    height: "100%",
-  },
-  resetButton: {
-    backgroundColor: "#fff",
-    borderWidth: 2,
-    borderColor: "#979797",
-    borderRadius: 7,
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-    alignSelf: "center",
-  },
-  resetButtonText: {
-    fontSize: 15,
-    fontWeight: "600",
-    color: "#000",
-  },
-  resultActions: {
-    flexDirection: "row",
-    gap: 12,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  resultActionButton: {
-    flex: 1,
-    maxWidth: 150,
-  },
-  downloadButton: {
-    borderRadius: 7,
-    overflow: "hidden",
-  },
-  downloadButtonGradient: {
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  downloadButtonText: {
-    fontSize: 15,
-    fontWeight: "600",
-    color: "#fff",
+    fontSize: 18,
+    fontFamily: getFontFamily("700"),
+    marginTop: -2,
   },
   customSection: {
     paddingHorizontal: 16,
@@ -1236,109 +2007,87 @@ const styles = StyleSheet.create({
   },
   customHeader: {
     flexDirection: "row",
-    justifyContent: "space-between",
     alignItems: "center",
+    justifyContent: "space-between",
     marginBottom: 12,
   },
   customTitle: {
-    fontSize: 17,
-    fontWeight: "600",
+    fontSize: 16,
+    fontFamily: getFontFamily("700"),
     color: "#000",
   },
-  optionalTagWrapper: {
-    borderRadius: 4.526,
-  },
-  optionalTagGradient: {
-    borderRadius: 4.526,
-    padding: 1,
-  },
-  optionalTag: {
-    backgroundColor: "#fff",
-    borderRadius: 4.526 - 1,
-    paddingHorizontal: 11.314,
-    paddingVertical: 3,
-  },
-  optionalText: {
-    fontSize: 12,
-    fontWeight: "600",
-  },
   customInputContainer: {
-    backgroundColor: "#fff",
-    borderRadius: 4,
-    borderWidth: 0.5,
-    borderColor: "#9d9d9d",
-    borderStyle: "dashed",
-    minHeight: 157,
-    padding: 16,
     position: "relative",
   },
   customInput: {
-    fontSize: 15,
-    fontWeight: "400",
+    backgroundColor: "#fff",
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+    borderRadius: 8,
+    padding: 12,
+    paddingBottom: 50,
+    fontSize: 14,
     color: "#000",
     textAlignVertical: "top",
-    minHeight: 120,
+    minHeight: 100,
+    fontFamily: getFontFamily("400"),
   },
   surpriseButton: {
     position: "absolute",
     bottom: 12,
-    right: 12,
-    borderRadius: 4,
+    left: 12,
+    borderRadius: 6,
     overflow: "hidden",
   },
   surpriseButtonGradient: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
+    gap: 6,
     paddingHorizontal: 12,
-    paddingVertical: 8,
+    paddingVertical: 6,
   },
   surpriseText: {
-    fontSize: 14,
-    fontWeight: "300",
     color: "#fff",
+    fontSize: 12,
+    fontFamily: getFontFamily("600"),
   },
   generateSection: {
     paddingHorizontal: 16,
-    marginBottom: 16,
+    marginBottom: 10,
   },
   generateButton: {
     borderRadius: 7,
     overflow: "hidden",
+    elevation: 3,
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 5,
-    width: "70%",
-    alignSelf: "center",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
   },
   generateButtonGradient: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    paddingVertical: 14,
-    paddingHorizontal: 24,
-    gap: 10,
+    gap: 8,
+    paddingVertical: 16,
   },
   generateText: {
-    fontSize: 17,
-    fontWeight: "600",
+    fontSize: 16,
+    fontFamily: getFontFamily("700"),
     color: "#fff",
   },
   creditsBadge: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "rgba(255,255,255,0.38)",
-    borderRadius: 12,
-    paddingHorizontal: 8,
-    paddingVertical: 5,
     gap: 4,
-    marginLeft: 8,
+    backgroundColor: "rgba(255,255,255,0.2)",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
   },
   creditsBadgeText: {
-    fontSize: 10,
-    fontWeight: "500",
+    fontSize: 12,
+    fontFamily: getFontFamily("600"),
     color: "#fff",
   },
   creditsDisplay: {
@@ -1346,90 +2095,121 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     paddingHorizontal: 16,
-    marginBottom: 20,
-    gap: 8,
+    marginTop: 14,
+    marginBottom: 12,
+    gap: 6,
   },
   creditsText: {
     fontSize: 14,
-    fontWeight: "500",
+    fontFamily: getFontFamily("600"),
+    color: "#1E293B",
+  },
+  resultSection: {
+    paddingHorizontal: 16,
+    marginBottom: 24,
+  },
+  resultTitle: {
+    fontSize: 20,
+    fontFamily: getFontFamily("700"),
+    color: "#000",
+    marginBottom: 16,
+    textAlign: "center",
+  },
+  resultContainer: {
+    width: "100%",
+    height: 350,
+    backgroundColor: "#000",
+    borderRadius: 12,
+    overflow: "hidden",
+    marginBottom: 16,
+  },
+  resultVideoContainer: {
+    width: "100%",
+    height: "100%",
+  },
+  resultVideo: {
+    width: "100%",
+    height: "100%",
+  },
+  resultImage: {
+    width: "100%",
+    height: "100%",
+  },
+  resultActions: {
+    flexDirection: "row",
+    gap: 12,
+  },
+  resultActionButton: {
+    flex: 1,
+  },
+  downloadButton: {
+    borderRadius: 8,
+    overflow: "hidden",
+  },
+  downloadButtonGradient: {
+    paddingVertical: 14,
+    alignItems: "center",
+  },
+  downloadButtonText: {
+    color: "#fff",
+    fontSize: 16,
+    fontFamily: getFontFamily("700"),
+  },
+  resetButton: {
+    backgroundColor: "#f3f4f6",
+    borderRadius: 8,
+    paddingVertical: 14,
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+  },
+  resetButtonText: {
+    color: "#374151",
+    fontSize: 16,
+    fontFamily: getFontFamily("600"),
   },
   templatesSection: {
     paddingHorizontal: 16,
     marginBottom: 40,
   },
   templatesTitle: {
-    fontSize: 24,
-    fontWeight: "700",
-    color: "#000",
+    fontSize: 22,
+    fontFamily: getFontFamily("800"),
+    color: "#0a0a0a",
     textAlign: "center",
-    marginBottom: 12,
+    marginBottom: 4,
+    letterSpacing: -0.3,
   },
   templatesSubtitle: {
-    fontSize: 17,
-    fontWeight: "400",
-    color: "#000",
+    fontSize: 13,
+    fontFamily: getFontFamily("500"),
+    color: "#9ca3af",
     textAlign: "center",
-    marginBottom: 20,
+    marginBottom: 16,
   },
   templatesScroll: {
     marginHorizontal: -16,
-    paddingLeft: 16,
-  },
-  templateCard: {
-    width: 93,
-    marginRight: 24,
-    alignItems: "center",
-  },
-  templateCardSelected: {
-    opacity: 0.7,
-  },
-  templateImageContainer: {
-    width: 93,
-    height: 93,
-    borderRadius: 5,
-    overflow: "hidden",
-    marginBottom: 5,
-    borderWidth: 2,
-    borderColor: "transparent",
-  },
-  customTemplateContainer: {
-    backgroundColor: "#f0f0f0",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  customTemplateText: {
-    fontSize: 28,
-    color: "#979797",
-  },
-  templateImage: {
-    width: "100%",
-    height: "100%",
-  },
-  templateName: {
-    fontSize: 13,
-    fontWeight: "400",
-    color: "#000",
-    textAlign: "center",
+    paddingHorizontal: 16,
   },
   qualitySection: {
     paddingHorizontal: 16,
-    marginBottom: 16,
+    marginBottom: 10,
   },
   qualitySectionTitle: {
-    fontSize: 16,
-    fontWeight: "700",
-    color: "#000",
-    marginBottom: 12,
+    fontSize: 13,
+    fontFamily: getFontFamily("700"),
+    color: "#6b7280",
+    marginBottom: 8,
     textTransform: "uppercase" as const,
     letterSpacing: 0.5,
   },
   qualityRow: {
     flexDirection: "row" as const,
-    gap: 10,
+    gap: 8,
   },
   qualityCard: {
     flex: 1,
-    borderRadius: 12,
+    borderRadius: 10,
     overflow: "hidden" as const,
     borderWidth: 1.5,
     borderColor: "#e5e7eb",
@@ -1438,36 +2218,374 @@ const styles = StyleSheet.create({
     borderColor: "transparent",
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.15,
-    shadowRadius: 6,
-    elevation: 4,
+    shadowOpacity: 0.12,
+    shadowRadius: 5,
+    elevation: 3,
   },
   qualityCardGradient: {
-    paddingVertical: 14,
-    paddingHorizontal: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 6,
     alignItems: "center" as const,
   },
   qualityCardInner: {
-    paddingVertical: 14,
-    paddingHorizontal: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 6,
     alignItems: "center" as const,
     backgroundColor: "#fff",
   },
   qualityLabel: {
-    fontSize: 14,
-    fontWeight: "700" as const,
+    fontSize: 13,
+    fontFamily: getFontFamily("700"),
     color: "#1f2937",
-    marginBottom: 2,
+    marginBottom: 1,
   },
   qualityRes: {
-    fontSize: 11,
-    fontWeight: "500" as const,
+    fontSize: 10,
+    fontFamily: getFontFamily("500"),
     color: "#9ca3af",
-    marginBottom: 4,
+    marginBottom: 2,
   },
   qualityCredits: {
-    fontSize: 12,
-    fontWeight: "600" as const,
+    fontSize: 11,
+    fontFamily: getFontFamily("600"),
     color: "#6b7280",
+  },
+  modelChipsRow: {
+    flexDirection: "row" as const,
+    gap: 8,
+  },
+  modelChip: {
+    flex: 1,
+    borderRadius: 10,
+    overflow: "hidden" as const,
+    borderWidth: 1.5,
+    borderColor: "#e5e7eb",
+  },
+  modelChipSelected: {
+    borderColor: "transparent",
+    shadowColor: "#D229FF",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.18,
+    shadowRadius: 5,
+    elevation: 3,
+  },
+  modelChipGradient: {
+    flex: 1,
+    paddingVertical: 8,
+    paddingHorizontal: 6,
+    alignItems: "center" as const,
+    justifyContent: "center" as const,
+  },
+  modelChipInner: {
+    flex: 1,
+    paddingVertical: 8,
+    paddingHorizontal: 6,
+    alignItems: "center" as const,
+    justifyContent: "center" as const,
+    backgroundColor: "#fafafa",
+  },
+  modelChipName: {
+    fontSize: 11,
+    fontFamily: getFontFamily("700"),
+    color: "#374151",
+    textAlign: "center" as const,
+  },
+  modelChipNameSelected: {
+    fontSize: 11,
+    fontFamily: getFontFamily("700"),
+    color: "#fff",
+    textAlign: "center" as const,
+  },
+  modelChipCost: {
+    fontSize: 10,
+    fontFamily: getFontFamily("600"),
+    color: "#9ca3af",
+    marginTop: 2,
+  },
+  modelChipCostSelected: {
+    fontSize: 10,
+    fontFamily: getFontFamily("600"),
+    color: "rgba(255,255,255,0.85)",
+    marginTop: 2,
+  },
+  templatesGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 12,
+    marginTop: 8,
+  },
+  templateGridItem: {
+    width: "30%",
+    alignItems: "center",
+    marginBottom: 4,
+  },
+  templateCardGrid: {
+    width: "100%",
+    aspectRatio: 1,
+    borderRadius: 8,
+    borderWidth: 2,
+    borderColor: "#e5e7eb",
+    overflow: "hidden",
+    marginBottom: 6,
+    position: "relative",
+  },
+  templateCardSelectedGrid: {
+    borderColor: "#D229FF",
+  },
+  templateImageContainerGrid: {
+    width: "100%",
+    height: "100%",
+  },
+  templateImageGrid: {
+    width: "100%",
+    height: "100%",
+  },
+  customTemplateContainerGrid: {
+    backgroundColor: "#F3E8FF",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  templateNameGrid: {
+    fontSize: 11,
+    fontFamily: getFontFamily("600"),
+    color: "#374151",
+    textAlign: "center",
+    width: "100%",
+  },
+  selectedCheckBadge: {
+    position: "absolute",
+    top: 4,
+    right: 4,
+    backgroundColor: "#D229FF",
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  selectedCheckText: {
+    color: "#fff",
+    fontSize: 10,
+    fontFamily: getFontFamily("700"),
+  },
+  confirmationBanner: {
+    flexDirection: "row",
+    backgroundColor: "#FAF5FF",
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#E9D5FF",
+    padding: 10,
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginTop: 8,
+  },
+  confirmationLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    flex: 1,
+  },
+  confirmationCheckBg: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: "#D229FF",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  confirmationCheck: {
+    color: "#fff",
+    fontSize: 12,
+    fontFamily: getFontFamily("700"),
+  },
+  confirmationTextContainer: {
+    flex: 1,
+  },
+  confirmationLabel: {
+    fontSize: 9,
+    fontFamily: getFontFamily("800"),
+    textTransform: "uppercase",
+    color: "#D229FF",
+  },
+  confirmationValue: {
+    fontSize: 13,
+    fontFamily: getFontFamily("700"),
+    color: "#111827",
+    marginTop: 2,
+  },
+  confirmedPill: {
+    backgroundColor: "#F3E8FF",
+    borderWidth: 1,
+    borderColor: "#E9D5FF",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  confirmedPillText: {
+    fontSize: 10,
+    fontFamily: getFontFamily("700"),
+    color: "#D229FF",
+  },
+  customSectionInline: {
+    marginTop: 12,
+    backgroundColor: "#FAF5FF",
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#E9D5FF",
+    padding: 12,
+  },
+  customHeaderInline: {
+    marginBottom: 8,
+  },
+  customTitleInline: {
+    fontSize: 14,
+    fontFamily: getFontFamily("700"),
+    color: "#1f2937",
+  },
+  customInputContainerInline: {
+    position: "relative",
+  },
+  customInputInline: {
+    backgroundColor: "#fff",
+    borderWidth: 1,
+    borderColor: "#E9D5FF",
+    borderRadius: 8,
+    padding: 12,
+    paddingBottom: 40,
+    fontSize: 13,
+    color: "#111827",
+    textAlignVertical: "top",
+    minHeight: 90,
+    fontFamily: getFontFamily("400"),
+  },
+  surpriseButtonInline: {
+    position: "absolute",
+    bottom: 8,
+    left: 8,
+    borderRadius: 4,
+    overflow: "hidden",
+  },
+  surpriseButtonGradientInline: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  surpriseTextInline: {
+    fontSize: 10,
+    fontFamily: getFontFamily("700"),
+    color: "#fff",
+  },
+  templatesHeaderStack: {
+    marginBottom: 6,
+  },
+  templateSearchWrapper: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    backgroundColor: "#fff",
+    borderRadius: 14,
+    borderWidth: 1.5,
+    borderColor: "#ede9fe",
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+    marginBottom: 14,
+    shadowColor: "#D229FF",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  templateSearchInputFull: {
+    flex: 1,
+    fontSize: 15,
+    fontFamily: getFontFamily("500"),
+    color: "#1f2937",
+    padding: 0,
+    margin: 0,
+  },
+  categoryPillsScroll: {
+    marginBottom: 14,
+    marginHorizontal: -2,
+  },
+  categoryPillsContainer: {
+    flexDirection: "row",
+    gap: 8,
+    paddingHorizontal: 2,
+    paddingRight: 16,
+  },
+  categoryPill: {
+    borderRadius: 22,
+    overflow: "hidden",
+    borderWidth: 1.5,
+    borderColor: "#e5e7eb",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.06,
+    shadowRadius: 4,
+    elevation: 1,
+  },
+  categoryPillGradient: {
+    flex: 1,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 22,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  categoryPillSelected: {
+    borderColor: "transparent",
+    shadowColor: "#D229FF",
+    shadowOpacity: 0.25,
+    shadowRadius: 6,
+    elevation: 3,
+  },
+  categoryPillText: {
+    fontSize: 13,
+    fontFamily: getFontFamily("600"),
+    color: "#4b5563",
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    backgroundColor: "#f9fafb",
+  },
+  categoryPillTextSelected: {
+    fontSize: 13,
+    color: "#fff",
+    fontFamily: getFontFamily("700"),
+  },
+  paginationBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginTop: 14,
+    marginBottom: 10,
+    paddingHorizontal: 4,
+  },
+  pageButton: {
+    backgroundColor: "#FAF5FF",
+    borderWidth: 1,
+    borderColor: "#E9D5FF",
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 8,
+  },
+  pageButtonDisabled: {
+    backgroundColor: "#F3F4F6",
+    borderColor: "#E5E7EB",
+  },
+  pageButtonText: {
+    fontSize: 13,
+    fontFamily: getFontFamily("700"),
+    color: "#D229FF",
+  },
+  pageButtonTextDisabled: {
+    color: "#9CA3AF",
+    fontFamily: getFontFamily("400"),
+  },
+  pageIndicatorText: {
+    fontSize: 13,
+    fontFamily: getFontFamily("600"),
+    color: "#4B5563",
   },
 });

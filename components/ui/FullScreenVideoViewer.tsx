@@ -5,11 +5,13 @@ import {
   Text,
   TouchableOpacity,
   Modal,
-  SafeAreaView,
   Platform,
   Dimensions,
   AppState,
+  ActivityIndicator,
 } from "react-native";
+import SavedToast from "./SavedToast";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { Video, ResizeMode, AVPlaybackStatus } from "expo-av";
 import { LinearGradient } from "expo-linear-gradient";
 import { StatusBar } from "expo-status-bar";
@@ -24,8 +26,12 @@ interface FullScreenVideoViewerProps {
   onDownload: () => void;
   onDelete?: () => void;
   isDeleting?: boolean;
+  isDownloading?: boolean;
   showDelete?: boolean;
   onPreviewVideoPause?: () => void;
+  toastTitle?: string | null;
+  toastPath?: string | null;
+  onToastHide?: () => void;
 }
 
 export default function FullScreenVideoViewer({
@@ -35,8 +41,12 @@ export default function FullScreenVideoViewer({
   onDownload,
   onDelete,
   isDeleting = false,
+  isDownloading = false,
   showDelete = false,
   onPreviewVideoPause,
+  toastTitle,
+  toastPath,
+  onToastHide,
 }: FullScreenVideoViewerProps) {
   const videoRef = useRef<Video>(null);
   const insets = useSafeAreaInsets();
@@ -142,6 +152,7 @@ export default function FullScreenVideoViewer({
               <TouchableOpacity
                 style={[styles.modalButton, styles.downloadModalButton]}
                 onPress={onDownload}
+                disabled={isDownloading}
               >
                 <LinearGradient
                   colors={["#28D4FA", "#D229FF"]}
@@ -149,7 +160,38 @@ export default function FullScreenVideoViewer({
                   end={{ x: 1, y: 0 }}
                   style={styles.modalButtonGradient}
                 >
-                  <Text style={styles.modalButtonText}>Download</Text>
+                  <View style={styles.modalButtonContent}>
+                    {isDownloading ? (
+                      <View
+                        style={{
+                          flexDirection: "row",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          gap: 8,
+                          flexShrink: 1,
+                        }}
+                      >
+                        <ActivityIndicator size="small" color="#fff" />
+                        <Text
+                          style={styles.modalButtonText}
+                          numberOfLines={1}
+                          adjustsFontSizeToFit
+                          minimumFontScale={0.75}
+                        >
+                          Saving...
+                        </Text>
+                      </View>
+                    ) : (
+                      <Text
+                        style={styles.modalButtonText}
+                        numberOfLines={1}
+                        adjustsFontSizeToFit
+                        minimumFontScale={0.75}
+                      >
+                        Download
+                      </Text>
+                    )}
+                  </View>
                 </LinearGradient>
               </TouchableOpacity>
               {showDelete && onDelete ? (
@@ -160,9 +202,23 @@ export default function FullScreenVideoViewer({
                 >
                   <View style={styles.modalButtonContent}>
                     {isDeleting ? (
-                      <Text style={styles.modalButtonText}>Deleting...</Text>
+                      <Text
+                        style={styles.modalButtonText}
+                        numberOfLines={1}
+                        adjustsFontSizeToFit
+                        minimumFontScale={0.75}
+                      >
+                        Deleting...
+                      </Text>
                     ) : (
-                      <Text style={styles.modalButtonText}>Delete</Text>
+                      <Text
+                        style={styles.modalButtonText}
+                        numberOfLines={1}
+                        adjustsFontSizeToFit
+                        minimumFontScale={0.75}
+                      >
+                        Delete
+                      </Text>
                     )}
                   </View>
                 </TouchableOpacity>
@@ -179,6 +235,14 @@ export default function FullScreenVideoViewer({
             </View>
           </View>
         )}
+
+        {/* Saved confirmation — rendered inside the modal so it is never
+            hidden behind it (Modals sit in a separate native layer). */}
+        <SavedToast
+          title={toastTitle ?? null}
+          path={toastPath ?? null}
+          onHide={onToastHide}
+        />
       </SafeAreaView>
     </Modal>
   );
@@ -229,8 +293,8 @@ const styles = StyleSheet.create({
     right: 0,
     flexDirection: "row",
     justifyContent: "space-between",
-    paddingHorizontal: 20,
-    gap: 16,
+    paddingHorizontal: 16,
+    gap: 12,
   },
   modalButton: {
     borderRadius: 8,
@@ -242,7 +306,7 @@ const styles = StyleSheet.create({
     width: "100%",
     height: "100%",
     paddingVertical: 12,
-    paddingHorizontal: 24,
+    paddingHorizontal: 14,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -253,15 +317,21 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(255, 255, 255, 0.2)",
     borderWidth: 1,
     borderColor: "rgba(255, 255, 255, 0.3)",
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    alignItems: "center",
+    justifyContent: "center",
   },
   deleteModalButton: {
     backgroundColor: "#DC3545",
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    alignItems: "center",
+    justifyContent: "center",
   },
   modalButtonContent: {
     width: "100%",
     height: "100%",
-    paddingVertical: 12,
-    paddingHorizontal: 24,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -269,6 +339,7 @@ const styles = StyleSheet.create({
     color: "#fff",
     fontSize: 16,
     fontWeight: "600",
+    textAlign: "center",
   },
 });
 

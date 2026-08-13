@@ -1,13 +1,10 @@
 import { useEffect, useState } from "react";
 import { View, ActivityIndicator, Text } from "react-native";
 import { useAuth } from "@/contexts/AuthContext";
-import { useUser } from "@clerk/clerk-expo";
-import { router, useLocalSearchParams } from "expo-router";
+import { router } from "expo-router";
 
 export default function AuthCallback() {
   const { isSignedIn, isLoaded } = useAuth();
-  const { user } = useUser();
-  const params = useLocalSearchParams();
   const [hasRedirected, setHasRedirected] = useState(false);
 
   useEffect(() => {
@@ -19,24 +16,17 @@ export default function AuthCallback() {
       
       setHasRedirected(true);
       
-      if (isSignedIn && user) {
-        // Check if user is new (no onboarding completed)
-        // For now, redirect new users to onboarding, existing to tabs
-        // You can add logic here to check if user has completed onboarding
-        const isNewUser = !user.publicMetadata?.onboardingCompleted;
-        
-        if (isNewUser) {
-          router.replace("/(onboarding)");
-        } else {
-          router.replace("/(tabs)");
-        }
+      if (isSignedIn) {
+        // The quick tour decides for itself whether to show (only once per
+        // account, right after registration/first login) — see TourContext.
+        router.replace("/(tabs)");
       } else {
         router.replace("/(auth)");
       }
     }, 500);
 
     return () => clearTimeout(timer);
-  }, [isSignedIn, isLoaded, user, hasRedirected]);
+  }, [isSignedIn, isLoaded, hasRedirected]);
 
   return (
     <View style={{ flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "#000" }}>

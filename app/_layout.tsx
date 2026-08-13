@@ -1,11 +1,13 @@
 import { AuthProvider } from "@/contexts/AuthContext";
+import { SidebarProvider } from "@/contexts/SidebarContext";
 import { Stack } from "expo-router";
+import { TourProvider } from "@/contexts/TourContext";
 import { useEffect } from "react";
 import * as Linking from "expo-linking";
 import { router } from "expo-router";
 import * as WebBrowser from "expo-web-browser";
 import { StatusBar } from "expo-status-bar";
-import { Platform } from "react-native";
+import { Platform, Text as RNText, TextInput as RNTextInput } from "react-native";
 import * as SystemUI from "expo-system-ui";
 import {
   useFonts,
@@ -35,10 +37,43 @@ export default function RootLayout() {
     Outfit_700Bold,
     Outfit_800ExtraBold,
     Outfit_900Black,
+
+    // Aliases for seamless cross-platform resolution
+    Outfit: Outfit_400Regular,
+    "Outfit-Bold": Outfit_700Bold,
+    "Outfit-ExtraBold": Outfit_800ExtraBold,
+    "Outfit-Black": Outfit_900Black,
   });
 
   useEffect(() => {
     if (fontsLoaded || fontError) {
+      // Set global default Outfit font for all Text and TextInput components
+      try {
+        if ((RNText as any).defaultProps) {
+          (RNText as any).defaultProps.style = [
+            { fontFamily: "Outfit_400Regular" },
+            (RNText as any).defaultProps.style,
+          ];
+        } else {
+          (RNText as any).defaultProps = {
+            style: { fontFamily: "Outfit_400Regular" },
+          };
+        }
+
+        if ((RNTextInput as any).defaultProps) {
+          (RNTextInput as any).defaultProps.style = [
+            { fontFamily: "Outfit_400Regular" },
+            (RNTextInput as any).defaultProps.style,
+          ];
+        } else {
+          (RNTextInput as any).defaultProps = {
+            style: { fontFamily: "Outfit_400Regular" },
+          };
+        }
+      } catch (e) {
+        console.warn("Global font setup error:", e);
+      }
+
       // Hide the splash screen once fonts are loaded
       SplashScreen.hideAsync();
     }
@@ -168,15 +203,19 @@ export default function RootLayout() {
 
   return (
     <AuthProvider>
-      <StatusBar
-        style={Platform.OS === "android" ? "dark" : "auto"}
-        backgroundColor={Platform.OS === "android" ? "#ffffff" : undefined}
-      />
-      <Stack
-        screenOptions={{
-          headerShown: false,
-        }}
-      />
+      <SidebarProvider>
+        <TourProvider>
+          <StatusBar
+            style={Platform.OS === "android" ? "dark" : "auto"}
+            backgroundColor={Platform.OS === "android" ? "#ffffff" : undefined}
+          />
+          <Stack
+            screenOptions={{
+              headerShown: false,
+            }}
+          />
+        </TourProvider>
+      </SidebarProvider>
     </AuthProvider>
   );
 }

@@ -14,8 +14,7 @@ export default function Index() {
   }
 
   if (isSignedIn) {
-    // For existing users, go directly to tabs
-    // For new users, they'll be redirected to onboarding from signup
+    // The quick tour decides for itself whether to show on first open.
     return <Redirect href="/(tabs)" />;
   }
 

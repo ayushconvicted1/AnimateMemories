@@ -1,13 +1,24 @@
 import * as React from "react";
 import Svg, { Path, SvgProps } from "react-native-svg";
 
-function SearchIcon(props: SvgProps) {
+/**
+ * Search / magnifying-glass icon.
+ * Path sourced from Heroicons (MIT) — heroicons.com
+ * viewBox="0 0 24 24" stroke outline variant
+ */
+function SearchIcon({ color = "#9ca3af", width = 18, height = 18, strokeWidth = 1.8, ...props }: SvgProps & { color?: string; strokeWidth?: number }) {
   return (
-    <Svg width={17} height={17} viewBox="0 0 17 17" fill="none" {...props}>
+    <Svg
+      width={width}
+      height={height}
+      viewBox="0 0 24 24"
+      fill="none"
+      {...props}
+    >
       <Path
-        d="M7.602 14.36a6.758 6.758 0 100-13.515 6.758 6.758 0 000 13.515zM16.05 16.05l-3.675-3.675"
-        stroke="#979797"
-        strokeWidth={1.68944}
+        d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z"
+        stroke={color}
+        strokeWidth={strokeWidth}
         strokeLinecap="round"
         strokeLinejoin="round"
       />

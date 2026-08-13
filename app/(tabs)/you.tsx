@@ -28,6 +28,7 @@ import EditIcon from "@/components/images/EditIcon";
 import SkeletonLoader from "@/components/ui/SkeletonLoader";
 import { api } from "@/services/api";
 import SearchGradient from "@/components/reusable/SearchGradient";
+import { getFontFamily } from "@/constants/Fonts";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 const CONTENT_WIDTH = SCREEN_WIDTH - 32;
@@ -338,15 +339,7 @@ export default function YouScreen() {
     const mailtoUrl = `mailto:${email}?subject=${encodeURIComponent(subject)}`;
 
     try {
-      const canOpen = await Linking.canOpenURL(mailtoUrl);
-      if (canOpen) {
-        await Linking.openURL(mailtoUrl);
-      } else {
-        Alert.alert(
-          "Error",
-          "Unable to open email client. Please email us at support@animatememories.com"
-        );
-      }
+      await Linking.openURL(mailtoUrl);
     } catch (error) {
       console.error("Error opening email:", error);
       Alert.alert(
@@ -608,39 +601,7 @@ export default function YouScreen() {
             <View style={styles.iconContainer}>
               <HelpIcon />
             </View>
-            <Text style={styles.menuText}>Help</Text>
-          </View>
-          <Text style={styles.menuArrow}>›</Text>
-        </TouchableOpacity>
-      </View>
-
-      {/* Logout Button */}
-      <View style={styles.logoutSection}>
-        <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
-          <LinearGradient
-            colors={["#28D4FA", "#D229FF"]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 0 }}
-            style={styles.logoutButtonGradient}
-          >
-            <Text style={styles.logoutButtonText}>Logout</Text>
-          </LinearGradient>
-        </TouchableOpacity>
-      </View>
-
-      {/* Settings Section */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Settings</Text>
-
-        <TouchableOpacity
-          style={styles.menuItem}
-          onPress={() => router.push("/(tabs)/privacy-legal")}
-        >
-          <View style={styles.menuItemLeft}>
-            <View style={styles.iconContainer}>
-              <PrivacyIcon />
-            </View>
-            <Text style={styles.menuText}>Privacy</Text>
+            <Text style={styles.menuText}>Help & Support</Text>
           </View>
           <Text style={styles.menuArrow}>›</Text>
         </TouchableOpacity>
@@ -652,11 +613,54 @@ export default function YouScreen() {
         >
           <View style={styles.menuItemLeft}>
             <View style={styles.iconContainer}>
-              <LegalIcon />
+              <PrivacyIcon />
             </View>
-            <Text style={styles.menuText}>Legal</Text>
+            <Text style={styles.menuText}>Privacy & Legal</Text>
           </View>
           <Text style={styles.menuArrow}>›</Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* Logout & Account Actions */}
+      <View style={styles.logoutSection}>
+        <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
+          <LinearGradient
+            colors={["#28D4FA", "#D229FF"]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+            style={styles.logoutButtonGradient}
+          >
+            <Text style={styles.logoutButtonText}>Logout</Text>
+          </LinearGradient>
+        </TouchableOpacity>
+        
+        <TouchableOpacity 
+          style={{ marginTop: 16, alignItems: "center", paddingVertical: 10, paddingHorizontal: 16 }} 
+          onPress={() => {
+            Alert.alert(
+              "Delete Account",
+              "Are you sure you want to delete your account? This action cannot be undone.",
+              [
+                { text: "Cancel", style: "cancel" },
+                { 
+                  text: "Delete Account", 
+                  style: "destructive",
+                  onPress: async () => {
+                    try {
+                      await clerkUser?.delete();
+                      await signOut();
+                    } catch (err) {
+                      console.error("Error deleting account:", err);
+                      Alert.alert("Error", "Failed to delete account. Please try again or contact support.");
+                    }
+                  }
+                }
+              ]
+            );
+          }}
+          activeOpacity={0.7}
+        >
+          <Text style={{ color: "#EF4444", fontSize: 14, fontFamily: getFontFamily("600"), textDecorationLine: "underline" }}>Delete Account</Text>
         </TouchableOpacity>
       </View>
 
@@ -777,7 +781,7 @@ const styles = StyleSheet.create({
   },
   mainTitle: {
     fontSize: 24,
-    fontWeight: "700",
+    fontFamily: getFontFamily("700"),
     color: "#000",
   },
   profileSection: {
@@ -818,7 +822,7 @@ const styles = StyleSheet.create({
   },
   userName: {
     fontSize: 21,
-    fontWeight: "700",
+    fontFamily: getFontFamily("700"),
     color: "#000",
     marginBottom: 12,
   },
@@ -827,7 +831,7 @@ const styles = StyleSheet.create({
   },
   viewProfileText: {
     fontSize: 17,
-    fontWeight: "700",
+    fontFamily: getFontFamily("700"),
     paddingVertical: 8,
     paddingHorizontal: 16,
   },
@@ -839,7 +843,7 @@ const styles = StyleSheet.create({
   },
   newButtonText: {
     fontSize: 17,
-    fontWeight: "500",
+    fontFamily: getFontFamily("500"),
     color: "#fff",
   },
   section: {
@@ -848,7 +852,7 @@ const styles = StyleSheet.create({
   },
   sectionTitle: {
     fontSize: 24,
-    fontWeight: "700",
+    fontFamily: getFontFamily("700"),
     color: "#000",
     marginBottom: 12,
   },
@@ -878,7 +882,7 @@ const styles = StyleSheet.create({
   },
   menuText: {
     fontSize: 17,
-    fontWeight: "600",
+    fontFamily: getFontFamily("600"),
     color: "#000",
   },
   menuItemTextContainer: {
@@ -886,7 +890,7 @@ const styles = StyleSheet.create({
   },
   menuSubtext: {
     fontSize: 13,
-    fontWeight: "400",
+    fontFamily: getFontFamily("400"),
     color: "#979797",
   },
   menuArrow: {
@@ -915,7 +919,7 @@ const styles = StyleSheet.create({
   },
   logoutButtonText: {
     fontSize: 17,
-    fontWeight: "600",
+    fontFamily: getFontFamily("600"),
     color: "#fff",
   },
   contactSection: {
@@ -925,13 +929,13 @@ const styles = StyleSheet.create({
   },
   contactText: {
     fontSize: 13,
-    fontWeight: "400",
+    fontFamily: getFontFamily("400"),
     color: "#000",
     marginBottom: 8,
   },
   contactLink: {
     fontSize: 15,
-    fontWeight: "500",
+    fontFamily: getFontFamily("500"),
     textDecorationLine: "underline",
   },
   statsSection: {
@@ -954,13 +958,13 @@ const styles = StyleSheet.create({
   },
   statValue: {
     fontSize: 24,
-    fontWeight: "700",
+    fontFamily: getFontFamily("700"),
     color: "#000",
     marginBottom: 4,
   },
   statLabel: {
     fontSize: 12,
-    fontWeight: "500",
+    fontFamily: getFontFamily("500"),
     color: "#979797",
     textAlign: "center",
   },
@@ -979,7 +983,7 @@ const styles = StyleSheet.create({
   },
   editProfileText: {
     fontSize: 12,
-    fontWeight: "600",
+    fontFamily: getFontFamily("600"),
     color: "#000",
   },
   modalOverlay: {
@@ -997,7 +1001,7 @@ const styles = StyleSheet.create({
   },
   modalTitle: {
     fontSize: 20,
-    fontWeight: "700",
+    fontFamily: getFontFamily("700"),
     color: "#000",
     marginBottom: 20,
     textAlign: "center",
@@ -1020,7 +1024,7 @@ const styles = StyleSheet.create({
   },
   cancelButtonText: {
     fontSize: 14,
-    fontWeight: "600",
+    fontFamily: getFontFamily("600"),
     color: "#000",
   },
   saveButton: {
@@ -1034,7 +1038,7 @@ const styles = StyleSheet.create({
   },
   saveButtonText: {
     fontSize: 14,
-    fontWeight: "600",
+    fontFamily: getFontFamily("600"),
     color: "#fff",
   },
   modalHeader: {
@@ -1056,7 +1060,7 @@ const styles = StyleSheet.create({
   },
   closeButtonText: {
     fontSize: 15,
-    fontWeight: "600",
+    fontFamily: getFontFamily("600"),
     color: "#000",
   },
   modalScrollView: {
@@ -1077,13 +1081,13 @@ const styles = StyleSheet.create({
   },
   notificationLabel: {
     fontSize: 15,
-    fontWeight: "600",
+    fontFamily: getFontFamily("600"),
     color: "#000",
     marginBottom: 4,
   },
   notificationDescription: {
     fontSize: 12,
-    fontWeight: "400",
+    fontFamily: getFontFamily("400"),
     color: "#979797",
     lineHeight: 20,
   },
@@ -1101,13 +1105,13 @@ const styles = StyleSheet.create({
   },
   paymentCardTitle: {
     fontSize: 14,
-    fontWeight: "500",
+    fontFamily: getFontFamily("500"),
     color: "#979797",
     marginBottom: 8,
   },
   paymentCardValue: {
     fontSize: 28,
-    fontWeight: "700",
+    fontFamily: getFontFamily("700"),
   },
   paymentButton: {
     borderRadius: 8,
@@ -1122,7 +1126,7 @@ const styles = StyleSheet.create({
   },
   paymentButtonText: {
     fontSize: 15,
-    fontWeight: "600",
+    fontFamily: getFontFamily("600"),
     color: "#fff",
   },
   paymentInfo: {
@@ -1130,13 +1134,13 @@ const styles = StyleSheet.create({
   },
   paymentInfoTitle: {
     fontSize: 15,
-    fontWeight: "600",
+    fontFamily: getFontFamily("600"),
     color: "#000",
     marginBottom: 8,
   },
   paymentInfoText: {
     fontSize: 13,
-    fontWeight: "400",
+    fontFamily: getFontFamily("400"),
     color: "#979797",
     lineHeight: 22,
   },
@@ -1148,13 +1152,13 @@ const styles = StyleSheet.create({
   },
   helpItemTitle: {
     fontSize: 15,
-    fontWeight: "600",
+    fontFamily: getFontFamily("600"),
     color: "#000",
     marginBottom: 12,
   },
   helpItemText: {
     fontSize: 13,
-    fontWeight: "400",
+    fontFamily: getFontFamily("400"),
     color: "#979797",
     lineHeight: 22,
   },
@@ -1171,7 +1175,7 @@ const styles = StyleSheet.create({
   },
   helpContactButtonText: {
     fontSize: 14,
-    fontWeight: "600",
+    fontFamily: getFontFamily("600"),
     color: "#fff",
   },
   privacySection: {
@@ -1182,13 +1186,13 @@ const styles = StyleSheet.create({
   },
   privacyItemTitle: {
     fontSize: 15,
-    fontWeight: "600",
+    fontFamily: getFontFamily("600"),
     color: "#000",
     marginBottom: 12,
   },
   privacyItemText: {
     fontSize: 13,
-    fontWeight: "400",
+    fontFamily: getFontFamily("400"),
     color: "#979797",
     lineHeight: 22,
   },

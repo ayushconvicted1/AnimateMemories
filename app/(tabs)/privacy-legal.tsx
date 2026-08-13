@@ -11,6 +11,7 @@ import {
 import { router } from "expo-router";
 import { GradientText } from "@/components/ui/GradientText";
 import ScreenWrapper from "@/components/ui/ScreenWrapper";
+import { getFontFamily } from "@/constants/Fonts";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 const CONTENT_WIDTH = SCREEN_WIDTH - 32;
@@ -22,15 +23,7 @@ export default function PrivacyLegalScreen() {
     const mailtoUrl = `mailto:${email}?subject=${encodeURIComponent(subject)}`;
 
     try {
-      const canOpen = await Linking.canOpenURL(mailtoUrl);
-      if (canOpen) {
-        await Linking.openURL(mailtoUrl);
-      } else {
-        Alert.alert(
-          "Error",
-          "Unable to open email client. Please email us at support@animatememories.com"
-        );
-      }
+      await Linking.openURL(mailtoUrl);
     } catch (error) {
       console.error("Error opening email:", error);
       Alert.alert(
@@ -46,7 +39,7 @@ export default function PrivacyLegalScreen() {
         {/* Header */}
         <View style={styles.header}>
           <TouchableOpacity
-            onPress={() => router.back()}
+            onPress={() => router.push("/(tabs)/you")}
             style={styles.backButton}
           >
             <Text style={styles.backButtonText}>← Back</Text>
@@ -118,14 +111,6 @@ export default function PrivacyLegalScreen() {
           {/* Terms of Service */}
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Terms of Service</Text>
-
-            <View style={styles.contentItem}>
-              <Text style={styles.contentText}>
-                By using Animate Memories, you agree to the following terms and
-                conditions:
-              </Text>
-            </View>
-            <View style={styles.divider} />
 
             <View style={styles.contentItem}>
               <Text style={styles.contentSubtitle}>Acceptable Use</Text>
@@ -211,14 +196,10 @@ export default function PrivacyLegalScreen() {
                 For questions about privacy, legal matters, or data protection,
                 please contact us:
               </Text>
-              <Text style={styles.contactEmail}>
-                support@animatememories.com
-              </Text>
-              <TouchableOpacity
-                style={styles.contactButton}
-                onPress={handleContactUs}
-              >
-                <Text style={styles.contactButtonText}>Send Email</Text>
+              <TouchableOpacity onPress={handleContactUs}>
+                <Text style={styles.contactEmail}>
+                  support@animatememories.com
+                </Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -247,12 +228,12 @@ const styles = StyleSheet.create({
   },
   backButtonText: {
     fontSize: 15,
-    fontWeight: "600",
     color: "#000",
+    fontFamily: getFontFamily("600"),
   },
   title: {
     fontSize: 24,
-    fontWeight: "700",
+    fontFamily: getFontFamily("700"),
   },
   placeholder: {
     width: 60,
@@ -266,24 +247,24 @@ const styles = StyleSheet.create({
   },
   sectionTitle: {
     fontSize: 17,
-    fontWeight: "700",
     color: "#000",
     marginBottom: 16,
+    fontFamily: getFontFamily("700"),
   },
   contentItem: {
     paddingVertical: 12,
   },
   contentSubtitle: {
     fontSize: 15,
-    fontWeight: "600",
     color: "#000",
     marginBottom: 8,
+    fontFamily: getFontFamily("600"),
   },
   contentText: {
     fontSize: 13,
-    fontWeight: "400",
     color: "#979797",
     lineHeight: 22,
+    fontFamily: getFontFamily("400"),
   },
   divider: {
     height: 0.75,
@@ -299,30 +280,17 @@ const styles = StyleSheet.create({
     borderColor: "#e9ecef",
   },
   contactText: {
-    fontSize: 13,
-    fontWeight: "400",
+    fontSize: 14,
     color: "#979797",
     textAlign: "center",
     marginBottom: 16,
     lineHeight: 22,
+    fontFamily: getFontFamily("400"),
   },
   contactEmail: {
-    fontSize: 14,
-    fontWeight: "600",
+    fontSize: 16,
     color: "#28D4FA",
-    marginBottom: 16,
-  },
-  contactButton: {
-    backgroundColor: "#28D4FA",
-    borderRadius: 8,
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-    minWidth: 120,
-    alignItems: "center",
-  },
-  contactButtonText: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: "#fff",
+    textDecorationLine: "underline",
+    fontFamily: getFontFamily("600"),
   },
 });
