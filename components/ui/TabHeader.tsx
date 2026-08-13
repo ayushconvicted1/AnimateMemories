@@ -113,7 +113,7 @@ const styles = StyleSheet.create({
     borderRadius: 20,
   },
   creditsButtonText: {
-    fontSize: 12,
+    fontSize: 14,
     color: "#fff",
     fontFamily: getFontFamily("600"),
   },

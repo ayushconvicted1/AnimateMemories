@@ -695,7 +695,7 @@ export default function CreditScreen() {
 
       {/* Payment Logos Section */}
       <View style={{ flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 16, marginBottom: 30, paddingHorizontal: 16, flexWrap: 'wrap' }}>
-        <Text style={{ fontSize: 13, color: '#979797', marginRight: 8, fontFamily: getFontFamily('400') }}>Secured by</Text>
+        <Text style={{ fontSize: 15, color: '#979797', marginRight: 8, fontFamily: getFontFamily('400') }}>Secured by</Text>
         {PAYMENT_ICONS.map((icon) => (
           <SvgUri
             key={icon}
@@ -747,10 +747,10 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   tagIcon: {
-    fontSize: 16,
+    fontSize: 18,
   },
   tagText: {
-    fontSize: 14,
+    fontSize: 16,
     color: '#fff',
     fontFamily: getFontFamily('600'),
   },
@@ -761,12 +761,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   mainTitle: {
-    fontSize: 24,
+    fontSize: 26,
     marginBottom: 8,
     fontFamily: getFontFamily('700'),
   },
   subtitle: {
-    fontSize: 16,
+    fontSize: 18,
     color: '#000',
     textAlign: 'center',
     lineHeight: 22,
@@ -799,7 +799,7 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   billingToggleText: {
-    fontSize: 14,
+    fontSize: 16,
     color: '#6B7280',
     fontFamily: getFontFamily('500'),
   },
@@ -839,7 +839,7 @@ const styles = StyleSheet.create({
     zIndex: 2,
   },
   packTabText: {
-    fontSize: 15,
+    fontSize: 17,
     color: '#979797',
     textAlign: 'center',
     fontFamily: getFontFamily('300'),
@@ -886,18 +886,18 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   creditsTagText: {
-    fontSize: 15,
+    fontSize: 17,
     color: '#fff',
     fontFamily: getFontFamily('600'),
   },
   packCardTitle: {
-    fontSize: 16,
+    fontSize: 18,
     color: '#000',
     marginBottom: 4,
     fontFamily: getFontFamily('600'),
   },
   packCardSubtitle: {
-    fontSize: 13,
+    fontSize: 15,
     color: '#000',
     fontFamily: getFontFamily('400'),
   },
@@ -905,7 +905,7 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
   },
   packCardPrice: {
-    fontSize: 32,
+    fontSize: 34,
     color: '#000',
     marginBottom: 4,
     fontFamily: getFontFamily('600'),
@@ -914,7 +914,7 @@ const styles = StyleSheet.create({
     position: 'relative',
   },
   originalPriceText: {
-    fontSize: 12.59,
+    fontSize: 14.59,
     fontFamily: getFontFamily('400'),
     color: '#282828',
   },
@@ -944,7 +944,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#28D4FA',
   },
   featureText: {
-    fontSize: 13,
+    fontSize: 15,
     color: '#000',
     fontFamily: getFontFamily('400'),
   },
@@ -968,7 +968,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#4CAF50',
   },
   additionalFeatureText: {
-    fontSize: 12,
+    fontSize: 14,
     color: '#000',
     fontFamily: getFontFamily('300'),
   },
@@ -993,7 +993,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   upgradeButtonText: {
-    fontSize: 18,
+    fontSize: 20,
     color: '#fff',
     fontFamily: getFontFamily('600'),
   },
@@ -1006,10 +1006,10 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   creditsIcon: {
-    fontSize: 14.789,
+    fontSize: 16.789,
   },
   currentCreditsText: {
-    fontSize: 17.747,
+    fontSize: 19.747,
     color: '#28D4FA',
     fontFamily: getFontFamily('500'),
   },
@@ -1019,7 +1019,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   myPlanTitle: {
-    fontSize: 28,
+    fontSize: 30,
     fontFamily: getFontFamily('700'),
   },
   transactionSection: {
@@ -1027,7 +1027,7 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   transactionTitle: {
-    fontSize: 20,
+    fontSize: 22,
     fontFamily: getFontFamily('400'),
     color: '#000',
     marginBottom: 16,
@@ -1039,13 +1039,13 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
   },
   transactionName: {
-    fontSize: 17,
+    fontSize: 19,
     fontFamily: getFontFamily('600'),
     color: '#878787',
     flex: 1,
   },
   transactionDate: {
-    fontSize: 17,
+    fontSize: 19,
     fontFamily: getFontFamily('400'),
     color: '#878787',
   },
@@ -1059,13 +1059,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   contactText: {
-    fontSize: 20,
+    fontSize: 22,
     color: '#000',
     marginBottom: 8,
     fontFamily: getFontFamily('400'),
   },
   contactLink: {
-    fontSize: 22,
+    fontSize: 24,
     textDecorationLine: 'underline',
     fontFamily: getFontFamily('600'),
   },
@@ -1075,12 +1075,12 @@ const styles = StyleSheet.create({
   },
   restoreText: {
     color: "#666",
-    fontSize: 13,
+    fontSize: 15,
     fontFamily: getFontFamily("500"),
     textDecorationLine: "underline",
   },
   noTransactionsText: {
-    fontSize: 13,
+    fontSize: 15,
     fontFamily: getFontFamily("400"),
     color: "#999",
     textAlign: "center",
@@ -1100,7 +1100,7 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   sliderLabel: {
-    fontSize: 24,
+    fontSize: 26,
     textAlign: 'center',
     marginBottom: 12,
     color: '#000',
@@ -1125,7 +1125,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(210, 41, 255, 0.05)',
   },
   presetBtnText: {
-    fontSize: 12,
+    fontSize: 14,
     color: '#6B7280',
     fontFamily: getFontFamily('500'),
   },

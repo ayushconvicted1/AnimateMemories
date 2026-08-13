@@ -174,7 +174,7 @@ const styles = StyleSheet.create({
     // Wrapper for the entire component including label
   },
   label: {
-    fontSize: 14,
+    fontSize: 16,
     color: "#fff",
     marginBottom: 8,
     fontWeight: "500",
@@ -191,7 +191,7 @@ const styles = StyleSheet.create({
   },
   textInput: {
     flex: 1,
-    fontSize: 16,
+    fontSize: 18,
     color: "#000",
     height: "100%",
   },
@@ -200,7 +200,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   dropdownText: {
-    fontSize: 16,
+    fontSize: 18,
     color: "#000",
   },
 });

@@ -767,18 +767,18 @@ const styles = StyleSheet.create({
     height: "100%",
   },
   heroTitle: {
-    fontSize: SCREEN_WIDTH < 380 ? 22 : 25,
+    fontSize: SCREEN_WIDTH < 380 ? 24 : 28,
     fontFamily: getFontFamily("800"),
     textAlign: "center",
-    lineHeight: 32,
+    lineHeight: 36,
     marginBottom: 10,
   },
   heroDescription: {
-    fontSize: 13.5,
+    fontSize: 15,
     fontFamily: getFontFamily("400"),
     color: "#475569",
     textAlign: "center",
-    lineHeight: 20,
+    lineHeight: 22,
     marginBottom: 20,
   },
   uploadButtonContainer: {
@@ -797,7 +797,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   uploadButtonText: {
-    fontSize: 15,
+    fontSize: 17,
     fontFamily: getFontFamily("700"),
     color: "#FFFFFF",
   },
@@ -805,10 +805,10 @@ const styles = StyleSheet.create({
     marginBottom: 44,
   },
   templatesSectionTitle: {
-    fontSize: 22,
+    fontSize: 24,
     fontFamily: getFontFamily("800"),
     textAlign: "center",
-    lineHeight: 29,
+    lineHeight: 32,
     marginBottom: 18,
   },
   categoryContainer: {
@@ -828,7 +828,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   activePillText: {
-    fontSize: 13,
+    fontSize: 15,
     fontFamily: getFontFamily("700"),
     color: "#FFFFFF",
   },
@@ -843,7 +843,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   inactivePillText: {
-    fontSize: 13,
+    fontSize: 15,
     fontFamily: getFontFamily("500"),
     color: "#475569",
   },
@@ -893,7 +893,7 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   templateName: {
-    fontSize: 13,
+    fontSize: 14,
     fontFamily: getFontFamily("600"),
     color: "#0F172A",
     textAlign: "center",
@@ -907,7 +907,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
   },
   viewAllText: {
-    fontSize: 13.5,
+    fontSize: 15,
     fontFamily: getFontFamily("600"),
     color: "#475569",
   },
@@ -917,7 +917,7 @@ const styles = StyleSheet.create({
     marginBottom: 44,
   },
   howToTitle: {
-    fontSize: 20,
+    fontSize: 22,
     fontFamily: getFontFamily("800"),
     color: "#0F172A",
     textAlign: "center",
@@ -948,22 +948,22 @@ const styles = StyleSheet.create({
     width: "44%",
   },
   stepNumber: {
-    fontSize: 17,
+    fontSize: 19,
     fontFamily: getFontFamily("800"),
     color: "#0F172A",
     textDecorationLine: "underline",
     marginBottom: 4,
   },
   stepHeaderTitle: {
-    fontSize: 18,
+    fontSize: 20,
     fontFamily: getFontFamily("700"),
     marginBottom: 6,
   },
   stepDescription: {
-    fontSize: 11.5,
+    fontSize: 14,
     fontFamily: getFontFamily("400"),
     color: "#475569",
-    lineHeight: 17,
+    lineHeight: 20,
   },
   highlightPink: {
     fontFamily: getFontFamily("700"),
@@ -987,7 +987,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   bigTryButtonText: {
-    fontSize: 16,
+    fontSize: 18,
     fontFamily: getFontFamily("700"),
     color: "#FFFFFF",
   },
@@ -997,17 +997,17 @@ const styles = StyleSheet.create({
     marginBottom: 44,
   },
   sectionHeadingTitle: {
-    fontSize: 24,
+    fontSize: 26,
     fontFamily: getFontFamily("800"),
     textAlign: "center",
     marginBottom: 6,
   },
   sectionSubtitle: {
-    fontSize: 14,
+    fontSize: 16,
     fontFamily: getFontFamily("400"),
     color: "#475569",
     textAlign: "center",
-    lineHeight: 20,
+    lineHeight: 23,
     paddingHorizontal: 12,
     marginBottom: 20,
   },
@@ -1063,16 +1063,16 @@ const styles = StyleSheet.create({
     padding: 16,
   },
   proCardTitle: {
-    fontSize: 16,
+    fontSize: 18,
     fontFamily: getFontFamily("700"),
     color: "#04001F",
     marginBottom: 6,
   },
   proCardDesc: {
-    fontSize: 12,
+    fontSize: 14,
     fontFamily: getFontFamily("400"),
     color: "#64748B",
-    lineHeight: 18,
+    lineHeight: 20,
     marginBottom: 12,
   },
   proCardStats: {
@@ -1083,7 +1083,7 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
   },
   proCardStatsText: {
-    fontSize: 11,
+    fontSize: 13,
     fontFamily: getFontFamily("600"),
     color: "#7C3AED",
   },
@@ -1107,7 +1107,7 @@ const styles = StyleSheet.create({
     paddingVertical: 13,
   },
   blogsViewAllText: {
-    fontSize: 14,
+    fontSize: 16,
     fontFamily: getFontFamily("700"),
     color: "#FFFFFF",
   },

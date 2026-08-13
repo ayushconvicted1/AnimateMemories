@@ -206,12 +206,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 4,
   },
   backButtonText: {
-    fontSize: 15,
+    fontSize: 17,
     color: "#000",
     fontFamily: getFontFamily("600"),
   },
   title: {
-    fontSize: 24,
+    fontSize: 26,
     fontFamily: getFontFamily("700"),
   },
   placeholder: {
@@ -225,7 +225,7 @@ const styles = StyleSheet.create({
     marginBottom: 24,
   },
   sectionTitle: {
-    fontSize: 17,
+    fontSize: 19,
     color: "#000",
     marginBottom: 16,
     fontFamily: getFontFamily("700"),
@@ -241,13 +241,13 @@ const styles = StyleSheet.create({
     marginRight: 16,
   },
   notificationLabel: {
-    fontSize: 15,
+    fontSize: 17,
     color: "#000",
     marginBottom: 4,
     fontFamily: getFontFamily("600"),
   },
   notificationDescription: {
-    fontSize: 12,
+    fontSize: 14,
     color: "#979797",
     lineHeight: 20,
     fontFamily: getFontFamily("400"),
@@ -272,7 +272,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   saveButtonText: {
-    fontSize: 15,
+    fontSize: 17,
     color: "#fff",
     fontFamily: getFontFamily("600"),
   },

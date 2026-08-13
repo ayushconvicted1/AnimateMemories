@@ -660,7 +660,7 @@ export default function YouScreen() {
           }}
           activeOpacity={0.7}
         >
-          <Text style={{ color: "#EF4444", fontSize: 14, fontFamily: getFontFamily("600"), textDecorationLine: "underline" }}>Delete Account</Text>
+          <Text style={{ color: "#EF4444", fontSize: 16, fontFamily: getFontFamily("600"), textDecorationLine: "underline" }}>Delete Account</Text>
         </TouchableOpacity>
       </View>
 
@@ -780,7 +780,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   mainTitle: {
-    fontSize: 24,
+    fontSize: 26,
     fontFamily: getFontFamily("700"),
     color: "#000",
   },
@@ -821,7 +821,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   userName: {
-    fontSize: 21,
+    fontSize: 23,
     fontFamily: getFontFamily("700"),
     color: "#000",
     marginBottom: 12,
@@ -830,7 +830,7 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   viewProfileText: {
-    fontSize: 17,
+    fontSize: 19,
     fontFamily: getFontFamily("700"),
     paddingVertical: 8,
     paddingHorizontal: 16,
@@ -842,7 +842,7 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
   },
   newButtonText: {
-    fontSize: 17,
+    fontSize: 19,
     fontFamily: getFontFamily("500"),
     color: "#fff",
   },
@@ -851,7 +851,7 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   sectionTitle: {
-    fontSize: 24,
+    fontSize: 26,
     fontFamily: getFontFamily("700"),
     color: "#000",
     marginBottom: 12,
@@ -878,10 +878,10 @@ const styles = StyleSheet.create({
     borderColor: "#e0e0e0",
   },
   menuIcon: {
-    fontSize: 17,
+    fontSize: 19,
   },
   menuText: {
-    fontSize: 17,
+    fontSize: 19,
     fontFamily: getFontFamily("600"),
     color: "#000",
   },
@@ -889,12 +889,12 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   menuSubtext: {
-    fontSize: 13,
+    fontSize: 15,
     fontFamily: getFontFamily("400"),
     color: "#979797",
   },
   menuArrow: {
-    fontSize: 17,
+    fontSize: 19,
     color: "#000",
   },
   divider: {
@@ -918,7 +918,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   logoutButtonText: {
-    fontSize: 17,
+    fontSize: 19,
     fontFamily: getFontFamily("600"),
     color: "#fff",
   },
@@ -928,13 +928,13 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   contactText: {
-    fontSize: 13,
+    fontSize: 15,
     fontFamily: getFontFamily("400"),
     color: "#000",
     marginBottom: 8,
   },
   contactLink: {
-    fontSize: 15,
+    fontSize: 17,
     fontFamily: getFontFamily("500"),
     textDecorationLine: "underline",
   },
@@ -957,13 +957,13 @@ const styles = StyleSheet.create({
     borderColor: "#e9ecef",
   },
   statValue: {
-    fontSize: 24,
+    fontSize: 26,
     fontFamily: getFontFamily("700"),
     color: "#000",
     marginBottom: 4,
   },
   statLabel: {
-    fontSize: 12,
+    fontSize: 14,
     fontFamily: getFontFamily("500"),
     color: "#979797",
     textAlign: "center",
@@ -982,7 +982,7 @@ const styles = StyleSheet.create({
     borderColor: "#e0e0e0",
   },
   editProfileText: {
-    fontSize: 12,
+    fontSize: 14,
     fontFamily: getFontFamily("600"),
     color: "#000",
   },
@@ -1000,7 +1000,7 @@ const styles = StyleSheet.create({
     maxHeight: "80%",
   },
   modalTitle: {
-    fontSize: 20,
+    fontSize: 22,
     fontFamily: getFontFamily("700"),
     color: "#000",
     marginBottom: 20,
@@ -1023,7 +1023,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   cancelButtonText: {
-    fontSize: 14,
+    fontSize: 16,
     fontFamily: getFontFamily("600"),
     color: "#000",
   },
@@ -1037,7 +1037,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   saveButtonText: {
-    fontSize: 14,
+    fontSize: 16,
     fontFamily: getFontFamily("600"),
     color: "#fff",
   },
@@ -1059,7 +1059,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   closeButtonText: {
-    fontSize: 15,
+    fontSize: 17,
     fontFamily: getFontFamily("600"),
     color: "#000",
   },
@@ -1080,13 +1080,13 @@ const styles = StyleSheet.create({
     marginRight: 16,
   },
   notificationLabel: {
-    fontSize: 15,
+    fontSize: 17,
     fontFamily: getFontFamily("600"),
     color: "#000",
     marginBottom: 4,
   },
   notificationDescription: {
-    fontSize: 12,
+    fontSize: 14,
     fontFamily: getFontFamily("400"),
     color: "#979797",
     lineHeight: 20,
@@ -1104,13 +1104,13 @@ const styles = StyleSheet.create({
     borderColor: "#e9ecef",
   },
   paymentCardTitle: {
-    fontSize: 14,
+    fontSize: 16,
     fontFamily: getFontFamily("500"),
     color: "#979797",
     marginBottom: 8,
   },
   paymentCardValue: {
-    fontSize: 28,
+    fontSize: 30,
     fontFamily: getFontFamily("700"),
   },
   paymentButton: {
@@ -1125,7 +1125,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   paymentButtonText: {
-    fontSize: 15,
+    fontSize: 17,
     fontFamily: getFontFamily("600"),
     color: "#fff",
   },
@@ -1133,13 +1133,13 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   paymentInfoTitle: {
-    fontSize: 15,
+    fontSize: 17,
     fontFamily: getFontFamily("600"),
     color: "#000",
     marginBottom: 8,
   },
   paymentInfoText: {
-    fontSize: 13,
+    fontSize: 15,
     fontFamily: getFontFamily("400"),
     color: "#979797",
     lineHeight: 22,
@@ -1151,13 +1151,13 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
   },
   helpItemTitle: {
-    fontSize: 15,
+    fontSize: 17,
     fontFamily: getFontFamily("600"),
     color: "#000",
     marginBottom: 12,
   },
   helpItemText: {
-    fontSize: 13,
+    fontSize: 15,
     fontFamily: getFontFamily("400"),
     color: "#979797",
     lineHeight: 22,
@@ -1174,7 +1174,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   helpContactButtonText: {
-    fontSize: 14,
+    fontSize: 16,
     fontFamily: getFontFamily("600"),
     color: "#fff",
   },
@@ -1185,13 +1185,13 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
   },
   privacyItemTitle: {
-    fontSize: 15,
+    fontSize: 17,
     fontFamily: getFontFamily("600"),
     color: "#000",
     marginBottom: 12,
   },
   privacyItemText: {
-    fontSize: 13,
+    fontSize: 15,
     fontFamily: getFontFamily("400"),
     color: "#979797",
     lineHeight: 22,

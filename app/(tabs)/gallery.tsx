@@ -546,12 +546,12 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   mainTitle: {
-    fontSize: 24,
+    fontSize: 26,
     fontFamily: getFontFamily("700"),
     marginBottom: 8,
   },
   subtitle: {
-    fontSize: 17,
+    fontSize: 19,
     fontFamily: getFontFamily("400"),
     color: "#000",
     textAlign: "center",
@@ -590,11 +590,11 @@ const styles = StyleSheet.create({
     overflow: "hidden",
   },
   statNumber: {
-    fontSize: 26,
+    fontSize: 28,
     fontFamily: getFontFamily("700"),
   },
   statLabel: {
-    fontSize: 15,
+    fontSize: 17,
     fontFamily: getFontFamily("400"),
     color: "#303030",
     textAlign: "center",
@@ -622,7 +622,7 @@ const styles = StyleSheet.create({
   },
   searchInput: {
     flex: 1,
-    fontSize: 15,
+    fontSize: 17,
     fontFamily: getFontFamily("400"),
     color: "#000",
   },
@@ -664,7 +664,7 @@ const styles = StyleSheet.create({
     borderWidth: 0,
   },
   tabText: {
-    fontSize: 17,
+    fontSize: 19,
     fontFamily: getFontFamily("500"),
     color: "#979797",
   },
@@ -719,7 +719,7 @@ const styles = StyleSheet.create({
   },
   actionButtonText: {
     color: "#fff",
-    fontSize: 15,
+    fontSize: 17,
   },
   videoBadge: {
     position: "absolute",
@@ -732,7 +732,7 @@ const styles = StyleSheet.create({
   },
   videoBadgeText: {
     color: "#fff",
-    fontSize: 9,
+    fontSize: 11,
     fontFamily: getFontFamily("700"),
   },
   loadingContainer: {
@@ -742,7 +742,7 @@ const styles = StyleSheet.create({
   },
   loadingText: {
     marginTop: 12,
-    fontSize: 14,
+    fontSize: 16,
     fontFamily: getFontFamily("400"),
     color: "#979797",
   },
@@ -752,7 +752,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   emptyText: {
-    fontSize: 15,
+    fontSize: 17,
     fontFamily: getFontFamily("400"),
     color: "#979797",
     textAlign: "center",

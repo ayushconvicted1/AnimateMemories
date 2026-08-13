@@ -22,22 +22,22 @@ interface TourStepWrapperProps {
 const STEP_DATA: Record<number, { title: string; desc: string; icon?: React.ReactNode }> = {
   1: {
     title: "Start Creating",
-    desc: "Action Required: Tap the glowing Create tab below to open the AI generator!",
+    desc: "👇 Click the Create tab below to begin!",
   },
   2: {
     title: "Upload Your Photo",
-    desc: "Action Required: Tap here to upload your photo or pick a sample image to animate!",
-    icon: <UploadIcon width={16} height={16} color="#475569" />,
+    desc: "👇 Click here to upload your photo!",
+    icon: <UploadIcon width={18} height={18} color="#475569" />,
   },
   3: {
-    title: "Select Preset or Custom Animation",
-    desc: "Action Required: Pick a preset template below or tap 'Custom Prompt' to use AI Surprise Me!",
-    icon: <SurpriseMeIcon width={16} height={16} color="#475569" />,
+    title: "Pick a Template",
+    desc: "👇 Click a template or tap 'Custom Prompt'",
+    icon: <SurpriseMeIcon width={18} height={18} color="#475569" />,
   },
   4: {
     title: "Generate AI Video",
-    desc: "Action Required: Tap 'Generate' to bring your photo to life with AI!",
-    icon: <GenerateIcon width={16} height={16} color="#475569" />,
+    desc: "👇 Click 'Generate' to bring your photo to life!",
+    icon: <GenerateIcon width={18} height={18} color="#475569" />,
   },
 };
 
@@ -183,7 +183,7 @@ const TourStepWrapper: React.FC<TourStepWrapperProps> = ({
               end={{ x: 1, y: 0 }}
               style={{ paddingVertical: 6, paddingHorizontal: 14, borderRadius: 14 }}
             >
-              <Text style={{ fontSize: 12, fontFamily: getFontFamily("700"), color: "#FFFFFF" }}>
+              <Text style={{ fontSize: 14, fontFamily: getFontFamily("700"), color: "#FFFFFF" }}>
                 Next: Templates →
               </Text>
             </LinearGradient>
@@ -288,22 +288,22 @@ const styles = StyleSheet.create({
     borderRadius: 12,
   },
   stepBadgeText: {
-    fontSize: 10,
+    fontSize: 12,
     fontFamily: getFontFamily("800"),
     color: "#FFFFFF",
     letterSpacing: 0.5,
   },
   tooltipTitle: {
-    fontSize: 15,
+    fontSize: 17,
     fontFamily: getFontFamily("700"),
     color: "#0F172A",
     marginBottom: 4,
   },
   tooltipDesc: {
-    fontSize: 13,
+    fontSize: 15,
     fontFamily: getFontFamily("400"),
     color: "#475569",
-    lineHeight: 18,
+    lineHeight: 21,
     marginBottom: 8,
   },
   skipRowRight: {
@@ -314,7 +314,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
   },
   skipBtnText: {
-    fontSize: 12.5,
+    fontSize: 14,
     fontFamily: getFontFamily("500"),
     color: "#64748B",
   },

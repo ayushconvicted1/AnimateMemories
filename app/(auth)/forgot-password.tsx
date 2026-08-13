@@ -216,14 +216,14 @@ const styles = StyleSheet.create({
   },
   title: {
     color: "#fff",
-    fontSize: 25,
+    fontSize: 27,
     fontWeight: "600",
     textAlign: "center",
     marginBottom: 10,
   },
   subtitle: {
     color: "#A0A0A0",
-    fontSize: 15,
+    fontSize: 17,
     textAlign: "center",
     marginBottom: 30,
     paddingHorizontal: 20,
@@ -236,6 +236,6 @@ const styles = StyleSheet.create({
   btnText: {
     color: "#fff",
     fontWeight: "600",
-    fontSize: 16,
+    fontSize: 18,
   },
 });

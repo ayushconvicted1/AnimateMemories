@@ -306,14 +306,14 @@ const styles = StyleSheet.create({
   },
   title: {
     marginTop: 22,
-    fontSize: 19,
+    fontSize: 21,
     fontFamily: getFontFamily("800"),
     color: "#0F172A",
     textAlign: "center",
   },
   subtitle: {
     marginTop: 4,
-    fontSize: 13,
+    fontSize: 15,
     fontFamily: getFontFamily("400"),
     color: "#64748B",
     textAlign: "center",
@@ -335,12 +335,12 @@ const styles = StyleSheet.create({
     flexShrink: 1,
   },
   phaseText: {
-    fontSize: 11.5,
+    fontSize: 13.5,
     fontFamily: getFontFamily("700"),
     color: "#7C3AED",
   },
   percent: {
-    fontSize: 12,
+    fontSize: 14,
     fontFamily: getFontFamily("800"),
     color: "#1E293B",
   },
@@ -363,7 +363,7 @@ const styles = StyleSheet.create({
   },
   phaseSub: {
     marginTop: 6,
-    fontSize: 11,
+    fontSize: 13,
     fontFamily: getFontFamily("400"),
     color: "#94A3B8",
   },
@@ -374,7 +374,7 @@ const styles = StyleSheet.create({
     gap: 5,
   },
   elapsedText: {
-    fontSize: 10.5,
+    fontSize: 12.5,
     fontFamily: getFontFamily("600"),
     color: "#94A3B8",
   },
@@ -393,8 +393,8 @@ const styles = StyleSheet.create({
   },
   tipText: {
     flex: 1,
-    fontSize: 11,
-    lineHeight: 16,
+    fontSize: 13,
+    lineHeight: 19,
     fontFamily: getFontFamily("500"),
     color: "#475569",
   },

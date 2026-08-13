@@ -73,7 +73,7 @@ const LandingAuth = () => {
             style={{
               color: "#fff",
               fontWeight: "500",
-              fontSize: 16,
+              fontSize: 18,
             }}
           >
             Login
@@ -112,7 +112,7 @@ const LandingAuth = () => {
             style={{
               color: "#000",
               fontWeight: "500",
-              fontSize: 16,
+              fontSize: 18,
             }}
           >
             Create an Account
@@ -142,13 +142,13 @@ const LandingAuth = () => {
 
 const styles = StyleSheet.create({
   whiteText: {
-    fontSize: 24,
+    fontSize: 26,
     fontWeight: "500",
     color: "#fff",
     textAlign: "center",
   },
   paraText: {
-    fontSize: 14,
+    fontSize: 16,
     color: "#A6A6A6",
     marginVertical: 10,
   },

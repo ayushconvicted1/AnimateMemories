@@ -504,7 +504,7 @@ const styles = StyleSheet.create({
   },
   title: {
     color: "#fff",
-    fontSize: 25,
+    fontSize: 27,
     fontWeight: "600",
     textAlign: "center",
     marginBottom: 20,
@@ -525,12 +525,12 @@ const styles = StyleSheet.create({
   },
   socialText: {
     color: "#000",
-    fontSize: 18,
+    fontSize: 20,
     marginLeft: 10,
   },
   divider: {
     color: "#fff",
-    fontSize: 14,
+    fontSize: 16,
     textAlign: "center",
     marginVertical: 15,
   },
@@ -542,7 +542,7 @@ const styles = StyleSheet.create({
   loginText: {
     color: "#fff",
     fontWeight: "600",
-    fontSize: 16,
+    fontSize: 18,
   },
   loginLink: {
     marginTop: 20,
@@ -555,14 +555,14 @@ const styles = StyleSheet.create({
   },
   verificationText: {
     color: "#fff",
-    fontSize: 16,
+    fontSize: 18,
     textAlign: "center",
     marginBottom: 20,
-    lineHeight: 24,
+    lineHeight: 26,
   },
   backButtonText: {
     color: "#28D4FA",
-    fontSize: 16,
+    fontSize: 18,
     fontWeight: "500",
   },
 });

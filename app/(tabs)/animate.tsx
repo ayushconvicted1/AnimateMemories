@@ -982,8 +982,8 @@ export default function AnimateScreen() {
             >
               {uploadHighlighted && (
                 <View style={{ backgroundColor: "#F59E0B", paddingVertical: 8, paddingHorizontal: 12, borderRadius: 12, marginBottom: 8, flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-                  <Text style={{ color: "#FFFFFF", fontSize: 12, fontFamily: getFontFamily("700") }}>⚠️ Please Upload an Image First!</Text>
-                  <Text style={{ color: "#FFFFFF", fontSize: 10, fontFamily: getFontFamily("700"), textTransform: "uppercase" }}>Required</Text>
+                  <Text style={{ color: "#FFFFFF", fontSize: 14, fontFamily: getFontFamily("700") }}>⚠️ Please Upload an Image First!</Text>
+                  <Text style={{ color: "#FFFFFF", fontSize: 12, fontFamily: getFontFamily("700"), textTransform: "uppercase" }}>Required</Text>
                 </View>
               )}
               <LinearGradient
@@ -1176,16 +1176,16 @@ export default function AnimateScreen() {
           {/* Enhancement Options Section (Only for Enhance tool) */}
           {selectedTool === "enhance" && !restoredImage && (
             <View style={{ marginTop: 12 }}>
-              <Text style={{ fontSize: 13, fontFamily: getFontFamily("700"), color: "#6b7280", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 8 }}>Enhancement Options</Text>
+              <Text style={{ fontSize: 15, fontFamily: getFontFamily("700"), color: "#6b7280", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 8 }}>Enhancement Options</Text>
               <View style={{ gap: 8 }}>
                 <TouchableOpacity
                   style={{ flexDirection: "row", alignItems: "center" }}
                   onPress={() => setEnhanceOptions(prev => ({ ...prev, upscale: !prev.upscale }))}
                 >
                   <View style={{ width: 22, height: 22, borderRadius: 4, borderWidth: 2, borderColor: enhanceOptions.upscale ? "#28D4FA" : "#94A3B8", backgroundColor: enhanceOptions.upscale ? "#28D4FA" : "transparent", marginRight: 10, alignItems: "center", justifyContent: "center" }}>
-                    {enhanceOptions.upscale && <Text style={{ color: "#fff", fontSize: 14, fontFamily: getFontFamily("700") }}>✓</Text>}
+                    {enhanceOptions.upscale && <Text style={{ color: "#fff", fontSize: 16, fontFamily: getFontFamily("700") }}>✓</Text>}
                   </View>
-                  <Text style={{ fontSize: 14, color: "#1E293B", fontFamily: getFontFamily("400") }}>{`4K Upscale (${featureCosts?.enhance_upscale || 1} credit${(featureCosts?.enhance_upscale || 1) !== 1 ? 's' : ''})`}</Text>
+                  <Text style={{ fontSize: 16, color: "#1E293B", fontFamily: getFontFamily("400") }}>{`4K Upscale (${featureCosts?.enhance_upscale || 1} credit${(featureCosts?.enhance_upscale || 1) !== 1 ? 's' : ''})`}</Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity
@@ -1193,9 +1193,9 @@ export default function AnimateScreen() {
                   onPress={() => setEnhanceOptions(prev => ({ ...prev, faceEnhance: !prev.faceEnhance }))}
                 >
                   <View style={{ width: 22, height: 22, borderRadius: 4, borderWidth: 2, borderColor: enhanceOptions.faceEnhance ? "#28D4FA" : "#94A3B8", backgroundColor: enhanceOptions.faceEnhance ? "#28D4FA" : "transparent", marginRight: 10, alignItems: "center", justifyContent: "center" }}>
-                    {enhanceOptions.faceEnhance && <Text style={{ color: "#fff", fontSize: 14, fontFamily: getFontFamily("700") }}>✓</Text>}
+                    {enhanceOptions.faceEnhance && <Text style={{ color: "#fff", fontSize: 16, fontFamily: getFontFamily("700") }}>✓</Text>}
                   </View>
-                  <Text style={{ fontSize: 14, color: "#1E293B", fontFamily: getFontFamily("400") }}>{`Face Enhancement (${featureCosts?.enhance_face || 1} credit${(featureCosts?.enhance_face || 1) !== 1 ? 's' : ''})`}</Text>
+                  <Text style={{ fontSize: 16, color: "#1E293B", fontFamily: getFontFamily("400") }}>{`Face Enhancement (${featureCosts?.enhance_face || 1} credit${(featureCosts?.enhance_face || 1) !== 1 ? 's' : ''})`}</Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity
@@ -1203,9 +1203,9 @@ export default function AnimateScreen() {
                   onPress={() => setEnhanceOptions(prev => ({ ...prev, colorize: !prev.colorize }))}
                 >
                   <View style={{ width: 22, height: 22, borderRadius: 4, borderWidth: 2, borderColor: enhanceOptions.colorize ? "#28D4FA" : "#94A3B8", backgroundColor: enhanceOptions.colorize ? "#28D4FA" : "transparent", marginRight: 10, alignItems: "center", justifyContent: "center" }}>
-                    {enhanceOptions.colorize && <Text style={{ color: "#fff", fontSize: 14, fontFamily: getFontFamily("700") }}>✓</Text>}
+                    {enhanceOptions.colorize && <Text style={{ color: "#fff", fontSize: 16, fontFamily: getFontFamily("700") }}>✓</Text>}
                   </View>
-                  <Text style={{ fontSize: 14, color: "#1E293B", fontFamily: getFontFamily("400") }}>{`Colorize B&W (${featureCosts?.enhance_colorize || 1} credit${(featureCosts?.enhance_colorize || 1) !== 1 ? 's' : ''})`}</Text>
+                  <Text style={{ fontSize: 16, color: "#1E293B", fontFamily: getFontFamily("400") }}>{`Colorize B&W (${featureCosts?.enhance_colorize || 1} credit${(featureCosts?.enhance_colorize || 1) !== 1 ? 's' : ''})`}</Text>
                 </TouchableOpacity>
               </View>
             </View>
@@ -1357,12 +1357,12 @@ export default function AnimateScreen() {
                       end={{ x: 1, y: 0 }}
                       style={{ ...StyleSheet.absoluteFillObject, justifyContent: "center", alignItems: "center" }}
                     >
-                      <Text style={{ color: "#FFFFFF", fontSize: 13, fontFamily: getFontFamily("700"), textTransform: "uppercase" }}>
+                      <Text style={{ color: "#FFFFFF", fontSize: 15, fontFamily: getFontFamily("700"), textTransform: "uppercase" }}>
                         PICK A TEMPLATE
                       </Text>
                     </LinearGradient>
                   ) : (
-                    <Text style={{ color: "#475569", fontSize: 13, fontFamily: getFontFamily("700"), textTransform: "uppercase" }}>
+                    <Text style={{ color: "#475569", fontSize: 15, fontFamily: getFontFamily("700"), textTransform: "uppercase" }}>
                       PICK A TEMPLATE
                     </Text>
                   )}
@@ -1383,12 +1383,12 @@ export default function AnimateScreen() {
                       end={{ x: 1, y: 0 }}
                       style={{ ...StyleSheet.absoluteFillObject, justifyContent: "center", alignItems: "center" }}
                     >
-                      <Text style={{ color: "#FFFFFF", fontSize: 13, fontFamily: getFontFamily("700"), textTransform: "uppercase" }}>
+                      <Text style={{ color: "#FFFFFF", fontSize: 15, fontFamily: getFontFamily("700"), textTransform: "uppercase" }}>
                         CUSTOM PROMPT ✨
                       </Text>
                     </LinearGradient>
                   ) : (
-                    <Text style={{ color: "#475569", fontSize: 13, fontFamily: getFontFamily("700"), textTransform: "uppercase" }}>
+                    <Text style={{ color: "#475569", fontSize: 15, fontFamily: getFontFamily("700"), textTransform: "uppercase" }}>
                       CUSTOM PROMPT ✨
                     </Text>
                   )}
@@ -1497,7 +1497,7 @@ export default function AnimateScreen() {
 
                     {currentPageItems.length === 0 && (
                       <View style={{ width: "100%", paddingVertical: 24, alignItems: "center" }}>
-                        <Text style={{ color: "#9ca3af", fontSize: 14 }}>No templates found</Text>
+                        <Text style={{ color: "#9ca3af", fontSize: 16 }}>No templates found</Text>
                       </View>
                     )}
                   </View>
@@ -1562,7 +1562,7 @@ export default function AnimateScreen() {
 
                   {surpriseSubject !== "" && (
                     <View style={{ backgroundColor: "#F3E8FF", borderColor: "#D8B4FE", borderWidth: 1, paddingVertical: 6, paddingHorizontal: 12, borderRadius: 10, marginBottom: 10, alignSelf: "flex-start", flexDirection: "row", alignItems: "center", gap: 4 }}>
-                      <Text style={{ fontSize: 12, fontFamily: getFontFamily("600"), color: "#6B21A8" }}>
+                      <Text style={{ fontSize: 14, fontFamily: getFontFamily("600"), color: "#6B21A8" }}>
                         ✨ Detected Subject: <Text style={{ fontFamily: getFontFamily("700"), color: "#581C87" }}>{surpriseSubject}</Text>
                       </Text>
                     </View>
@@ -1570,7 +1570,7 @@ export default function AnimateScreen() {
 
                   {/* Suggestion Chips */}
                   <View style={{ marginBottom: 10 }}>
-                    <Text style={{ fontSize: 11, fontFamily: getFontFamily("600"), color: "#64748B", marginBottom: 6, textTransform: "uppercase", letterSpacing: 0.5 }}>Prompt Ideas</Text>
+                    <Text style={{ fontSize: 13, fontFamily: getFontFamily("600"), color: "#64748B", marginBottom: 6, textTransform: "uppercase", letterSpacing: 0.5 }}>Prompt Ideas</Text>
                     <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
                       {promptExamples.map((ex, idx) => (
                         <TouchableOpacity
@@ -1579,7 +1579,7 @@ export default function AnimateScreen() {
                           onPress={() => setCustomPrompt(ex)}
                           activeOpacity={0.75}
                         >
-                          <Text style={{ fontSize: 11, fontFamily: getFontFamily("500"), color: "#334155" }} numberOfLines={1}>
+                          <Text style={{ fontSize: 13, fontFamily: getFontFamily("500"), color: "#334155" }} numberOfLines={1}>
                             "{ex}"
                           </Text>
                         </TouchableOpacity>
@@ -1628,13 +1628,7 @@ export default function AnimateScreen() {
                   <View style={[styles.generateSection, { marginTop: 16, marginHorizontal: 0 }]} pointerEvents={isActive && currentStep !== 4 ? "none" : "auto"}>
                     <TouchableOpacity
                       style={[styles.generateButton, { opacity: (!uploadedImage || loading || uploading || isSubmittingRef.current) ? 0.6 : 1 }]}
-                      onPress={
-                        selectedTool === "restore"
-                          ? handleRestore
-                          : selectedTool === "enhance"
-                            ? handleEnhance
-                            : handleAnimate
-                      }
+                      onPress={handleAnimate}
                       disabled={loading || uploading || isSubmittingRef.current || !uploadedImage}
                     >
                       <LinearGradient
@@ -1691,19 +1685,19 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   mainTitle: {
-    fontSize: 24,
+    fontSize: 26,
     fontFamily: getFontFamily("800"),
     color: "#0F172A",
     marginBottom: 6,
     textAlign: "center",
   },
   mainSubtitle: {
-    fontSize: 14,
+    fontSize: 16,
     fontFamily: getFontFamily("400"),
     color: "#334155",
     textAlign: "center",
     marginBottom: 16,
-    lineHeight: 20,
+    lineHeight: 22,
   },
   mainSubtitleHighlight: {
     fontFamily: getFontFamily("700"),
@@ -1744,13 +1738,13 @@ const styles = StyleSheet.create({
     backgroundColor: "#F8FAFC",
   },
   toolTextLabel: {
-    fontSize: 14,
+    fontSize: 16,
     fontFamily: getFontFamily("700"),
     color: "#475569",
     textAlign: "center",
   },
   toolTextLabelSelected: {
-    fontSize: 14,
+    fontSize: 16,
     fontFamily: getFontFamily("700"),
     color: "#FFFFFF",
     textAlign: "center",
@@ -1782,7 +1776,7 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   qualitySectionTitleCard: {
-    fontSize: 12,
+    fontSize: 14,
     fontFamily: getFontFamily("700"),
     color: "#64748B",
     marginBottom: 6,
@@ -1823,25 +1817,25 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   aspectRatioLabel: {
-    fontSize: 11,
+    fontSize: 13,
     fontFamily: getFontFamily("700"),
     color: "#334155",
     textAlign: "center",
   },
   aspectRatioLabelSelected: {
-    fontSize: 11,
+    fontSize: 13,
     fontFamily: getFontFamily("800"),
     color: "#D229FF",
     textAlign: "center",
   },
   aspectRatioSub: {
-    fontSize: 10,
+    fontSize: 11,
     fontFamily: getFontFamily("500"),
     color: "#94A3B8",
     marginTop: 1,
   },
   aspectRatioSubSelected: {
-    fontSize: 10,
+    fontSize: 11,
     fontFamily: getFontFamily("700"),
     color: "#C084FC",
     marginTop: 1,
@@ -1863,7 +1857,7 @@ const styles = StyleSheet.create({
     paddingRight: 12,
   },
   uploadCardTitle: {
-    fontSize: 17,
+    fontSize: 19,
     fontFamily: getFontFamily("700"),
     color: "#0F172A",
     letterSpacing: -0.2,
@@ -1878,9 +1872,9 @@ const styles = StyleSheet.create({
     borderRadius: 0.5,
   },
   uploadCardSubtext: {
-    fontSize: 11,
+    fontSize: 13,
     color: "#64748B",
-    lineHeight: 17,
+    lineHeight: 19,
     fontFamily: getFontFamily("400"),
   },
   uploadCardRight: {
@@ -1919,7 +1913,7 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   customAnimationTitle: {
-    fontSize: 16,
+    fontSize: 18,
     fontFamily: getFontFamily("700"),
     color: "#0F172A",
   },
@@ -1932,7 +1926,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#FAF5FF",
   },
   optionalBadgeText: {
-    fontSize: 11,
+    fontSize: 13,
     fontFamily: getFontFamily("600"),
     color: "#C084FC",
   },
@@ -1947,7 +1941,7 @@ const styles = StyleSheet.create({
     position: "relative",
   },
   customDashedInput: {
-    fontSize: 13,
+    fontSize: 15,
     color: "#334155",
     textAlignVertical: "top",
     minHeight: 65,
@@ -1970,7 +1964,7 @@ const styles = StyleSheet.create({
     paddingVertical: 7,
   },
   surpriseTextBadge: {
-    fontSize: 12,
+    fontSize: 14,
     fontFamily: getFontFamily("700"),
     color: "#FFFFFF",
   },
@@ -1997,7 +1991,7 @@ const styles = StyleSheet.create({
   },
   removeButtonText: {
     color: "#fff",
-    fontSize: 18,
+    fontSize: 20,
     fontFamily: getFontFamily("700"),
     marginTop: -2,
   },
@@ -2012,7 +2006,7 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   customTitle: {
-    fontSize: 16,
+    fontSize: 18,
     fontFamily: getFontFamily("700"),
     color: "#000",
   },
@@ -2026,7 +2020,7 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     padding: 12,
     paddingBottom: 50,
-    fontSize: 14,
+    fontSize: 16,
     color: "#000",
     textAlignVertical: "top",
     minHeight: 100,
@@ -2048,7 +2042,7 @@ const styles = StyleSheet.create({
   },
   surpriseText: {
     color: "#fff",
-    fontSize: 12,
+    fontSize: 14,
     fontFamily: getFontFamily("600"),
   },
   generateSection: {
@@ -2072,7 +2066,7 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
   },
   generateText: {
-    fontSize: 16,
+    fontSize: 18,
     fontFamily: getFontFamily("700"),
     color: "#fff",
   },
@@ -2086,7 +2080,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
   },
   creditsBadgeText: {
-    fontSize: 12,
+    fontSize: 14,
     fontFamily: getFontFamily("600"),
     color: "#fff",
   },
@@ -2100,7 +2094,7 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   creditsText: {
-    fontSize: 14,
+    fontSize: 16,
     fontFamily: getFontFamily("600"),
     color: "#1E293B",
   },
@@ -2109,7 +2103,7 @@ const styles = StyleSheet.create({
     marginBottom: 24,
   },
   resultTitle: {
-    fontSize: 20,
+    fontSize: 22,
     fontFamily: getFontFamily("700"),
     color: "#000",
     marginBottom: 16,
@@ -2152,7 +2146,7 @@ const styles = StyleSheet.create({
   },
   downloadButtonText: {
     color: "#fff",
-    fontSize: 16,
+    fontSize: 18,
     fontFamily: getFontFamily("700"),
   },
   resetButton: {
@@ -2165,7 +2159,7 @@ const styles = StyleSheet.create({
   },
   resetButtonText: {
     color: "#374151",
-    fontSize: 16,
+    fontSize: 18,
     fontFamily: getFontFamily("600"),
   },
   templatesSection: {
@@ -2173,7 +2167,7 @@ const styles = StyleSheet.create({
     marginBottom: 40,
   },
   templatesTitle: {
-    fontSize: 22,
+    fontSize: 24,
     fontFamily: getFontFamily("800"),
     color: "#0a0a0a",
     textAlign: "center",
@@ -2181,7 +2175,7 @@ const styles = StyleSheet.create({
     letterSpacing: -0.3,
   },
   templatesSubtitle: {
-    fontSize: 13,
+    fontSize: 15,
     fontFamily: getFontFamily("500"),
     color: "#9ca3af",
     textAlign: "center",
@@ -2196,7 +2190,7 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   qualitySectionTitle: {
-    fontSize: 13,
+    fontSize: 15,
     fontFamily: getFontFamily("700"),
     color: "#6b7280",
     marginBottom: 8,
@@ -2234,19 +2228,19 @@ const styles = StyleSheet.create({
     backgroundColor: "#fff",
   },
   qualityLabel: {
-    fontSize: 13,
+    fontSize: 15,
     fontFamily: getFontFamily("700"),
     color: "#1f2937",
     marginBottom: 1,
   },
   qualityRes: {
-    fontSize: 10,
+    fontSize: 12,
     fontFamily: getFontFamily("500"),
     color: "#9ca3af",
     marginBottom: 2,
   },
   qualityCredits: {
-    fontSize: 11,
+    fontSize: 13,
     fontFamily: getFontFamily("600"),
     color: "#6b7280",
   },
@@ -2285,25 +2279,25 @@ const styles = StyleSheet.create({
     backgroundColor: "#fafafa",
   },
   modelChipName: {
-    fontSize: 11,
+    fontSize: 13,
     fontFamily: getFontFamily("700"),
     color: "#374151",
     textAlign: "center" as const,
   },
   modelChipNameSelected: {
-    fontSize: 11,
+    fontSize: 13,
     fontFamily: getFontFamily("700"),
     color: "#fff",
     textAlign: "center" as const,
   },
   modelChipCost: {
-    fontSize: 10,
+    fontSize: 12,
     fontFamily: getFontFamily("600"),
     color: "#9ca3af",
     marginTop: 2,
   },
   modelChipCostSelected: {
-    fontSize: 10,
+    fontSize: 12,
     fontFamily: getFontFamily("600"),
     color: "rgba(255,255,255,0.85)",
     marginTop: 2,
@@ -2346,7 +2340,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   templateNameGrid: {
-    fontSize: 11,
+    fontSize: 13,
     fontFamily: getFontFamily("600"),
     color: "#374151",
     textAlign: "center",
@@ -2365,7 +2359,7 @@ const styles = StyleSheet.create({
   },
   selectedCheckText: {
     color: "#fff",
-    fontSize: 10,
+    fontSize: 12,
     fontFamily: getFontFamily("700"),
   },
   confirmationBanner: {
@@ -2395,20 +2389,20 @@ const styles = StyleSheet.create({
   },
   confirmationCheck: {
     color: "#fff",
-    fontSize: 12,
+    fontSize: 14,
     fontFamily: getFontFamily("700"),
   },
   confirmationTextContainer: {
     flex: 1,
   },
   confirmationLabel: {
-    fontSize: 9,
+    fontSize: 11,
     fontFamily: getFontFamily("800"),
     textTransform: "uppercase",
     color: "#D229FF",
   },
   confirmationValue: {
-    fontSize: 13,
+    fontSize: 15,
     fontFamily: getFontFamily("700"),
     color: "#111827",
     marginTop: 2,
@@ -2422,7 +2416,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
   },
   confirmedPillText: {
-    fontSize: 10,
+    fontSize: 12,
     fontFamily: getFontFamily("700"),
     color: "#D229FF",
   },
@@ -2438,7 +2432,7 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   customTitleInline: {
-    fontSize: 14,
+    fontSize: 16,
     fontFamily: getFontFamily("700"),
     color: "#1f2937",
   },
@@ -2452,7 +2446,7 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     padding: 12,
     paddingBottom: 40,
-    fontSize: 13,
+    fontSize: 15,
     color: "#111827",
     textAlignVertical: "top",
     minHeight: 90,
@@ -2473,7 +2467,7 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
   },
   surpriseTextInline: {
-    fontSize: 10,
+    fontSize: 12,
     fontFamily: getFontFamily("700"),
     color: "#fff",
   },
@@ -2499,7 +2493,7 @@ const styles = StyleSheet.create({
   },
   templateSearchInputFull: {
     flex: 1,
-    fontSize: 15,
+    fontSize: 16,
     fontFamily: getFontFamily("500"),
     color: "#1f2937",
     padding: 0,
@@ -2542,7 +2536,7 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   categoryPillText: {
-    fontSize: 13,
+    fontSize: 15,
     fontFamily: getFontFamily("600"),
     color: "#4b5563",
     paddingHorizontal: 16,
@@ -2550,7 +2544,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#f9fafb",
   },
   categoryPillTextSelected: {
-    fontSize: 13,
+    fontSize: 15,
     color: "#fff",
     fontFamily: getFontFamily("700"),
   },
@@ -2575,7 +2569,7 @@ const styles = StyleSheet.create({
     borderColor: "#E5E7EB",
   },
   pageButtonText: {
-    fontSize: 13,
+    fontSize: 15,
     fontFamily: getFontFamily("700"),
     color: "#D229FF",
   },
@@ -2584,7 +2578,7 @@ const styles = StyleSheet.create({
     fontFamily: getFontFamily("400"),
   },
   pageIndicatorText: {
-    fontSize: 13,
+    fontSize: 15,
     fontFamily: getFontFamily("600"),
     color: "#4B5563",
   },

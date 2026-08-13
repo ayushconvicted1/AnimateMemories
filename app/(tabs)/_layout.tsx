@@ -224,8 +224,8 @@ export default function TabLayout() {
             borderTopRightRadius: 10,
           },
           tabBarLabelStyle: {
-            fontSize: 11,
-            fontFamily: getFontFamily("400"),
+            fontSize: 13,
+            fontFamily: getFontFamily("500"),
             marginTop: 4,
           },
           tabBarItemStyle: {
@@ -424,7 +424,7 @@ const styles = StyleSheet.create({
     zIndex: 1,
   },
   centerButtonIconText: {
-    fontSize: 17,
+    fontSize: 19,
     fontFamily: getFontFamily("700"),
     color: "#fff",
   },

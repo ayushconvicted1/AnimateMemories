@@ -227,12 +227,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 4,
   },
   backButtonText: {
-    fontSize: 15,
+    fontSize: 17,
     color: "#000",
     fontFamily: getFontFamily("600"),
   },
   title: {
-    fontSize: 24,
+    fontSize: 26,
     fontFamily: getFontFamily("700"),
   },
   placeholder: {
@@ -246,7 +246,7 @@ const styles = StyleSheet.create({
     marginBottom: 24,
   },
   sectionTitle: {
-    fontSize: 17,
+    fontSize: 19,
     color: "#000",
     marginBottom: 16,
     fontFamily: getFontFamily("700"),
@@ -255,13 +255,13 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
   },
   contentSubtitle: {
-    fontSize: 15,
+    fontSize: 17,
     color: "#000",
     marginBottom: 8,
     fontFamily: getFontFamily("600"),
   },
   contentText: {
-    fontSize: 13,
+    fontSize: 15,
     color: "#979797",
     lineHeight: 22,
     fontFamily: getFontFamily("400"),
@@ -280,7 +280,7 @@ const styles = StyleSheet.create({
     borderColor: "#e9ecef",
   },
   contactText: {
-    fontSize: 14,
+    fontSize: 16,
     color: "#979797",
     textAlign: "center",
     marginBottom: 16,
@@ -288,7 +288,7 @@ const styles = StyleSheet.create({
     fontFamily: getFontFamily("400"),
   },
   contactEmail: {
-    fontSize: 16,
+    fontSize: 18,
     color: "#28D4FA",
     textDecorationLine: "underline",
     fontFamily: getFontFamily("600"),

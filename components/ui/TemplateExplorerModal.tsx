@@ -208,19 +208,19 @@ const styles = StyleSheet.create({
   },
   eyebrow: {
     color: "#8B5CF6",
-    fontSize: 10,
+    fontSize: 12,
     letterSpacing: 1.4,
     fontFamily: getFontFamily("700"),
     marginBottom: 3,
   },
   title: {
     color: "#111827",
-    fontSize: 22,
+    fontSize: 24,
     fontFamily: getFontFamily("700"),
   },
   subtitle: {
     color: "#64748B",
-    fontSize: 13,
+    fontSize: 15,
     marginTop: 2,
     fontFamily: getFontFamily("500"),
   },
@@ -236,7 +236,7 @@ const styles = StyleSheet.create({
   },
   closeText: {
     color: "#475569",
-    fontSize: 24,
+    fontSize: 26,
     lineHeight: 26,
     fontFamily: getFontFamily("400"),
   },
@@ -261,7 +261,7 @@ const styles = StyleSheet.create({
     flex: 1,
     height: "100%",
     color: "#0F172A",
-    fontSize: 14,
+    fontSize: 16,
     fontFamily: getFontFamily("500"),
   },
   categoriesWrapper: {
@@ -287,14 +287,14 @@ const styles = StyleSheet.create({
   },
   pillText: {
     color: "#64748B",
-    fontSize: 14,
+    fontSize: 16,
     fontFamily: getFontFamily("600"),
     includeFontPadding: false,
     textAlign: "center",
   },
   pillTextActive: {
     color: "#FFFFFF",
-    fontSize: 14,
+    fontSize: 16,
     fontFamily: getFontFamily("700"),
     includeFontPadding: false,
     textAlign: "center",
@@ -304,7 +304,7 @@ const styles = StyleSheet.create({
     paddingTop: 2,
   },
   row: {
-    justify: "space-between",
+    justifyContent: "space-between",
   },
   card: {
     marginBottom: 16,
@@ -344,7 +344,7 @@ const styles = StyleSheet.create({
   categoryBadgeText: {
     color: "#7C3AED",
     fontFamily: getFontFamily("700"),
-    fontSize: 9,
+    fontSize: 11,
     textTransform: "uppercase",
     includeFontPadding: false,
   },
@@ -359,12 +359,12 @@ const styles = StyleSheet.create({
   cardTitle: {
     flex: 1,
     color: "#1E293B",
-    fontSize: 13,
+    fontSize: 15,
     fontFamily: getFontFamily("700"),
   },
   arrow: {
     color: "#8B5CF6",
-    fontSize: 22,
+    fontSize: 24,
     lineHeight: 18,
     fontFamily: getFontFamily("500"),
   },
@@ -375,12 +375,12 @@ const styles = StyleSheet.create({
   },
   emptyTitle: {
     color: "#334155",
-    fontSize: 17,
+    fontSize: 19,
     fontFamily: getFontFamily("700"),
   },
   emptyCopy: {
     color: "#64748B",
-    fontSize: 13,
+    fontSize: 15,
     marginTop: 4,
     fontFamily: getFontFamily("400"),
   },

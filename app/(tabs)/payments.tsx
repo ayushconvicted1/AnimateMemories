@@ -274,12 +274,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 4,
   },
   backButtonText: {
-    fontSize: 15,
+    fontSize: 17,
     color: "#000",
     fontFamily: getFontFamily("600"),
   },
   title: {
-    fontSize: 24,
+    fontSize: 26,
     fontFamily: getFontFamily("700"),
   },
   placeholder: {
@@ -299,13 +299,13 @@ const styles = StyleSheet.create({
     borderColor: "#e9ecef",
   },
   creditsCardTitle: {
-    fontSize: 14,
+    fontSize: 16,
     color: "#979797",
     marginBottom: 8,
     fontFamily: getFontFamily("500"),
   },
   creditsCardValue: {
-    fontSize: 32,
+    fontSize: 34,
     fontFamily: getFontFamily("700"),
   },
   buySection: {
@@ -322,7 +322,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   buyButtonText: {
-    fontSize: 16,
+    fontSize: 18,
     color: "#fff",
     fontFamily: getFontFamily("600"),
   },
@@ -331,7 +331,7 @@ const styles = StyleSheet.create({
     marginBottom: 24,
   },
   sectionTitle: {
-    fontSize: 17,
+    fontSize: 19,
     color: "#000",
     marginBottom: 12,
     fontFamily: getFontFamily("700"),
@@ -344,13 +344,13 @@ const styles = StyleSheet.create({
     borderColor: "#e9ecef",
   },
   infoTitle: {
-    fontSize: 15,
+    fontSize: 17,
     color: "#000",
     marginBottom: 8,
     fontFamily: getFontFamily("600"),
   },
   infoText: {
-    fontSize: 13,
+    fontSize: 15,
     color: "#979797",
     lineHeight: 20,
     fontFamily: getFontFamily("400"),
@@ -373,7 +373,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   emptyStateText: {
-    fontSize: 14,
+    fontSize: 16,
     color: "#979797",
     fontFamily: getFontFamily("400"),
   },
@@ -397,13 +397,13 @@ const styles = StyleSheet.create({
     marginRight: 12,
   },
   transactionDescription: {
-    fontSize: 14,
+    fontSize: 16,
     color: "#000",
     marginBottom: 4,
     fontFamily: getFontFamily("600"),
   },
   transactionDate: {
-    fontSize: 12,
+    fontSize: 14,
     color: "#979797",
     fontFamily: getFontFamily("400"),
   },
@@ -411,13 +411,13 @@ const styles = StyleSheet.create({
     alignItems: "flex-end",
   },
   transactionAmount: {
-    fontSize: 15,
+    fontSize: 17,
     color: "#28D4FA",
     marginBottom: 4,
     fontFamily: getFontFamily("700"),
   },
   transactionCredits: {
-    fontSize: 14,
+    fontSize: 16,
     color: "#D229FF",
     marginBottom: 4,
     fontFamily: getFontFamily("600"),
@@ -438,7 +438,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#fee2e2",
   },
   statusText: {
-    fontSize: 11,
+    fontSize: 13,
     color: "#6b7280",
     fontFamily: getFontFamily("600"),
   },
@@ -449,7 +449,7 @@ const styles = StyleSheet.create({
     color: "#d97706",
   },
   statusTextFailed: {
-    fontSize: 14,
+    fontSize: 16,
     color: "#979797",
     fontFamily: getFontFamily("400"),
   },

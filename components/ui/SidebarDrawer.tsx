@@ -326,7 +326,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   closeButtonText: {
-    fontSize: 16,
+    fontSize: 18,
     color: "#64748B",
     fontFamily: getFontFamily("600"),
   },
@@ -357,7 +357,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   avatarText: {
-    fontSize: 16,
+    fontSize: 18,
     fontFamily: getFontFamily("700"),
     color: "#FFFFFF",
   },
@@ -365,12 +365,12 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   userNameText: {
-    fontSize: 15,
+    fontSize: 17,
     fontFamily: getFontFamily("700"),
     color: "#0F172A",
   },
   userEmailText: {
-    fontSize: 12,
+    fontSize: 14,
     fontFamily: getFontFamily("400"),
     color: "#64748B",
     marginTop: 2,
@@ -390,7 +390,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
   },
   creditsPillText: {
-    fontSize: 12,
+    fontSize: 14,
     fontFamily: getFontFamily("600"),
     color: "#0284C7",
   },
@@ -400,7 +400,7 @@ const styles = StyleSheet.create({
     borderRadius: 14,
   },
   getCreditsText: {
-    fontSize: 11,
+    fontSize: 13,
     fontFamily: getFontFamily("700"),
     color: "#FFFFFF",
   },
@@ -426,7 +426,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   menuItemLabel: {
-    fontSize: 15,
+    fontSize: 17,
     fontFamily: getFontFamily("500"),
     color: "#1E293B",
   },
@@ -439,7 +439,7 @@ const styles = StyleSheet.create({
     borderColor: "#BAE6FD",
   },
   badgeText: {
-    fontSize: 10,
+    fontSize: 12,
     fontFamily: getFontFamily("700"),
     color: "#0284C7",
   },
@@ -458,7 +458,7 @@ const styles = StyleSheet.create({
     borderColor: "#FEE2E2",
   },
   logoutText: {
-    fontSize: 14,
+    fontSize: 16,
     fontFamily: getFontFamily("600"),
     color: "#EF4444",
   },
@@ -471,7 +471,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   loginText: {
-    fontSize: 14,
+    fontSize: 16,
     fontFamily: getFontFamily("700"),
     color: "#FFFFFF",
   },

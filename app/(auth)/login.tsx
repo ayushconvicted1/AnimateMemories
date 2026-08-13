@@ -286,7 +286,7 @@ const LoginScreen = () => {
         style={{ alignSelf: "flex-end", marginTop: 15, marginRight: 5 }}
         onPress={() => router.push("/(auth)/forgot-password")}
       >
-        <Text style={{ color: "#28D4FA", fontSize: 14, fontWeight: "600" }}>Forgot Password?</Text>
+        <Text style={{ color: "#28D4FA", fontSize: 16, fontWeight: "600" }}>Forgot Password?</Text>
       </TouchableOpacity>
 
       {/* Login button */}
@@ -342,7 +342,7 @@ const styles = StyleSheet.create({
   },
   title: {
     color: "#fff",
-    fontSize: 25,
+    fontSize: 27,
     fontWeight: "600",
     textAlign: "center",
     marginBottom: 20,
@@ -363,12 +363,12 @@ const styles = StyleSheet.create({
   },
   socialText: {
     color: "#000",
-    fontSize: 18,
+    fontSize: 20,
     marginLeft: 10,
   },
   divider: {
     color: "#fff",
-    fontSize: 14,
+    fontSize: 16,
     textAlign: "center",
     marginVertical: 15,
   },
@@ -380,7 +380,7 @@ const styles = StyleSheet.create({
   loginText: {
     color: "#fff",
     fontWeight: "600",
-    fontSize: 16,
+    fontSize: 18,
   },
   signupLink: {
     marginTop: 20,
@@ -388,7 +388,7 @@ const styles = StyleSheet.create({
   },
   signupText: {
     color: "#fff",
-    fontSize: 14,
+    fontSize: 16,
   },
   signupLinkText: {
     color: "#28D4FA",

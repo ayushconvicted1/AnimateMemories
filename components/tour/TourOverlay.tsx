@@ -43,7 +43,7 @@ const TourOverlay = () => {
 
             <Text style={styles.title}>Welcome to Animate Memories! 👋</Text>
             <Text style={styles.text}>
-              Let's show you how to generate your first AI video memory in a few quick steps.
+              Let's get you started →{"\n"}Click the buttons below to begin!
             </Text>
 
             <View style={styles.buttonRowCenter}>
@@ -84,7 +84,7 @@ const TourOverlay = () => {
           <Text style={styles.title}>Start Creating</Text>
           <View style={{ flexDirection: "row", alignItems: "flex-start", marginBottom: 12, paddingRight: 10 }}>
             <Text style={[styles.text, { marginBottom: 0 }]}>
-              Action Required: Tap the glowing Create tab below to open the AI generator!
+              👇 Click the glowing Create button below
             </Text>
           </View>
           <View style={styles.skipRowRight}>
@@ -121,8 +121,8 @@ const TourOverlay = () => {
                   <SurpriseMeIcon width={16} height={16} color="#475569" />
                 </View>
                 <Text style={[styles.text, { marginBottom: 0 }]}>
-                  Action Required: Choose a preset template or tap 'Custom Prompt' to use AI Surprise Me!
-                </Text>
+                👇 Click a template below to continue
+              </Text>
               </View>
               <View style={styles.skipRowRight}>
                 <TouchableOpacity onPress={endTour} style={styles.skipButton}>
@@ -196,24 +196,24 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   headerBadgeText: {
-    fontSize: 10,
+    fontSize: 12,
     fontFamily: getFontFamily("800"),
     color: "#FFFFFF",
     letterSpacing: 0.5,
   },
   title: {
-    fontSize: 16,
+    fontSize: 18,
     fontFamily: getFontFamily("700"),
     color: "#0F172A",
     textAlign: "center",
     marginBottom: 6,
   },
   text: {
-    fontSize: 13,
+    fontSize: 15,
     fontFamily: getFontFamily("400"),
     color: "#475569",
     textAlign: "center",
-    lineHeight: 18,
+    lineHeight: 21,
     marginBottom: 12,
   },
   buttonRowCenter: {
@@ -231,7 +231,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
   },
   skipButtonText: {
-    fontSize: 13,
+    fontSize: 15,
     fontFamily: getFontFamily("500"),
     color: "#64748B",
   },
@@ -241,7 +241,7 @@ const styles = StyleSheet.create({
     borderRadius: 20,
   },
   startButtonText: {
-    fontSize: 13,
+    fontSize: 15,
     fontFamily: getFontFamily("700"),
     color: "#FFFFFF",
   },

@@ -125,7 +125,7 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   title: {
-    fontSize: 16,
+    fontSize: 18,
     fontWeight: "700",
     color: "#000",
     fontFamily: getFontFamily("700"),
@@ -137,7 +137,7 @@ const styles = StyleSheet.create({
   },
   valueBadgeText: {
     color: "#fff",
-    fontSize: 13,
+    fontSize: 15,
     fontWeight: "600",
     fontFamily: getFontFamily("600"),
   },
@@ -169,7 +169,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#D229FF",
   },
   tickText: {
-    fontSize: 12,
+    fontSize: 14,
     fontWeight: "600",
     color: "#6B7280",
     fontFamily: getFontFamily("600"),

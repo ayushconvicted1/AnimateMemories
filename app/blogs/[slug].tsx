@@ -297,12 +297,12 @@ const styles = StyleSheet.create({
     width: 72,
   },
   backButtonText: {
-    fontSize: 15,
+    fontSize: 17,
     fontFamily: getFontFamily("600"),
     color: "#A855F7",
   },
   title: {
-    fontSize: 20,
+    fontSize: 22,
     fontFamily: getFontFamily("800"),
   },
   placeholder: {
@@ -341,15 +341,15 @@ const styles = StyleSheet.create({
     paddingVertical: 5,
   },
   categoryText: {
-    fontSize: 12,
+    fontSize: 14,
     fontFamily: getFontFamily("600"),
     color: "#7C3AED",
   },
   articleTitle: {
-    fontSize: 24,
+    fontSize: 26,
     fontFamily: getFontFamily("800"),
     color: "#04001F",
-    lineHeight: 31,
+    lineHeight: 33,
     marginTop: 18,
     marginBottom: 8,
   },
@@ -361,7 +361,7 @@ const styles = StyleSheet.create({
     marginBottom: 14,
   },
   articleDate: {
-    fontSize: 13,
+    fontSize: 15,
     fontFamily: getFontFamily("500"),
     color: "#94A3B8",
   },
@@ -384,20 +384,20 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   authorAvatarText: {
-    fontSize: 8,
+    fontSize: 10,
     fontFamily: getFontFamily("700"),
     color: "#FFFFFF",
   },
   articleAuthor: {
-    fontSize: 12,
+    fontSize: 14,
     fontFamily: getFontFamily("600"),
     color: "#7C3AED",
   },
   articleExcerpt: {
-    fontSize: 15,
+    fontSize: 17,
     fontFamily: getFontFamily("400"),
     color: "#64748B",
-    lineHeight: 22,
+    lineHeight: 24,
     marginBottom: 18,
   },
   webView: {
@@ -426,7 +426,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   bylineAvatarText: {
-    fontSize: 15,
+    fontSize: 17,
     fontFamily: getFontFamily("700"),
     color: "#FFFFFF",
   },
@@ -434,20 +434,20 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   bylineLabel: {
-    fontSize: 11,
+    fontSize: 13,
     fontFamily: getFontFamily("500"),
     color: "#94A3B8",
     textTransform: "uppercase",
     letterSpacing: 0.6,
   },
   bylineName: {
-    fontSize: 16,
+    fontSize: 18,
     fontFamily: getFontFamily("700"),
     color: "#04001F",
     marginTop: 1,
   },
   bylineDate: {
-    fontSize: 12,
+    fontSize: 14,
     fontFamily: getFontFamily("400"),
     color: "#64748B",
     marginTop: 2,
@@ -461,7 +461,7 @@ const styles = StyleSheet.create({
     marginBottom: 18,
   },
   keepReadingTitle: {
-    fontSize: 18,
+    fontSize: 20,
     fontFamily: getFontFamily("800"),
     color: "#04001F",
     marginBottom: 12,
@@ -476,7 +476,7 @@ const styles = StyleSheet.create({
     paddingBottom: 60,
   },
   stateTitle: {
-    fontSize: 16,
+    fontSize: 18,
     fontFamily: getFontFamily("700"),
     color: "#04001F",
     marginBottom: 8,
@@ -489,7 +489,7 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
   },
   retryText: {
-    fontSize: 14,
+    fontSize: 16,
     fontFamily: getFontFamily("600"),
     color: "#7C3AED",
   },
@@ -506,7 +506,7 @@ const styles = StyleSheet.create({
     paddingVertical: 5,
   },
   tagText: {
-    fontSize: 12,
+    fontSize: 14,
     fontFamily: getFontFamily("500"),
     color: "#7C3AED",
   },

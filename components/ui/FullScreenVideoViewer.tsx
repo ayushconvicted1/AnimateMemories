@@ -266,7 +266,7 @@ const styles = StyleSheet.create({
   },
   closeButtonText: {
     color: "#fff",
-    fontSize: 24,
+    fontSize: 26,
     fontWeight: "bold",
   },
   videoModalContent: {
@@ -337,7 +337,7 @@ const styles = StyleSheet.create({
   },
   modalButtonText: {
     color: "#fff",
-    fontSize: 16,
+    fontSize: 18,
     fontWeight: "600",
     textAlign: "center",
   },

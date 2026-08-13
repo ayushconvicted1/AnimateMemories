@@ -192,23 +192,23 @@ const styles = StyleSheet.create({
     width: 72,
   },
   backButtonText: {
-    fontSize: 15,
+    fontSize: 17,
     fontFamily: getFontFamily("600"),
     color: "#A855F7",
   },
   title: {
-    fontSize: 20,
+    fontSize: 22,
     fontFamily: getFontFamily("800"),
   },
   placeholder: {
     width: 72,
   },
   description: {
-    fontSize: 13,
+    fontSize: 15,
     fontFamily: getFontFamily("400"),
     color: "#64748B",
     textAlign: "center",
-    lineHeight: 19,
+    lineHeight: 21,
     paddingHorizontal: 32,
     marginBottom: 12,
     marginTop: 4,
@@ -227,7 +227,7 @@ const styles = StyleSheet.create({
     borderRadius: 999,
   },
   activePillText: {
-    fontSize: 13,
+    fontSize: 15,
     fontFamily: getFontFamily("600"),
     color: "#FFFFFF",
   },
@@ -240,7 +240,7 @@ const styles = StyleSheet.create({
     borderColor: "#E2E8F0",
   },
   inactivePillText: {
-    fontSize: 13,
+    fontSize: 15,
     fontFamily: getFontFamily("500"),
     color: "#64748B",
   },
@@ -260,18 +260,18 @@ const styles = StyleSheet.create({
     paddingBottom: 60,
   },
   stateTitle: {
-    fontSize: 16,
+    fontSize: 18,
     fontFamily: getFontFamily("700"),
     color: "#04001F",
     marginBottom: 8,
   },
   stateText: {
-    fontSize: 13,
+    fontSize: 15,
     fontFamily: getFontFamily("400"),
     color: "#64748B",
     textAlign: "center",
     marginTop: 12,
-    lineHeight: 19,
+    lineHeight: 21,
   },
   retryButton: {
     marginTop: 16,
@@ -281,7 +281,7 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
   },
   retryText: {
-    fontSize: 14,
+    fontSize: 16,
     fontFamily: getFontFamily("600"),
     color: "#7C3AED",
   },
