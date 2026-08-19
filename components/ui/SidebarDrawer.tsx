@@ -358,7 +358,7 @@ const styles = StyleSheet.create({
   },
   avatarText: {
     fontSize: 18,
-    fontFamily: getFontFamily("700"),
+    fontFamily: getFontFamily("600"),
     color: "#FFFFFF",
   },
   profileTextContainer: {
@@ -366,7 +366,7 @@ const styles = StyleSheet.create({
   },
   userNameText: {
     fontSize: 17,
-    fontFamily: getFontFamily("700"),
+    fontFamily: getFontFamily("600"),
     color: "#0F172A",
   },
   userEmailText: {
@@ -401,7 +401,7 @@ const styles = StyleSheet.create({
   },
   getCreditsText: {
     fontSize: 13,
-    fontFamily: getFontFamily("700"),
+    fontFamily: getFontFamily("600"),
     color: "#FFFFFF",
   },
   menuList: {
@@ -440,7 +440,7 @@ const styles = StyleSheet.create({
   },
   badgeText: {
     fontSize: 12,
-    fontFamily: getFontFamily("700"),
+    fontFamily: getFontFamily("600"),
     color: "#0284C7",
   },
   drawerFooter: {
@@ -472,7 +472,7 @@ const styles = StyleSheet.create({
   },
   loginText: {
     fontSize: 16,
-    fontFamily: getFontFamily("700"),
+    fontFamily: getFontFamily("600"),
     color: "#FFFFFF",
   },
 });

@@ -185,7 +185,7 @@ const styles = StyleSheet.create({
   },
   title: {
     fontSize: 18,
-    fontFamily: getFontFamily("700"),
+    fontFamily: getFontFamily("600"),
     color: "#04001F",
     lineHeight: 22,
     marginBottom: 6,

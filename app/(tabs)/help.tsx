@@ -229,7 +229,7 @@ const styles = StyleSheet.create({
   },
   title: {
     fontSize: 26,
-    fontFamily: getFontFamily("700"),
+    fontFamily: getFontFamily("600"),
   },
   placeholder: {
     width: 60,
@@ -245,7 +245,7 @@ const styles = StyleSheet.create({
     fontSize: 19,
     color: "#000",
     marginBottom: 16,
-    fontFamily: getFontFamily("700"),
+    fontFamily: getFontFamily("600"),
   },
   helpItem: {
     paddingVertical: 16,

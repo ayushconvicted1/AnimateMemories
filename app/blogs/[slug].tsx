@@ -303,7 +303,7 @@ const styles = StyleSheet.create({
   },
   title: {
     fontSize: 22,
-    fontFamily: getFontFamily("800"),
+    fontFamily: getFontFamily("700"),
   },
   placeholder: {
     width: 72,
@@ -347,7 +347,7 @@ const styles = StyleSheet.create({
   },
   articleTitle: {
     fontSize: 26,
-    fontFamily: getFontFamily("800"),
+    fontFamily: getFontFamily("700"),
     color: "#04001F",
     lineHeight: 33,
     marginTop: 18,
@@ -385,7 +385,7 @@ const styles = StyleSheet.create({
   },
   authorAvatarText: {
     fontSize: 10,
-    fontFamily: getFontFamily("700"),
+    fontFamily: getFontFamily("600"),
     color: "#FFFFFF",
   },
   articleAuthor: {
@@ -427,7 +427,7 @@ const styles = StyleSheet.create({
   },
   bylineAvatarText: {
     fontSize: 17,
-    fontFamily: getFontFamily("700"),
+    fontFamily: getFontFamily("600"),
     color: "#FFFFFF",
   },
   bylineInfo: {
@@ -442,7 +442,7 @@ const styles = StyleSheet.create({
   },
   bylineName: {
     fontSize: 18,
-    fontFamily: getFontFamily("700"),
+    fontFamily: getFontFamily("600"),
     color: "#04001F",
     marginTop: 1,
   },
@@ -462,7 +462,7 @@ const styles = StyleSheet.create({
   },
   keepReadingTitle: {
     fontSize: 20,
-    fontFamily: getFontFamily("800"),
+    fontFamily: getFontFamily("700"),
     color: "#04001F",
     marginBottom: 12,
   },
@@ -477,7 +477,7 @@ const styles = StyleSheet.create({
   },
   stateTitle: {
     fontSize: 18,
-    fontFamily: getFontFamily("700"),
+    fontFamily: getFontFamily("600"),
     color: "#04001F",
     marginBottom: 8,
   },

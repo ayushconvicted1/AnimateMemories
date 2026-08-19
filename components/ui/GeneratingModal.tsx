@@ -307,7 +307,7 @@ const styles = StyleSheet.create({
   title: {
     marginTop: 22,
     fontSize: 21,
-    fontFamily: getFontFamily("800"),
+    fontFamily: getFontFamily("700"),
     color: "#0F172A",
     textAlign: "center",
   },
@@ -336,12 +336,12 @@ const styles = StyleSheet.create({
   },
   phaseText: {
     fontSize: 13.5,
-    fontFamily: getFontFamily("700"),
+    fontFamily: getFontFamily("600"),
     color: "#7C3AED",
   },
   percent: {
     fontSize: 14,
-    fontFamily: getFontFamily("800"),
+    fontFamily: getFontFamily("700"),
     color: "#1E293B",
   },
   track: {

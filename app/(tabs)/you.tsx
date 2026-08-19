@@ -781,7 +781,7 @@ const styles = StyleSheet.create({
   },
   mainTitle: {
     fontSize: 26,
-    fontFamily: getFontFamily("700"),
+    fontFamily: getFontFamily("600"),
     color: "#000",
   },
   profileSection: {
@@ -822,7 +822,7 @@ const styles = StyleSheet.create({
   },
   userName: {
     fontSize: 23,
-    fontFamily: getFontFamily("700"),
+    fontFamily: getFontFamily("600"),
     color: "#000",
     marginBottom: 12,
   },
@@ -831,7 +831,7 @@ const styles = StyleSheet.create({
   },
   viewProfileText: {
     fontSize: 19,
-    fontFamily: getFontFamily("700"),
+    fontFamily: getFontFamily("600"),
     paddingVertical: 8,
     paddingHorizontal: 16,
   },
@@ -852,7 +852,7 @@ const styles = StyleSheet.create({
   },
   sectionTitle: {
     fontSize: 26,
-    fontFamily: getFontFamily("700"),
+    fontFamily: getFontFamily("600"),
     color: "#000",
     marginBottom: 12,
   },
@@ -958,7 +958,7 @@ const styles = StyleSheet.create({
   },
   statValue: {
     fontSize: 26,
-    fontFamily: getFontFamily("700"),
+    fontFamily: getFontFamily("600"),
     color: "#000",
     marginBottom: 4,
   },
@@ -1001,7 +1001,7 @@ const styles = StyleSheet.create({
   },
   modalTitle: {
     fontSize: 22,
-    fontFamily: getFontFamily("700"),
+    fontFamily: getFontFamily("600"),
     color: "#000",
     marginBottom: 20,
     textAlign: "center",
@@ -1111,7 +1111,7 @@ const styles = StyleSheet.create({
   },
   paymentCardValue: {
     fontSize: 30,
-    fontFamily: getFontFamily("700"),
+    fontFamily: getFontFamily("600"),
   },
   paymentButton: {
     borderRadius: 8,

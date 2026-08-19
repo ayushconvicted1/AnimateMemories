@@ -547,7 +547,7 @@ const styles = StyleSheet.create({
   },
   mainTitle: {
     fontSize: 26,
-    fontFamily: getFontFamily("700"),
+    fontFamily: getFontFamily("600"),
     marginBottom: 8,
   },
   subtitle: {
@@ -591,7 +591,7 @@ const styles = StyleSheet.create({
   },
   statNumber: {
     fontSize: 28,
-    fontFamily: getFontFamily("700"),
+    fontFamily: getFontFamily("600"),
   },
   statLabel: {
     fontSize: 17,
@@ -670,7 +670,7 @@ const styles = StyleSheet.create({
   },
   tabTextActive: {
     color: "#fff",
-    fontFamily: getFontFamily("700"),
+    fontFamily: getFontFamily("600"),
   },
   safeArea: {
     flex: 1,
@@ -733,7 +733,7 @@ const styles = StyleSheet.create({
   videoBadgeText: {
     color: "#fff",
     fontSize: 11,
-    fontFamily: getFontFamily("700"),
+    fontFamily: getFontFamily("600"),
   },
   loadingContainer: {
     paddingVertical: 60,

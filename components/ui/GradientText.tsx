@@ -35,7 +35,7 @@ export function GradientText({
 const styles = StyleSheet.create({
   text: {
     backgroundColor: 'transparent',
-    fontFamily: getFontFamily("700"),
+    fontFamily: getFontFamily("600"),
   },
 });
 

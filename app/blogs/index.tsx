@@ -198,7 +198,7 @@ const styles = StyleSheet.create({
   },
   title: {
     fontSize: 22,
-    fontFamily: getFontFamily("800"),
+    fontFamily: getFontFamily("700"),
   },
   placeholder: {
     width: 72,
@@ -261,7 +261,7 @@ const styles = StyleSheet.create({
   },
   stateTitle: {
     fontSize: 18,
-    fontFamily: getFontFamily("700"),
+    fontFamily: getFontFamily("600"),
     color: "#04001F",
     marginBottom: 8,
   },

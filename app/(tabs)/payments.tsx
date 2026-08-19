@@ -280,7 +280,7 @@ const styles = StyleSheet.create({
   },
   title: {
     fontSize: 26,
-    fontFamily: getFontFamily("700"),
+    fontFamily: getFontFamily("600"),
   },
   placeholder: {
     width: 60,
@@ -306,7 +306,7 @@ const styles = StyleSheet.create({
   },
   creditsCardValue: {
     fontSize: 34,
-    fontFamily: getFontFamily("700"),
+    fontFamily: getFontFamily("600"),
   },
   buySection: {
     paddingHorizontal: 16,
@@ -334,7 +334,7 @@ const styles = StyleSheet.create({
     fontSize: 19,
     color: "#000",
     marginBottom: 12,
-    fontFamily: getFontFamily("700"),
+    fontFamily: getFontFamily("600"),
   },
   infoCard: {
     backgroundColor: "#f8f9fa",
@@ -414,7 +414,7 @@ const styles = StyleSheet.create({
     fontSize: 17,
     color: "#28D4FA",
     marginBottom: 4,
-    fontFamily: getFontFamily("700"),
+    fontFamily: getFontFamily("600"),
   },
   transactionCredits: {
     fontSize: 16,

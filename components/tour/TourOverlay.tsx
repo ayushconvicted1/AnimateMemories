@@ -197,13 +197,13 @@ const styles = StyleSheet.create({
   },
   headerBadgeText: {
     fontSize: 12,
-    fontFamily: getFontFamily("800"),
+    fontFamily: getFontFamily("700"),
     color: "#FFFFFF",
     letterSpacing: 0.5,
   },
   title: {
     fontSize: 18,
-    fontFamily: getFontFamily("700"),
+    fontFamily: getFontFamily("600"),
     color: "#0F172A",
     textAlign: "center",
     marginBottom: 6,
@@ -242,7 +242,7 @@ const styles = StyleSheet.create({
   },
   startButtonText: {
     fontSize: 15,
-    fontFamily: getFontFamily("700"),
+    fontFamily: getFontFamily("600"),
     color: "#FFFFFF",
   },
   tabBarBlocker: {

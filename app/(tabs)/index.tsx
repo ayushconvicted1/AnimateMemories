@@ -26,7 +26,9 @@ import TransformationGrid from "@/components/ui/TransformationGrid";
 import HomeArrow from "@/components/images/HomeArrow";
 import StarIcon from "@/components/images/StarIcon";
 import TemplateExplorerModal from "@/components/ui/TemplateExplorerModal";
+import AnimatedTemplateThumb from "@/components/ui/AnimatedTemplateThumb";
 import BlogCard from "@/components/ui/BlogCard";
+import ChevronLeftIcon from "@/components/images/ChevronLeftIcon";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 const CONTENT_WIDTH = SCREEN_WIDTH - 32;
@@ -68,7 +70,15 @@ const DEFAULT_TEMPLATES = [
 ];
 
 const TemplateCard = memo(
-  ({ item, onSelect }: { item: any; onSelect: (id: string) => void }) => {
+  ({
+    item,
+    onSelect,
+    autoPlay,
+  }: {
+    item: any;
+    onSelect: (id: string) => void;
+    autoPlay?: boolean;
+  }) => {
     const id = item.slug || item.id;
     const uri = item.image
       ? typeof item.image === "number" || typeof item.image === "object"
@@ -85,16 +95,12 @@ const TemplateCard = memo(
         activeOpacity={0.85}
       >
         <View style={styles.templateImageContainer}>
-          {uri ? (
-            <Image
-              source={uri}
-              style={styles.templateImage}
-              contentFit="cover"
-              transition={150}
-            />
-          ) : (
-            <View style={styles.templatePlaceholder} />
-          )}
+          <AnimatedTemplateThumb
+            thumbnail={uri}
+            videoUrl={item.videoUrl ? formatImageUrl(item.videoUrl) : null}
+            autoPlay={autoPlay}
+            style={styles.templateImage}
+          />
           {(item.isStar || item.isFeatured || item.is_featured) && (
             <View style={styles.starBadgeContainer}>
               <StarIcon width={11} height={11} color="#F59E0B" />
@@ -108,6 +114,7 @@ const TemplateCard = memo(
     );
   }
 );
+TemplateCard.displayName = "TemplateCard";
 
 // Step demo videos are always mounted with a poster frame (never an empty
 // tile) and play only while their section is on screen. Playback is driven
@@ -133,14 +140,14 @@ const StepVideo = memo(
         ref={videoRef}
         source={source}
         style={styles.stepVideo}
-        resizeMode={ResizeMode.CONTAIN}
+        resizeMode={ResizeMode.COVER}
         shouldPlay={isVisible}
         isLooping
         isMuted
         useNativeControls={false}
         usePoster
         posterSource={poster}
-        posterStyle={{ resizeMode: "contain" }}
+        posterStyle={{ resizeMode: "cover" }}
         onError={(error) => console.log("Step video failed to load:", error)}
       />
     );
@@ -159,17 +166,64 @@ export default function HomeScreen() {
   const [selectedCategory, setSelectedCategory] = useState("Trending");
   const [scrollOffset, setScrollOffset] = useState(0);
   const [isTemplateModalVisible, setTemplateModalVisible] = useState(false);
+  // Horizontal position of the template carousel (drives navigation arrows).
+  const [templateScrollX, setTemplateScrollX] = useState(0);
+  // Track active scrolling to pause template video decoders mid-scroll for maximum 60fps smoothness.
+  const [isScrolling, setIsScrolling] = useState(false);
+  const scrollEndTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  const handleScrollBegin = useCallback(() => {
+    if (scrollEndTimeoutRef.current) {
+      clearTimeout(scrollEndTimeoutRef.current);
+    }
+    setIsScrolling(true);
+  }, []);
+
+  const handleScrollEnd = useCallback(() => {
+    if (scrollEndTimeoutRef.current) {
+      clearTimeout(scrollEndTimeoutRef.current);
+    }
+    scrollEndTimeoutRef.current = setTimeout(() => {
+      setIsScrolling(false);
+    }, 120);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (scrollEndTimeoutRef.current) {
+        clearTimeout(scrollEndTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  // Template cards currently inside the viewport — only these autoplay their
+  // preview video, so off-screen cards never hold a native player.
+  const [visibleTemplateIds, setVisibleTemplateIds] = useState<Set<string>>(
+    () => new Set()
+  );
+  const viewabilityConfig = useRef({ itemVisiblePercentThreshold: 60 }).current;
+  const onViewableItemsChanged = useRef(
+    ({ viewableItems }: { viewableItems: any[] }) => {
+      setVisibleTemplateIds(
+        new Set(
+          viewableItems.map((v: any) =>
+            String(v.item?.slug || v.item?.id)
+          )
+        )
+      );
+    }
+  ).current;
 
   const filteredTemplates = useMemo(() => {
     if (selectedCategory === "Trending") {
-      return animationTemplates;
+      return animationTemplates.slice(0, 8);
     }
     const filtered = animationTemplates.filter((t) => {
       const catStr = (t.category || t.categoryId || "").toLowerCase();
       return catStr === selectedCategory.toLowerCase();
     });
-    // Fallback to all if category has no templates
-    return filtered.length > 0 ? filtered : animationTemplates;
+    // Fallback to all if category has no templates, capped to 8
+    return (filtered.length > 0 ? filtered : animationTemplates).slice(0, 8);
   }, [animationTemplates, selectedCategory]);
 
   const handleScroll = useCallback((event: any) => {
@@ -306,15 +360,55 @@ export default function HomeScreen() {
 
   const renderTemplateItem = useCallback(
     ({ item }: { item: any }) => (
-      <TemplateCard item={item} onSelect={handleTemplateSelect} />
+      <TemplateCard
+        item={item}
+        onSelect={handleTemplateSelect}
+        autoPlay={visibleTemplateIds.has(String(item.slug || item.id))}
+      />
     ),
-    [handleTemplateSelect]
+    [handleTemplateSelect, visibleTemplateIds]
   );
 
   const templateKeyExtractor = useCallback(
     (item: any, index: number) => item.slug || item.id || `tpl-${index}`,
     []
   );
+
+  // Geometry calculations for template horizontal carousel navigation arrows
+  const TEMPLATE_ITEM_PITCH = 128; // 116 card + 12 right margin
+  const templateContentWidth =
+    filteredTemplates.length * TEMPLATE_ITEM_PITCH + 32; // + 16px padding each side
+  const templateViewportWidth = SCREEN_WIDTH;
+  const templateHasOverflow = templateContentWidth > templateViewportWidth;
+  const templateProgress = templateHasOverflow
+    ? Math.min(
+        1,
+        Math.max(
+          0,
+          templateScrollX / (templateContentWidth - templateViewportWidth)
+        )
+      )
+    : 0;
+
+  const templateListRef = useRef<FlatList>(null);
+
+  const handleScrollLeft = useCallback(() => {
+    if (templateListRef.current) {
+      templateListRef.current.scrollToOffset({
+        offset: Math.max(0, templateScrollX - TEMPLATE_ITEM_PITCH * 2),
+        animated: true,
+      });
+    }
+  }, [templateScrollX, TEMPLATE_ITEM_PITCH]);
+
+  const handleScrollRight = useCallback(() => {
+    if (templateListRef.current) {
+      templateListRef.current.scrollToOffset({
+        offset: templateScrollX + TEMPLATE_ITEM_PITCH * 2,
+        animated: true,
+      });
+    }
+  }, [templateScrollX, TEMPLATE_ITEM_PITCH]);
 
   // Background Image Height based on 1080x1920 ratio scaled to screen width
   const bgHeight = (SCREEN_WIDTH * 1920) / 1080;
@@ -325,6 +419,10 @@ export default function HomeScreen() {
         backgroundColor="transparent"
         addBottomPadding={true}
         onScroll={handleScroll}
+        onScrollBeginDrag={handleScrollBegin}
+        onScrollEndDrag={handleScrollEnd}
+        onMomentumScrollBegin={handleScrollBegin}
+        onMomentumScrollEnd={handleScrollEnd}
         scrollEventThrottle={32}
         scrollEnabled={!(isActive && currentStep === 1) && !isTemplateModalVisible}
         creditsText={
@@ -444,19 +542,58 @@ export default function HomeScreen() {
             })}
           </ScrollView>
 
-          {/* Template Cards Horizontal Scroll */}
-          <FlatList
-            horizontal
-            data={filteredTemplates}
-            renderItem={renderTemplateItem}
-            keyExtractor={templateKeyExtractor}
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={{ paddingLeft: 16, paddingRight: 16 }}
-            initialNumToRender={5}
-            maxToRenderPerBatch={5}
-            windowSize={3}
-            removeClippedSubviews={Platform.OS === "android"}
-          />
+          {/* Template Cards Horizontal Scroll with Left/Right Navigation Arrows */}
+          <View style={styles.templateListWrapper}>
+            <FlatList
+              ref={templateListRef}
+              horizontal
+              data={filteredTemplates}
+              renderItem={renderTemplateItem}
+              keyExtractor={templateKeyExtractor}
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={{ paddingLeft: 16, paddingRight: 16 }}
+              initialNumToRender={4}
+              maxToRenderPerBatch={4}
+              windowSize={3}
+              removeClippedSubviews={Platform.OS === "android"}
+              viewabilityConfig={viewabilityConfig}
+              onViewableItemsChanged={onViewableItemsChanged}
+              onScrollBeginDrag={handleScrollBegin}
+              onScrollEndDrag={handleScrollEnd}
+              onMomentumScrollBegin={handleScrollBegin}
+              onMomentumScrollEnd={handleScrollEnd}
+              onScroll={(e) => setTemplateScrollX(e.nativeEvent.contentOffset.x)}
+              scrollEventThrottle={32}
+            />
+
+            {/* Left Arrow Button */}
+            {templateHasOverflow && templateScrollX > 10 && (
+              <TouchableOpacity
+                style={[styles.templateArrowButton, styles.templateArrowLeft]}
+                onPress={handleScrollLeft}
+                activeOpacity={0.85}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                accessibilityLabel="Scroll templates left"
+              >
+                <ChevronLeftIcon size={18} color="#0F172A" />
+              </TouchableOpacity>
+            )}
+
+            {/* Right Arrow Button */}
+            {templateHasOverflow && templateProgress < 0.98 && (
+              <TouchableOpacity
+                style={[styles.templateArrowButton, styles.templateArrowRight]}
+                onPress={handleScrollRight}
+                activeOpacity={0.85}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                accessibilityLabel="Scroll templates right"
+              >
+                <View style={{ transform: [{ rotate: "180deg" }] }}>
+                  <ChevronLeftIcon size={18} color="#0F172A" />
+                </View>
+              </TouchableOpacity>
+            )}
+          </View>
 
           {/* View All Link */}
           <TouchableOpacity
@@ -768,7 +905,7 @@ const styles = StyleSheet.create({
   },
   heroTitle: {
     fontSize: SCREEN_WIDTH < 380 ? 24 : 28,
-    fontFamily: getFontFamily("800"),
+    fontFamily: getFontFamily("700"),
     textAlign: "center",
     lineHeight: 36,
     marginBottom: 10,
@@ -798,7 +935,7 @@ const styles = StyleSheet.create({
   },
   uploadButtonText: {
     fontSize: 17,
-    fontFamily: getFontFamily("700"),
+    fontFamily: getFontFamily("600"),
     color: "#FFFFFF",
   },
   templatesSection: {
@@ -806,7 +943,7 @@ const styles = StyleSheet.create({
   },
   templatesSectionTitle: {
     fontSize: 24,
-    fontFamily: getFontFamily("800"),
+    fontFamily: getFontFamily("700"),
     textAlign: "center",
     lineHeight: 32,
     marginBottom: 18,
@@ -829,7 +966,7 @@ const styles = StyleSheet.create({
   },
   activePillText: {
     fontSize: 15,
-    fontFamily: getFontFamily("700"),
+    fontFamily: getFontFamily("600"),
     color: "#FFFFFF",
   },
   inactivePill: {
@@ -900,9 +1037,37 @@ const styles = StyleSheet.create({
     marginTop: 8,
     width: 116,
   },
+  templateListWrapper: {
+    position: "relative",
+    width: "100%",
+  },
+  templateArrowButton: {
+    position: "absolute",
+    top: 58,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: "rgba(255, 255, 255, 0.95)",
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.18,
+    shadowRadius: 4,
+    elevation: 4,
+    borderWidth: 1,
+    borderColor: "rgba(226, 232, 240, 0.9)",
+    zIndex: 10,
+  },
+  templateArrowLeft: {
+    left: 8,
+  },
+  templateArrowRight: {
+    right: 8,
+  },
   viewAllButton: {
     alignSelf: "center",
-    marginTop: 16,
+    marginTop: 14,
     paddingVertical: 6,
     paddingHorizontal: 16,
   },
@@ -918,7 +1083,7 @@ const styles = StyleSheet.create({
   },
   howToTitle: {
     fontSize: 22,
-    fontFamily: getFontFamily("800"),
+    fontFamily: getFontFamily("700"),
     color: "#0F172A",
     textAlign: "center",
     marginBottom: 26,
@@ -934,7 +1099,7 @@ const styles = StyleSheet.create({
     height: 180,
     alignItems: "center",
     justifyContent: "center",
-    overflow: "hidden",
+    backgroundColor: "transparent",
   },
   stepPngImage: {
     width: "100%",
@@ -943,20 +1108,21 @@ const styles = StyleSheet.create({
   stepVideo: {
     width: "100%",
     height: "100%",
+    backgroundColor: "transparent",
   },
   stepTextWrapper: {
     width: "44%",
   },
   stepNumber: {
     fontSize: 19,
-    fontFamily: getFontFamily("800"),
+    fontFamily: getFontFamily("700"),
     color: "#0F172A",
     textDecorationLine: "underline",
     marginBottom: 4,
   },
   stepHeaderTitle: {
     fontSize: 20,
-    fontFamily: getFontFamily("700"),
+    fontFamily: getFontFamily("600"),
     marginBottom: 6,
   },
   stepDescription: {
@@ -966,7 +1132,7 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
   highlightPink: {
-    fontFamily: getFontFamily("700"),
+    fontFamily: getFontFamily("600"),
     color: "#D229FF",
   },
   bigTryButtonContainer: {
@@ -988,7 +1154,7 @@ const styles = StyleSheet.create({
   },
   bigTryButtonText: {
     fontSize: 18,
-    fontFamily: getFontFamily("700"),
+    fontFamily: getFontFamily("600"),
     color: "#FFFFFF",
   },
   transformationsSection: {
@@ -998,7 +1164,7 @@ const styles = StyleSheet.create({
   },
   sectionHeadingTitle: {
     fontSize: 26,
-    fontFamily: getFontFamily("800"),
+    fontFamily: getFontFamily("700"),
     textAlign: "center",
     marginBottom: 6,
   },
@@ -1064,7 +1230,7 @@ const styles = StyleSheet.create({
   },
   proCardTitle: {
     fontSize: 18,
-    fontFamily: getFontFamily("700"),
+    fontFamily: getFontFamily("600"),
     color: "#04001F",
     marginBottom: 6,
   },
@@ -1108,7 +1274,7 @@ const styles = StyleSheet.create({
   },
   blogsViewAllText: {
     fontSize: 16,
-    fontFamily: getFontFamily("700"),
+    fontFamily: getFontFamily("600"),
     color: "#FFFFFF",
   },
 });

@@ -425,7 +425,7 @@ const styles = StyleSheet.create({
   },
   centerButtonIconText: {
     fontSize: 19,
-    fontFamily: getFontFamily("700"),
+    fontFamily: getFontFamily("600"),
     color: "#fff",
   },
   centerButtonDot: {

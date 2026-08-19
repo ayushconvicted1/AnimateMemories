@@ -267,7 +267,7 @@ const styles = StyleSheet.create({
   closeButtonText: {
     color: "#fff",
     fontSize: 26,
-    fontWeight: "bold",
+    fontWeight: "600",
   },
   videoModalContent: {
     flex: 1,

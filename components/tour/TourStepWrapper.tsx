@@ -183,7 +183,7 @@ const TourStepWrapper: React.FC<TourStepWrapperProps> = ({
               end={{ x: 1, y: 0 }}
               style={{ paddingVertical: 6, paddingHorizontal: 14, borderRadius: 14 }}
             >
-              <Text style={{ fontSize: 14, fontFamily: getFontFamily("700"), color: "#FFFFFF" }}>
+              <Text style={{ fontSize: 14, fontFamily: getFontFamily("600"), color: "#FFFFFF" }}>
                 Next: Templates →
               </Text>
             </LinearGradient>
@@ -289,13 +289,13 @@ const styles = StyleSheet.create({
   },
   stepBadgeText: {
     fontSize: 12,
-    fontFamily: getFontFamily("800"),
+    fontFamily: getFontFamily("700"),
     color: "#FFFFFF",
     letterSpacing: 0.5,
   },
   tooltipTitle: {
     fontSize: 17,
-    fontFamily: getFontFamily("700"),
+    fontFamily: getFontFamily("600"),
     color: "#0F172A",
     marginBottom: 4,
   },

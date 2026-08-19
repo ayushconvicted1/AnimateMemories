@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useRef, useState } from "react";
 import {
   FlatList,
   Modal,
@@ -10,9 +10,9 @@ import {
   useWindowDimensions,
   View,
 } from "react-native";
-import { Image } from "expo-image";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { getFontFamily } from "@/constants/Fonts";
+import AnimatedTemplateThumb from "@/components/ui/AnimatedTemplateThumb";
 
 const API_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL || "https://www.animatememories.com";
 
@@ -33,7 +33,22 @@ export default function TemplateExplorerModal({ visible, onClose, templates, onS
   const { width } = useWindowDimensions();
   const [query, setQuery] = useState("");
   const [activeCategory, setActiveCategory] = useState("all");
+  // Template cards currently inside the viewport — only these autoplay their
+  // preview video, so a full grid never holds dozens of native players.
+  const [visibleIds, setVisibleIds] = useState<Set<string>>(() => new Set());
   const cardWidth = Math.floor((width - 48) / 2);
+  const viewabilityConfig = useRef({ itemVisiblePercentThreshold: 55 }).current;
+  const onViewableItemsChanged = useRef(
+    ({ viewableItems }: { viewableItems: any[] }) => {
+      setVisibleIds(
+        new Set(
+          viewableItems.map((v: any) =>
+            String(v.item?.slug || v.item?.id)
+          )
+        )
+      );
+    }
+  ).current;
 
   const categories = useMemo(() => {
     const unique = new Map<string, string>();
@@ -128,6 +143,8 @@ export default function TemplateExplorerModal({ visible, onClose, templates, onS
             columnWrapperStyle={visibleTemplates.length > 1 ? styles.row : undefined}
             contentContainerStyle={[styles.grid, { paddingBottom: Math.max(insets.bottom + 85, 100) }]}
             showsVerticalScrollIndicator={false}
+            viewabilityConfig={viewabilityConfig}
+            onViewableItemsChanged={onViewableItemsChanged}
             renderItem={({ item }) => {
               const rawImage = item.thumbnailUrl || item.image;
               const image =
@@ -136,6 +153,7 @@ export default function TemplateExplorerModal({ visible, onClose, templates, onS
                   : rawImage
                   ? { uri: formatImageUrl(rawImage) }
                   : undefined;
+              const itemId = String(item.slug || item.id);
               return (
                 <TouchableOpacity
                   activeOpacity={0.86}
@@ -143,11 +161,12 @@ export default function TemplateExplorerModal({ visible, onClose, templates, onS
                   style={[styles.card, { width: cardWidth }]}
                 >
                   <View style={[styles.imageWrap, { height: cardWidth * 1.25 }]}>
-                    {image ? (
-                      <Image source={image} style={styles.image} contentFit="cover" transition={150} />
-                    ) : (
-                      <View style={styles.placeholder} />
-                    )}
+                    <AnimatedTemplateThumb
+                      thumbnail={image as any}
+                      videoUrl={item.videoUrl ? formatImageUrl(item.videoUrl) : null}
+                      autoPlay={visibleIds.has(itemId)}
+                      style={styles.image}
+                    />
                     {!!item.category && (
                       <View style={styles.categoryBadgeWrap}>
                         <Text style={styles.categoryBadgeText}>{item.category}</Text>
@@ -210,13 +229,13 @@ const styles = StyleSheet.create({
     color: "#8B5CF6",
     fontSize: 12,
     letterSpacing: 1.4,
-    fontFamily: getFontFamily("700"),
+    fontFamily: getFontFamily("600"),
     marginBottom: 3,
   },
   title: {
     color: "#111827",
     fontSize: 24,
-    fontFamily: getFontFamily("700"),
+    fontFamily: getFontFamily("600"),
   },
   subtitle: {
     color: "#64748B",
@@ -295,7 +314,7 @@ const styles = StyleSheet.create({
   pillTextActive: {
     color: "#FFFFFF",
     fontSize: 16,
-    fontFamily: getFontFamily("700"),
+    fontFamily: getFontFamily("600"),
     includeFontPadding: false,
     textAlign: "center",
   },
@@ -343,7 +362,7 @@ const styles = StyleSheet.create({
   },
   categoryBadgeText: {
     color: "#7C3AED",
-    fontFamily: getFontFamily("700"),
+    fontFamily: getFontFamily("600"),
     fontSize: 11,
     textTransform: "uppercase",
     includeFontPadding: false,
@@ -360,7 +379,7 @@ const styles = StyleSheet.create({
     flex: 1,
     color: "#1E293B",
     fontSize: 15,
-    fontFamily: getFontFamily("700"),
+    fontFamily: getFontFamily("600"),
   },
   arrow: {
     color: "#8B5CF6",
@@ -376,7 +395,7 @@ const styles = StyleSheet.create({
   emptyTitle: {
     color: "#334155",
     fontSize: 19,
-    fontFamily: getFontFamily("700"),
+    fontFamily: getFontFamily("600"),
   },
   emptyCopy: {
     color: "#64748B",

@@ -126,7 +126,7 @@ const styles = StyleSheet.create({
   checkMark: {
     color: "#fff",
     fontSize: 24,
-    fontWeight: "700",
+    fontWeight: "600",
   },
   textWrap: {
     flex: 1,
@@ -134,7 +134,7 @@ const styles = StyleSheet.create({
   title: {
     color: "#fff",
     fontSize: 17,
-    fontFamily: getFontFamily("700"),
+    fontFamily: getFontFamily("600"),
   },
   path: {
     color: "#A5B4CF",

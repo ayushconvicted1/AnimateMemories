@@ -18,6 +18,7 @@ import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import * as ImagePicker from "expo-image-picker";
 import { Video, ResizeMode } from "expo-av";
 import ScreenWrapper from "@/components/ui/ScreenWrapper";
+import AnimatedTemplateThumb from "@/components/ui/AnimatedTemplateThumb";
 import { GradientText } from "@/components/ui/GradientText";
 import FullScreenVideoViewer from "@/components/ui/FullScreenVideoViewer";
 import GeneratingModal from "@/components/ui/GeneratingModal";
@@ -234,6 +235,26 @@ export default function AnimateScreen() {
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [animationTemplates, setAnimationTemplates] = useState<any[]>([]);
+  // Autoplay the current page's template previews only while the grid is on
+  // screen — as soon as it scrolls out of view the videos unmount, so hidden
+  // cards never hold a native player.
+  const [gridOnScreen, setGridOnScreen] = useState(false);
+  const scrollYRef = useRef(0);
+  const templatesGridYRef = useRef(0);
+  const templatesGridHRef = useRef(0);
+
+  const updateGridVisibility = useCallback(() => {
+    const top = templatesLayoutYRef.current + templatesGridYRef.current;
+    const bottom = top + templatesGridHRef.current;
+    const visible =
+      scrollYRef.current + SCREEN_HEIGHT > top && scrollYRef.current < bottom;
+    setGridOnScreen((prev) => (prev === visible ? prev : visible));
+  }, []);
+
+  // Re-evaluate grid visibility whenever the templates section moves/resizes.
+  useEffect(() => {
+    updateGridVisibility();
+  }, [templatesLayoutY, updateGridVisibility]);
   const [currentPage, setCurrentPage] = useState<number>(1);
   const ITEMS_PER_PAGE = 6;
 
@@ -907,9 +928,11 @@ export default function AnimateScreen() {
           scrollEnabled={true}
           onScrollBeginDrag={triggerAutoScrollToTemplates}
           onScroll={(e) => {
-            if (e.nativeEvent?.contentOffset?.y > 0) {
+            scrollYRef.current = e.nativeEvent?.contentOffset?.y || 0;
+            if (scrollYRef.current > 0) {
               triggerAutoScrollToTemplates();
             }
+            updateGridVisibility();
           }}
           scrollEventThrottle={16}
         >
@@ -982,8 +1005,8 @@ export default function AnimateScreen() {
             >
               {uploadHighlighted && (
                 <View style={{ backgroundColor: "#F59E0B", paddingVertical: 8, paddingHorizontal: 12, borderRadius: 12, marginBottom: 8, flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-                  <Text style={{ color: "#FFFFFF", fontSize: 14, fontFamily: getFontFamily("700") }}>⚠️ Please Upload an Image First!</Text>
-                  <Text style={{ color: "#FFFFFF", fontSize: 12, fontFamily: getFontFamily("700"), textTransform: "uppercase" }}>Required</Text>
+                  <Text style={{ color: "#FFFFFF", fontSize: 14, fontFamily: getFontFamily("600") }}>⚠️ Please Upload an Image First!</Text>
+                  <Text style={{ color: "#FFFFFF", fontSize: 12, fontFamily: getFontFamily("600"), textTransform: "uppercase" }}>Required</Text>
                 </View>
               )}
               <LinearGradient
@@ -1176,14 +1199,14 @@ export default function AnimateScreen() {
           {/* Enhancement Options Section (Only for Enhance tool) */}
           {selectedTool === "enhance" && !restoredImage && (
             <View style={{ marginTop: 12 }}>
-              <Text style={{ fontSize: 15, fontFamily: getFontFamily("700"), color: "#6b7280", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 8 }}>Enhancement Options</Text>
+              <Text style={{ fontSize: 15, fontFamily: getFontFamily("600"), color: "#6b7280", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 8 }}>Enhancement Options</Text>
               <View style={{ gap: 8 }}>
                 <TouchableOpacity
                   style={{ flexDirection: "row", alignItems: "center" }}
                   onPress={() => setEnhanceOptions(prev => ({ ...prev, upscale: !prev.upscale }))}
                 >
                   <View style={{ width: 22, height: 22, borderRadius: 4, borderWidth: 2, borderColor: enhanceOptions.upscale ? "#28D4FA" : "#94A3B8", backgroundColor: enhanceOptions.upscale ? "#28D4FA" : "transparent", marginRight: 10, alignItems: "center", justifyContent: "center" }}>
-                    {enhanceOptions.upscale && <Text style={{ color: "#fff", fontSize: 16, fontFamily: getFontFamily("700") }}>✓</Text>}
+                    {enhanceOptions.upscale && <Text style={{ color: "#fff", fontSize: 16, fontFamily: getFontFamily("600") }}>✓</Text>}
                   </View>
                   <Text style={{ fontSize: 16, color: "#1E293B", fontFamily: getFontFamily("400") }}>{`4K Upscale (${featureCosts?.enhance_upscale || 1} credit${(featureCosts?.enhance_upscale || 1) !== 1 ? 's' : ''})`}</Text>
                 </TouchableOpacity>
@@ -1193,7 +1216,7 @@ export default function AnimateScreen() {
                   onPress={() => setEnhanceOptions(prev => ({ ...prev, faceEnhance: !prev.faceEnhance }))}
                 >
                   <View style={{ width: 22, height: 22, borderRadius: 4, borderWidth: 2, borderColor: enhanceOptions.faceEnhance ? "#28D4FA" : "#94A3B8", backgroundColor: enhanceOptions.faceEnhance ? "#28D4FA" : "transparent", marginRight: 10, alignItems: "center", justifyContent: "center" }}>
-                    {enhanceOptions.faceEnhance && <Text style={{ color: "#fff", fontSize: 16, fontFamily: getFontFamily("700") }}>✓</Text>}
+                    {enhanceOptions.faceEnhance && <Text style={{ color: "#fff", fontSize: 16, fontFamily: getFontFamily("600") }}>✓</Text>}
                   </View>
                   <Text style={{ fontSize: 16, color: "#1E293B", fontFamily: getFontFamily("400") }}>{`Face Enhancement (${featureCosts?.enhance_face || 1} credit${(featureCosts?.enhance_face || 1) !== 1 ? 's' : ''})`}</Text>
                 </TouchableOpacity>
@@ -1203,7 +1226,7 @@ export default function AnimateScreen() {
                   onPress={() => setEnhanceOptions(prev => ({ ...prev, colorize: !prev.colorize }))}
                 >
                   <View style={{ width: 22, height: 22, borderRadius: 4, borderWidth: 2, borderColor: enhanceOptions.colorize ? "#28D4FA" : "#94A3B8", backgroundColor: enhanceOptions.colorize ? "#28D4FA" : "transparent", marginRight: 10, alignItems: "center", justifyContent: "center" }}>
-                    {enhanceOptions.colorize && <Text style={{ color: "#fff", fontSize: 16, fontFamily: getFontFamily("700") }}>✓</Text>}
+                    {enhanceOptions.colorize && <Text style={{ color: "#fff", fontSize: 16, fontFamily: getFontFamily("600") }}>✓</Text>}
                   </View>
                   <Text style={{ fontSize: 16, color: "#1E293B", fontFamily: getFontFamily("400") }}>{`Colorize B&W (${featureCosts?.enhance_colorize || 1} credit${(featureCosts?.enhance_colorize || 1) !== 1 ? 's' : ''})`}</Text>
                 </TouchableOpacity>
@@ -1357,12 +1380,12 @@ export default function AnimateScreen() {
                       end={{ x: 1, y: 0 }}
                       style={{ ...StyleSheet.absoluteFillObject, justifyContent: "center", alignItems: "center" }}
                     >
-                      <Text style={{ color: "#FFFFFF", fontSize: 15, fontFamily: getFontFamily("700"), textTransform: "uppercase" }}>
+                      <Text style={{ color: "#FFFFFF", fontSize: 15, fontFamily: getFontFamily("600"), textTransform: "uppercase" }}>
                         PICK A TEMPLATE
                       </Text>
                     </LinearGradient>
                   ) : (
-                    <Text style={{ color: "#475569", fontSize: 15, fontFamily: getFontFamily("700"), textTransform: "uppercase" }}>
+                    <Text style={{ color: "#475569", fontSize: 15, fontFamily: getFontFamily("600"), textTransform: "uppercase" }}>
                       PICK A TEMPLATE
                     </Text>
                   )}
@@ -1383,12 +1406,12 @@ export default function AnimateScreen() {
                       end={{ x: 1, y: 0 }}
                       style={{ ...StyleSheet.absoluteFillObject, justifyContent: "center", alignItems: "center" }}
                     >
-                      <Text style={{ color: "#FFFFFF", fontSize: 15, fontFamily: getFontFamily("700"), textTransform: "uppercase" }}>
+                      <Text style={{ color: "#FFFFFF", fontSize: 15, fontFamily: getFontFamily("600"), textTransform: "uppercase" }}>
                         CUSTOM PROMPT ✨
                       </Text>
                     </LinearGradient>
                   ) : (
-                    <Text style={{ color: "#475569", fontSize: 15, fontFamily: getFontFamily("700"), textTransform: "uppercase" }}>
+                    <Text style={{ color: "#475569", fontSize: 15, fontFamily: getFontFamily("600"), textTransform: "uppercase" }}>
                       CUSTOM PROMPT ✨
                     </Text>
                   )}
@@ -1451,7 +1474,15 @@ export default function AnimateScreen() {
                   </ScrollView>
 
                   {/* 3-column Grid for Current Page */}
-                  <View style={styles.templatesGrid} pointerEvents={isActive && currentStep !== 3 ? "none" : "auto"}>
+                  <View
+                    style={styles.templatesGrid}
+                    pointerEvents={isActive && currentStep !== 3 ? "none" : "auto"}
+                    onLayout={(e) => {
+                      templatesGridYRef.current = e.nativeEvent.layout.y;
+                      templatesGridHRef.current = e.nativeEvent.layout.height;
+                      updateGridVisibility();
+                    }}
+                  >
                     {currentPageItems.map((item: any, idx: number) => {
                       const templateId = item.slug || item.id;
                       const isSelected = selectedTemplate === templateId;
@@ -1478,10 +1509,11 @@ export default function AnimateScreen() {
                             }}
                           >
                             <View style={styles.templateImageContainerGrid}>
-                              <Image
-                                source={{ uri: formatImageUrl(item.thumbnailUrl || item.image) }}
+                              <AnimatedTemplateThumb
+                                thumbnail={{ uri: formatImageUrl(item.thumbnailUrl || item.image) }}
+                                videoUrl={item.videoUrl ? formatImageUrl(item.videoUrl) : null}
+                                autoPlay={gridOnScreen}
                                 style={styles.templateImageGrid}
-                                resizeMode="cover"
                               />
                             </View>
                             {isSelected && (
@@ -1563,7 +1595,7 @@ export default function AnimateScreen() {
                   {surpriseSubject !== "" && (
                     <View style={{ backgroundColor: "#F3E8FF", borderColor: "#D8B4FE", borderWidth: 1, paddingVertical: 6, paddingHorizontal: 12, borderRadius: 10, marginBottom: 10, alignSelf: "flex-start", flexDirection: "row", alignItems: "center", gap: 4 }}>
                       <Text style={{ fontSize: 14, fontFamily: getFontFamily("600"), color: "#6B21A8" }}>
-                        ✨ Detected Subject: <Text style={{ fontFamily: getFontFamily("700"), color: "#581C87" }}>{surpriseSubject}</Text>
+                        ✨ Detected Subject: <Text style={{ fontFamily: getFontFamily("600"), color: "#581C87" }}>{surpriseSubject}</Text>
                       </Text>
                     </View>
                   )}
@@ -1686,7 +1718,7 @@ const styles = StyleSheet.create({
   },
   mainTitle: {
     fontSize: 26,
-    fontFamily: getFontFamily("800"),
+    fontFamily: getFontFamily("700"),
     color: "#0F172A",
     marginBottom: 6,
     textAlign: "center",
@@ -1700,7 +1732,7 @@ const styles = StyleSheet.create({
     lineHeight: 22,
   },
   mainSubtitleHighlight: {
-    fontFamily: getFontFamily("700"),
+    fontFamily: getFontFamily("600"),
     color: "#D229FF",
   },
   toolSelection: {
@@ -1739,13 +1771,13 @@ const styles = StyleSheet.create({
   },
   toolTextLabel: {
     fontSize: 16,
-    fontFamily: getFontFamily("700"),
+    fontFamily: getFontFamily("600"),
     color: "#475569",
     textAlign: "center",
   },
   toolTextLabelSelected: {
     fontSize: 16,
-    fontFamily: getFontFamily("700"),
+    fontFamily: getFontFamily("600"),
     color: "#FFFFFF",
     textAlign: "center",
   },
@@ -1777,7 +1809,7 @@ const styles = StyleSheet.create({
   },
   qualitySectionTitleCard: {
     fontSize: 14,
-    fontFamily: getFontFamily("700"),
+    fontFamily: getFontFamily("600"),
     color: "#64748B",
     marginBottom: 6,
     textTransform: "uppercase",
@@ -1818,13 +1850,13 @@ const styles = StyleSheet.create({
   },
   aspectRatioLabel: {
     fontSize: 13,
-    fontFamily: getFontFamily("700"),
+    fontFamily: getFontFamily("600"),
     color: "#334155",
     textAlign: "center",
   },
   aspectRatioLabelSelected: {
     fontSize: 13,
-    fontFamily: getFontFamily("800"),
+    fontFamily: getFontFamily("700"),
     color: "#D229FF",
     textAlign: "center",
   },
@@ -1836,7 +1868,7 @@ const styles = StyleSheet.create({
   },
   aspectRatioSubSelected: {
     fontSize: 11,
-    fontFamily: getFontFamily("700"),
+    fontFamily: getFontFamily("600"),
     color: "#C084FC",
     marginTop: 1,
   },
@@ -1858,7 +1890,7 @@ const styles = StyleSheet.create({
   },
   uploadCardTitle: {
     fontSize: 19,
-    fontFamily: getFontFamily("700"),
+    fontFamily: getFontFamily("600"),
     color: "#0F172A",
     letterSpacing: -0.2,
   },
@@ -1914,7 +1946,7 @@ const styles = StyleSheet.create({
   },
   customAnimationTitle: {
     fontSize: 18,
-    fontFamily: getFontFamily("700"),
+    fontFamily: getFontFamily("600"),
     color: "#0F172A",
   },
   optionalBadge: {
@@ -1965,7 +1997,7 @@ const styles = StyleSheet.create({
   },
   surpriseTextBadge: {
     fontSize: 14,
-    fontFamily: getFontFamily("700"),
+    fontFamily: getFontFamily("600"),
     color: "#FFFFFF",
   },
   uploadedImageContainer: {
@@ -1992,7 +2024,7 @@ const styles = StyleSheet.create({
   removeButtonText: {
     color: "#fff",
     fontSize: 20,
-    fontFamily: getFontFamily("700"),
+    fontFamily: getFontFamily("600"),
     marginTop: -2,
   },
   customSection: {
@@ -2007,7 +2039,7 @@ const styles = StyleSheet.create({
   },
   customTitle: {
     fontSize: 18,
-    fontFamily: getFontFamily("700"),
+    fontFamily: getFontFamily("600"),
     color: "#000",
   },
   customInputContainer: {
@@ -2067,7 +2099,7 @@ const styles = StyleSheet.create({
   },
   generateText: {
     fontSize: 18,
-    fontFamily: getFontFamily("700"),
+    fontFamily: getFontFamily("600"),
     color: "#fff",
   },
   creditsBadge: {
@@ -2104,7 +2136,7 @@ const styles = StyleSheet.create({
   },
   resultTitle: {
     fontSize: 22,
-    fontFamily: getFontFamily("700"),
+    fontFamily: getFontFamily("600"),
     color: "#000",
     marginBottom: 16,
     textAlign: "center",
@@ -2147,7 +2179,7 @@ const styles = StyleSheet.create({
   downloadButtonText: {
     color: "#fff",
     fontSize: 18,
-    fontFamily: getFontFamily("700"),
+    fontFamily: getFontFamily("600"),
   },
   resetButton: {
     backgroundColor: "#f3f4f6",
@@ -2168,7 +2200,7 @@ const styles = StyleSheet.create({
   },
   templatesTitle: {
     fontSize: 24,
-    fontFamily: getFontFamily("800"),
+    fontFamily: getFontFamily("700"),
     color: "#0a0a0a",
     textAlign: "center",
     marginBottom: 4,
@@ -2191,7 +2223,7 @@ const styles = StyleSheet.create({
   },
   qualitySectionTitle: {
     fontSize: 15,
-    fontFamily: getFontFamily("700"),
+    fontFamily: getFontFamily("600"),
     color: "#6b7280",
     marginBottom: 8,
     textTransform: "uppercase" as const,
@@ -2229,7 +2261,7 @@ const styles = StyleSheet.create({
   },
   qualityLabel: {
     fontSize: 15,
-    fontFamily: getFontFamily("700"),
+    fontFamily: getFontFamily("600"),
     color: "#1f2937",
     marginBottom: 1,
   },
@@ -2280,13 +2312,13 @@ const styles = StyleSheet.create({
   },
   modelChipName: {
     fontSize: 13,
-    fontFamily: getFontFamily("700"),
+    fontFamily: getFontFamily("600"),
     color: "#374151",
     textAlign: "center" as const,
   },
   modelChipNameSelected: {
     fontSize: 13,
-    fontFamily: getFontFamily("700"),
+    fontFamily: getFontFamily("600"),
     color: "#fff",
     textAlign: "center" as const,
   },
@@ -2360,7 +2392,7 @@ const styles = StyleSheet.create({
   selectedCheckText: {
     color: "#fff",
     fontSize: 12,
-    fontFamily: getFontFamily("700"),
+    fontFamily: getFontFamily("600"),
   },
   confirmationBanner: {
     flexDirection: "row",
@@ -2390,20 +2422,20 @@ const styles = StyleSheet.create({
   confirmationCheck: {
     color: "#fff",
     fontSize: 14,
-    fontFamily: getFontFamily("700"),
+    fontFamily: getFontFamily("600"),
   },
   confirmationTextContainer: {
     flex: 1,
   },
   confirmationLabel: {
     fontSize: 11,
-    fontFamily: getFontFamily("800"),
+    fontFamily: getFontFamily("700"),
     textTransform: "uppercase",
     color: "#D229FF",
   },
   confirmationValue: {
     fontSize: 15,
-    fontFamily: getFontFamily("700"),
+    fontFamily: getFontFamily("600"),
     color: "#111827",
     marginTop: 2,
   },
@@ -2417,7 +2449,7 @@ const styles = StyleSheet.create({
   },
   confirmedPillText: {
     fontSize: 12,
-    fontFamily: getFontFamily("700"),
+    fontFamily: getFontFamily("600"),
     color: "#D229FF",
   },
   customSectionInline: {
@@ -2433,7 +2465,7 @@ const styles = StyleSheet.create({
   },
   customTitleInline: {
     fontSize: 16,
-    fontFamily: getFontFamily("700"),
+    fontFamily: getFontFamily("600"),
     color: "#1f2937",
   },
   customInputContainerInline: {
@@ -2468,7 +2500,7 @@ const styles = StyleSheet.create({
   },
   surpriseTextInline: {
     fontSize: 12,
-    fontFamily: getFontFamily("700"),
+    fontFamily: getFontFamily("600"),
     color: "#fff",
   },
   templatesHeaderStack: {
@@ -2546,7 +2578,7 @@ const styles = StyleSheet.create({
   categoryPillTextSelected: {
     fontSize: 15,
     color: "#fff",
-    fontFamily: getFontFamily("700"),
+    fontFamily: getFontFamily("600"),
   },
   paginationBar: {
     flexDirection: "row",
@@ -2570,7 +2602,7 @@ const styles = StyleSheet.create({
   },
   pageButtonText: {
     fontSize: 15,
-    fontFamily: getFontFamily("700"),
+    fontFamily: getFontFamily("600"),
     color: "#D229FF",
   },
   pageButtonTextDisabled: {

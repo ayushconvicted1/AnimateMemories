@@ -126,9 +126,9 @@ const styles = StyleSheet.create({
   },
   title: {
     fontSize: 18,
-    fontWeight: "700",
+    fontWeight: "600",
     color: "#000",
-    fontFamily: getFontFamily("700"),
+    fontFamily: getFontFamily("600"),
   },
   valueBadge: {
     paddingHorizontal: 12,
@@ -176,8 +176,8 @@ const styles = StyleSheet.create({
   },
   tickTextActive: {
     color: "#FFFFFF",
-    fontWeight: "700",
-    fontFamily: getFontFamily("700"),
+    fontWeight: "600",
+    fontFamily: getFontFamily("600"),
   },
 });
 
