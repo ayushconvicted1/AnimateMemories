@@ -511,8 +511,8 @@ export default function AnimateScreen() {
 
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        allowsEditing: true,
-        quality: 0.8,
+        allowsEditing: false,
+        quality: 0.9,
       });
 
       if (result.canceled || !result.assets || !result.assets[0]) {
@@ -1036,8 +1036,22 @@ export default function AnimateScreen() {
                           e.stopPropagation();
                           handleReset();
                         }}
+                        activeOpacity={0.8}
+                        accessibilityLabel="Remove image"
                       >
                         <Text style={styles.removeButtonText}>×</Text>
+                      </TouchableOpacity>
+
+                      <TouchableOpacity
+                        style={styles.changeImageBadge}
+                        onPress={(e) => {
+                          e.stopPropagation();
+                          pickImage();
+                        }}
+                        activeOpacity={0.8}
+                        accessibilityLabel="Change image"
+                      >
+                        <Text style={styles.changeImageBadgeText}>↻ Change Photo</Text>
                       </TouchableOpacity>
                     </View>
                   ) : (
@@ -1537,6 +1551,12 @@ export default function AnimateScreen() {
                   {/* Pagination Controls */}
                   {totalPages > 1 && (
                     <View style={styles.paginationBar} pointerEvents={isActive && currentStep !== 3 ? "none" : "auto"}>
+                      <View style={styles.paginationCenterOverlay} pointerEvents="none">
+                        <Text style={styles.pageIndicatorText}>
+                          Page {currentPage} of {totalPages}
+                        </Text>
+                      </View>
+
                       <TouchableOpacity
                         style={[styles.pageButton, currentPage === 1 && styles.pageButtonDisabled]}
                         onPress={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
@@ -1546,10 +1566,6 @@ export default function AnimateScreen() {
                           ‹ Previous
                         </Text>
                       </TouchableOpacity>
-
-                      <Text style={styles.pageIndicatorText}>
-                        Page {currentPage} of {totalPages}
-                      </Text>
 
                       <TouchableOpacity
                         style={[styles.pageButton, currentPage === totalPages && styles.pageButtonDisabled]}
@@ -1744,7 +1760,6 @@ const styles = StyleSheet.create({
   toolTextCard: {
     flex: 1,
     borderRadius: 12,
-    overflow: "hidden",
     borderWidth: 1.5,
     borderColor: "#E2E8F0",
   },
@@ -1757,12 +1772,16 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   toolTextGradient: {
+    borderRadius: 12,
+    overflow: "hidden",
     paddingVertical: 12,
     paddingHorizontal: 8,
     alignItems: "center",
     justifyContent: "center",
   },
   toolTextInner: {
+    borderRadius: 12,
+    overflow: "hidden",
     paddingVertical: 12,
     paddingHorizontal: 8,
     alignItems: "center",
@@ -1822,7 +1841,6 @@ const styles = StyleSheet.create({
   aspectRatioCard: {
     flex: 1,
     borderRadius: 10,
-    overflow: "hidden",
     borderWidth: 1.5,
     borderColor: "#E2E8F0",
     backgroundColor: "#FFFFFF",
@@ -1837,6 +1855,8 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   aspectRatioCardInner: {
+    borderRadius: 10,
+    overflow: "hidden",
     paddingVertical: 10,
     paddingHorizontal: 4,
     alignItems: "center",
@@ -2002,30 +2022,75 @@ const styles = StyleSheet.create({
   },
   uploadedImageContainer: {
     width: "100%",
-    height: 200,
+    height: 220,
     position: "relative",
+    backgroundColor: "#0F172A",
+    borderRadius: 14,
+    overflow: "hidden",
+    borderWidth: 1.5,
+    borderColor: "rgba(168, 85, 247, 0.35)",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 4,
   },
   uploadedImage: {
     width: "100%",
     height: "100%",
-    borderRadius: 8,
+    borderRadius: 12,
   },
   removeButton: {
     position: "absolute",
-    top: 8,
-    right: 8,
-    backgroundColor: "rgba(0,0,0,0.6)",
-    width: 28,
-    height: 28,
-    borderRadius: 14,
+    top: 10,
+    right: 10,
+    backgroundColor: "#0F172A",
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    borderWidth: 1.5,
+    borderColor: "#FFFFFF",
     alignItems: "center",
     justifyContent: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.4,
+    shadowRadius: 4,
+    elevation: 8,
+    zIndex: 30,
   },
   removeButtonText: {
-    color: "#fff",
+    color: "#FFFFFF",
     fontSize: 20,
-    fontFamily: getFontFamily("600"),
+    fontFamily: getFontFamily("700"),
     marginTop: -2,
+    lineHeight: 22,
+  },
+  changeImageBadge: {
+    position: "absolute",
+    bottom: 10,
+    alignSelf: "center",
+    backgroundColor: "#0F172A",
+    borderWidth: 1.5,
+    borderColor: "#28D4FA",
+    paddingVertical: 6,
+    paddingHorizontal: 14,
+    borderRadius: 20,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.4,
+    shadowRadius: 4,
+    elevation: 8,
+    zIndex: 30,
+  },
+  changeImageBadgeText: {
+    color: "#FFFFFF",
+    fontSize: 13,
+    fontFamily: getFontFamily("600"),
+    letterSpacing: 0.2,
   },
   customSection: {
     paddingHorizontal: 16,
@@ -2083,7 +2148,6 @@ const styles = StyleSheet.create({
   },
   generateButton: {
     borderRadius: 7,
-    overflow: "hidden",
     elevation: 3,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
@@ -2091,6 +2155,8 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
   },
   generateButtonGradient: {
+    borderRadius: 7,
+    overflow: "hidden",
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
@@ -2236,7 +2302,6 @@ const styles = StyleSheet.create({
   qualityCard: {
     flex: 1,
     borderRadius: 10,
-    overflow: "hidden" as const,
     borderWidth: 1.5,
     borderColor: "#e5e7eb",
   },
@@ -2249,11 +2314,15 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   qualityCardGradient: {
+    borderRadius: 10,
+    overflow: "hidden" as const,
     paddingVertical: 10,
     paddingHorizontal: 6,
     alignItems: "center" as const,
   },
   qualityCardInner: {
+    borderRadius: 10,
+    overflow: "hidden" as const,
     paddingVertical: 10,
     paddingHorizontal: 6,
     alignItems: "center" as const,
@@ -2283,7 +2352,6 @@ const styles = StyleSheet.create({
   modelChip: {
     flex: 1,
     borderRadius: 10,
-    overflow: "hidden" as const,
     borderWidth: 1.5,
     borderColor: "#e5e7eb",
   },
@@ -2297,6 +2365,8 @@ const styles = StyleSheet.create({
   },
   modelChipGradient: {
     flex: 1,
+    borderRadius: 10,
+    overflow: "hidden" as const,
     paddingVertical: 8,
     paddingHorizontal: 6,
     alignItems: "center" as const,
@@ -2304,6 +2374,8 @@ const styles = StyleSheet.create({
   },
   modelChipInner: {
     flex: 1,
+    borderRadius: 10,
+    overflow: "hidden" as const,
     paddingVertical: 8,
     paddingHorizontal: 6,
     alignItems: "center" as const,
@@ -2543,7 +2615,6 @@ const styles = StyleSheet.create({
   },
   categoryPill: {
     borderRadius: 22,
-    overflow: "hidden",
     borderWidth: 1.5,
     borderColor: "#e5e7eb",
     shadowColor: "#000",
@@ -2557,6 +2628,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 8,
     borderRadius: 22,
+    overflow: "hidden",
     alignItems: "center",
     justifyContent: "center",
   },
@@ -2573,6 +2645,7 @@ const styles = StyleSheet.create({
     color: "#4b5563",
     paddingHorizontal: 16,
     paddingVertical: 8,
+    borderRadius: 22,
     backgroundColor: "#f9fafb",
   },
   categoryPillTextSelected: {
@@ -2581,20 +2654,35 @@ const styles = StyleSheet.create({
     fontFamily: getFontFamily("600"),
   },
   paginationBar: {
+    position: "relative",
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     marginTop: 14,
     marginBottom: 10,
     paddingHorizontal: 4,
+    minHeight: 38,
+  },
+  paginationCenterOverlay: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
+    alignItems: "center",
+    justifyContent: "center",
+    zIndex: 0,
   },
   pageButton: {
     backgroundColor: "#FAF5FF",
     borderWidth: 1,
     borderColor: "#E9D5FF",
-    paddingHorizontal: 16,
     paddingVertical: 8,
     borderRadius: 8,
+    width: 98,
+    alignItems: "center",
+    justifyContent: "center",
+    zIndex: 1,
   },
   pageButtonDisabled: {
     backgroundColor: "#F3F4F6",
@@ -2604,6 +2692,7 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontFamily: getFontFamily("600"),
     color: "#D229FF",
+    textAlign: "center",
   },
   pageButtonTextDisabled: {
     color: "#9CA3AF",
@@ -2613,5 +2702,6 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontFamily: getFontFamily("600"),
     color: "#4B5563",
+    textAlign: "center",
   },
 });

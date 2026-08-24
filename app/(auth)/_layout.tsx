@@ -1,18 +1,29 @@
-import { Image } from "expo-image";
+import { ResizeMode, Video } from "expo-av";
 import { Stack } from "expo-router";
 import React from "react";
 import { StyleSheet, View } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 const AuthLayout = () => {
-  const insets = useSafeAreaInsets();
-
   return (
     <View style={{ flex: 1, backgroundColor: "#0B0F19" }}>
-      {/* Background Gradient */}
-      <Image
-        source={require("@/assets/images/Background.png")}
-        style={[StyleSheet.absoluteFill, { paddingTop: insets.top }]}
+      {/* Shared persistent looping video background for all initial / auth screens */}
+      <Video
+        source={require("@/assets/videos/Lock.mp4")}
+        style={StyleSheet.absoluteFill}
+        resizeMode={ResizeMode.COVER}
+        isLooping
+        shouldPlay
+        isMuted
+        useNativeControls={false}
+      />
+
+      {/* Subtle overlay for legibility across auth forms while keeping the video vibrant */}
+      <View
+        style={[
+          StyleSheet.absoluteFill,
+          { backgroundColor: "rgba(11, 15, 25, 0.45)" },
+        ]}
+        pointerEvents="none"
       />
 
       {/* Screens */}

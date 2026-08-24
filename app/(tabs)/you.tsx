@@ -647,8 +647,20 @@ export default function YouScreen() {
                   style: "destructive",
                   onPress: async () => {
                     try {
+                      const userEmail =
+                        user?.primaryEmailAddress?.emailAddress ||
+                        user?.emailAddresses?.[0]?.emailAddress;
+                      const token = await getToken();
+                      if (userEmail) {
+                        try {
+                          await api.deleteUser(userEmail, token);
+                        } catch (dbErr) {
+                          console.warn("Backend user data cleanup warning:", dbErr);
+                        }
+                      }
                       await clerkUser?.delete();
                       await signOut();
+                      router.replace("/(auth)");
                     } catch (err) {
                       console.error("Error deleting account:", err);
                       Alert.alert("Error", "Failed to delete account. Please try again or contact support.");
@@ -805,7 +817,6 @@ const styles = StyleSheet.create({
     width: 32,
     height: 32,
     borderRadius: 16,
-    overflow: "hidden",
     borderWidth: 2.5,
     borderColor: "#fff",
     shadowColor: "#000",
@@ -817,6 +828,8 @@ const styles = StyleSheet.create({
   editButtonGradient: {
     width: "100%",
     height: "100%",
+    borderRadius: 16,
+    overflow: "hidden",
     alignItems: "center",
     justifyContent: "center",
   },

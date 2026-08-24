@@ -21,16 +21,16 @@ import NotificationsIcon from "@/components/images/NotificationsIcon";
 import PaymentsIcon from "@/components/images/PaymentsIcon";
 import HelpIcon from "@/components/images/HelpIcon";
 import PrivacyIcon from "@/components/images/PrivacyIcon";
-import BlogIcon from "@/components/images/BlogIcon";
 import AnimateMemoriesTabsLogo from "@/components/images/AnimateMemoriesTabsLogo";
 import YouIcon from "@/components/images/YouIcon";
 import { useAuth } from "@/contexts/AuthContext";
 import { useAuth as useClerkAuth } from "@clerk/clerk-expo";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { api } from "@/services/api";
 import { getFontFamily } from "@/constants/Fonts";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
-const SIDEBAR_WIDTH = Math.min(SCREEN_WIDTH * 0.8, 320);
+const SIDEBAR_WIDTH = Math.min(Math.max(SCREEN_WIDTH * 0.84, 320), 360);
 
 interface SidebarDrawerProps {
   visible: boolean;
@@ -38,6 +38,7 @@ interface SidebarDrawerProps {
 }
 
 export default function SidebarDrawer({ visible, onClose }: SidebarDrawerProps) {
+  const insets = useSafeAreaInsets();
   const { user, signOut } = useAuth();
   const { getToken } = useClerkAuth();
   const [credits, setCredits] = useState<number | null>(null);
@@ -113,12 +114,6 @@ export default function SidebarDrawer({ visible, onClose }: SidebarDrawerProps) 
       path: "/(tabs)/gallery",
     },
     {
-      id: "blogs",
-      label: "Blogs",
-      icon: <BlogIcon width={20} height={20} color="#0F172A" />,
-      path: "/blogs",
-    },
-    {
       id: "credit",
       label: "Buy Credits",
       icon: <CreditIcon width={20} height={20} color="#D229FF" />,
@@ -168,7 +163,15 @@ export default function SidebarDrawer({ visible, onClose }: SidebarDrawerProps) 
         <Pressable style={styles.backdrop} onPress={onClose} />
 
         {/* Sidebar Drawer Panel */}
-        <View style={styles.drawerContainer}>
+        <View
+          style={[
+            styles.drawerContainer,
+            {
+              paddingTop: Math.max(insets.top + 10, 48),
+              paddingBottom: Math.max(insets.bottom + 10, 24),
+            },
+          ]}
+        >
           {/* Sidebar Top Header */}
           <View style={styles.drawerHeader}>
             <AnimateMemoriesLogo width={118} height={28} />
@@ -301,9 +304,7 @@ const styles = StyleSheet.create({
     width: SIDEBAR_WIDTH,
     height: "100%",
     backgroundColor: "#FFFFFF",
-    paddingTop: Platform.OS === "ios" ? 52 : 36,
-    paddingBottom: 24,
-    paddingHorizontal: 20,
+    paddingHorizontal: 16,
     shadowColor: "#000",
     shadowOffset: { width: -4, height: 0 },
     shadowOpacity: 0.15,
@@ -315,7 +316,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    marginBottom: 20,
+    marginBottom: 16,
   },
   closeButton: {
     width: 32,
@@ -333,31 +334,31 @@ const styles = StyleSheet.create({
   profileCard: {
     backgroundColor: "#F8FAFC",
     borderRadius: 16,
-    padding: 14,
+    padding: 12,
     borderWidth: 1,
     borderColor: "#E2E8F0",
-    marginBottom: 20,
+    marginBottom: 16,
   },
   profileRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
-    marginBottom: 12,
+    marginBottom: 10,
   },
   avatarImage: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 42,
+    height: 42,
+    borderRadius: 21,
   },
   avatarGradient: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 42,
+    height: 42,
+    borderRadius: 21,
     alignItems: "center",
     justifyContent: "center",
   },
   avatarText: {
-    fontSize: 18,
+    fontSize: 17,
     fontFamily: getFontFamily("600"),
     color: "#FFFFFF",
   },
@@ -365,12 +366,12 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   userNameText: {
-    fontSize: 17,
+    fontSize: 16,
     fontFamily: getFontFamily("600"),
     color: "#0F172A",
   },
   userEmailText: {
-    fontSize: 14,
+    fontSize: 13,
     fontFamily: getFontFamily("400"),
     color: "#64748B",
     marginTop: 2,
@@ -385,61 +386,65 @@ const styles = StyleSheet.create({
   },
   creditsPill: {
     backgroundColor: "#EFF6FF",
-    paddingHorizontal: 10,
+    paddingHorizontal: 9,
     paddingVertical: 4,
     borderRadius: 12,
   },
   creditsPillText: {
-    fontSize: 14,
+    fontSize: 13,
     fontFamily: getFontFamily("600"),
     color: "#0284C7",
   },
   getCreditsBtn: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
+    paddingHorizontal: 11,
+    paddingVertical: 5,
     borderRadius: 14,
   },
   getCreditsText: {
-    fontSize: 13,
+    fontSize: 12.5,
     fontFamily: getFontFamily("600"),
     color: "#FFFFFF",
   },
   menuList: {
-    paddingVertical: 4,
-    gap: 4,
+    paddingVertical: 2,
+    gap: 2,
   },
   menuItemTouchable: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingVertical: 12,
-    paddingHorizontal: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 8,
     borderRadius: 12,
   },
   menuItemLeft: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 14,
+    gap: 12,
+    flexShrink: 1,
+    marginRight: 6,
   },
   menuIconBox: {
-    width: 28,
+    width: 24,
     alignItems: "center",
+    justifyContent: "center",
   },
   menuItemLabel: {
-    fontSize: 17,
+    fontSize: 16,
     fontFamily: getFontFamily("500"),
     color: "#1E293B",
   },
   badgeBox: {
     backgroundColor: "#F0F9FF",
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 10,
+    paddingHorizontal: 7,
+    paddingVertical: 2.5,
+    borderRadius: 8,
     borderWidth: 1,
     borderColor: "#BAE6FD",
+    flexShrink: 0,
   },
   badgeText: {
-    fontSize: 12,
+    fontSize: 11.5,
     fontFamily: getFontFamily("600"),
     color: "#0284C7",
   },

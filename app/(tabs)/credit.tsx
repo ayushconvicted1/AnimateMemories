@@ -12,7 +12,7 @@ import {
 } from "react-native";
 import { getFontFamily } from "@/constants/Fonts";
 import { LinearGradient } from "expo-linear-gradient";
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback } from "react";
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -35,6 +35,9 @@ const WEBSITE_BASE = "https://animatememories.com";
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 const PAYMENT_ICONS = ["visa", "mastercard", "applepay", "googlepay"];
+
+const TAB_GAP = 8;
+const TAB_COUNT = 3;
 
 const PACK_DETAILS = {
   starter: {
@@ -140,43 +143,33 @@ export default function CreditScreen() {
 
   const translateX = useSharedValue(0);
   const tabWidth = useSharedValue(0);
-  
-  const tabLayouts = useRef<{
-    starter: { x: number; width: number } | null;
-    popular: { x: number; width: number } | null;
-    pro: { x: number; width: number } | null;
-    basic: { x: number; width: number } | null;
-    standard: { x: number; width: number } | null;
-    premium: { x: number; width: number } | null;
-  }>({
-    starter: null,
-    popular: null,
-    pro: null,
-    basic: null,
-    standard: null,
-    premium: null,
-  });
+  const [tabWrapperWidth, setTabWrapperWidth] = useState(0);
+
+  const TAB_INDEX_MAP: Record<string, number> = {
+    starter: 0, popular: 1, pro: 2,
+    basic: 0, standard: 1, premium: 2,
+  };
 
   const updateIndicator = (pack: string, immediate = false) => {
-    // @ts-ignore
-    const layout = tabLayouts.current[pack];
-    if (layout && layout.width > 0) {
-      if (immediate) {
-        tabWidth.value = layout.width;
-        translateX.value = layout.x;
-      } else {
-        tabWidth.value = withTiming(layout.width, { duration: 300 });
-        translateX.value = withTiming(layout.x, { duration: 300 });
-      }
+    if (tabWrapperWidth <= 0) return;
+    const index = TAB_INDEX_MAP[pack];
+    if (index === undefined) return;
+    const computedWidth = (tabWrapperWidth - (TAB_COUNT - 1) * TAB_GAP) / TAB_COUNT;
+    const computedX = index * (computedWidth + TAB_GAP);
+    if (immediate) {
+      tabWidth.value = computedWidth;
+      translateX.value = computedX;
+    } else {
+      tabWidth.value = withTiming(computedWidth, { duration: 300 });
+      translateX.value = withTiming(computedX, { duration: 300 });
     }
   };
 
   useEffect(() => {
-    const timer = setTimeout(() => {
-      updateIndicator(billingType === 'one-time' ? selectedPack : selectedSubPack);
-    }, 0);
-    return () => clearTimeout(timer);
-  }, [selectedPack, selectedSubPack, billingType]);
+    if (tabWrapperWidth <= 0) return;
+    const activePack = billingType === 'one-time' ? selectedPack : selectedSubPack;
+    updateIndicator(activePack);
+  }, [tabWrapperWidth, billingType, selectedPack, selectedSubPack]);
 
   const animatedIndicatorStyle = useAnimatedStyle(() => {
     return {
@@ -264,18 +257,29 @@ export default function CreditScreen() {
     let productId = '';
 
     if (billingType === 'one-time') {
-      purchaseCredits = customAmount;
-      purchasePrice = getOneTimePrice(customAmount);
-      
-      const nearestPack = 
-        customAmount <= 50 ? PACK_DETAILS.starter : 
-        customAmount <= 150 ? PACK_DETAILS.popular : 
-        PACK_DETAILS.pro;
+      if (Platform.OS === 'ios') {
+        // On iOS, the user selects a fixed pack via tabs (no slider)
+        const selectedPackDetails = PACK_DETAILS[selectedPack];
+        purchaseCredits = selectedPackDetails.credits;
+        purchasePrice = selectedPackDetails.price;
+        purchaseId = selectedPackDetails.id;
         
-      purchaseId = nearestPack.id;
-      
-      const iapProduct = IAP_PRODUCTS.find(p => p.id === purchaseId);
-      productId = iapProduct ? iapProduct.productId : nearestPack.productId;
+        const iapProduct = IAP_PRODUCTS.find(p => p.id === purchaseId);
+        productId = iapProduct ? iapProduct.productId : selectedPackDetails.productId;
+      } else {
+        purchaseCredits = customAmount;
+        purchasePrice = getOneTimePrice(customAmount);
+        
+        const nearestPack = 
+          customAmount <= 50 ? PACK_DETAILS.starter : 
+          customAmount <= 150 ? PACK_DETAILS.popular : 
+          PACK_DETAILS.pro;
+          
+        purchaseId = nearestPack.id;
+        
+        const iapProduct = IAP_PRODUCTS.find(p => p.id === purchaseId);
+        productId = iapProduct ? iapProduct.productId : nearestPack.productId;
+      }
     } else {
       const basePack = SUBSCRIPTION_DETAILS[selectedSubPack];
       purchaseCredits = dynamicPricing[basePack.id]?.credits ?? basePack.credits;
@@ -414,13 +418,23 @@ export default function CreditScreen() {
   };
 
   const currentPack = billingType === 'one-time' 
-    ? {
-        name: 'Custom Pack',
-        credits: customAmount,
-        price: getOneTimePrice(customAmount),
-        originalPrice: (customAmount * 0.40).toFixed(2),
-        subtitle: 'Custom credits pack'
-      } 
+    ? Platform.OS === 'ios'
+      // On iOS the purchase is always one of the fixed App Store products,
+      // so show the selected pack's exact price/credits to match what Apple charges.
+      ? {
+          name: PACK_DETAILS[selectedPack].name,
+          credits: PACK_DETAILS[selectedPack].credits,
+          price: PACK_DETAILS[selectedPack].price,
+          originalPrice: PACK_DETAILS[selectedPack].originalPrice,
+          subtitle: PACK_DETAILS[selectedPack].subtitle,
+        }
+      : {
+          name: 'Custom Pack',
+          credits: customAmount,
+          price: getOneTimePrice(customAmount),
+          originalPrice: (customAmount * 0.40).toFixed(2),
+          subtitle: 'Custom credits pack'
+        }
     : currentSubPack;
 
   return (
@@ -480,7 +494,12 @@ export default function CreditScreen() {
       {/* Pack Selection Tabs */}
       {billingType === 'subscription' ? (
         <View style={styles.packTabsContainer}>
-          <View style={styles.packTabsWrapper}>
+          <View
+            style={styles.packTabsWrapper}
+            onLayout={(event) => {
+              setTabWrapperWidth(event.nativeEvent.layout.width);
+            }}
+          >
             <Animated.View style={[styles.packTabIndicator, animatedIndicatorStyle]} pointerEvents="none">
               <LinearGradient
                 colors={['#28D4FA', '#D229FF']}
@@ -493,11 +512,6 @@ export default function CreditScreen() {
             <TouchableOpacity
               style={styles.packTab}
               onPress={() => setSelectedSubPack('basic')}
-              onLayout={(event) => {
-                const { width, x } = event.nativeEvent.layout;
-                tabLayouts.current.basic = { x, width };
-                if (selectedSubPack === 'basic') updateIndicator('basic', true);
-              }}
             >
               <Text style={[
                 styles.packTabText,
@@ -507,11 +521,6 @@ export default function CreditScreen() {
             <TouchableOpacity
               style={styles.packTab}
               onPress={() => setSelectedSubPack('standard')}
-              onLayout={(event) => {
-                const { width, x } = event.nativeEvent.layout;
-                tabLayouts.current.standard = { x, width };
-                if (selectedSubPack === 'standard') updateIndicator('standard', true);
-              }}
             >
               <Text style={[
                 styles.packTabText,
@@ -521,16 +530,58 @@ export default function CreditScreen() {
             <TouchableOpacity
               style={styles.packTab}
               onPress={() => setSelectedSubPack('premium')}
-              onLayout={(event) => {
-                const { width, x } = event.nativeEvent.layout;
-                tabLayouts.current.premium = { x, width };
-                if (selectedSubPack === 'premium') updateIndicator('premium', true);
-              }}
             >
               <Text style={[
                 styles.packTabText,
                 selectedSubPack === 'premium' && styles.packTabTextSelected
               ]}>Premium</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      ) : Platform.OS === 'ios' ? (
+        /* On iOS, use the same tab-based UI as subscriptions (no slider) */
+        <View style={styles.packTabsContainer}>
+          <View
+            style={styles.packTabsWrapper}
+            onLayout={(event) => {
+              setTabWrapperWidth(event.nativeEvent.layout.width);
+            }}
+          >
+            <Animated.View style={[styles.packTabIndicator, animatedIndicatorStyle]} pointerEvents="none">
+              <LinearGradient
+                colors={['#28D4FA', '#D229FF']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                style={styles.packTabIndicatorGradient}
+              />
+            </Animated.View>
+            
+            <TouchableOpacity
+              style={styles.packTab}
+              onPress={() => setSelectedPack('starter')}
+            >
+              <Text style={[
+                styles.packTabText,
+                selectedPack === 'starter' && styles.packTabTextSelected
+              ]}>Starter</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.packTab}
+              onPress={() => setSelectedPack('popular')}
+            >
+              <Text style={[
+                styles.packTabText,
+                selectedPack === 'popular' && styles.packTabTextSelected
+              ]}>Popular</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.packTab}
+              onPress={() => setSelectedPack('pro')}
+            >
+              <Text style={[
+                styles.packTabText,
+                selectedPack === 'pro' && styles.packTabTextSelected
+              ]}>Pro</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -543,7 +594,7 @@ export default function CreditScreen() {
             maximumValue={1000}
             step={10}
             value={customAmount}
-            onValueChange={(val) => setCustomAmount(val)}
+            onValueChange={(val: number) => setCustomAmount(val)}
             minimumTrackTintColor="#D229FF"
             maximumTrackTintColor="#F3F4F6"
             thumbTintColor="#28D4FA"
@@ -645,9 +696,51 @@ export default function CreditScreen() {
         </View>
       </View>
 
+      {/* Auto-Renewable Subscription Disclosure & Legal Links (Guideline 3.1.2) */}
+      {billingType === 'subscription' && (
+        <View style={styles.subscriptionLegalCard}>
+          <Text style={styles.subscriptionLegalTitle}>Subscription Details</Text>
+          <Text style={styles.subscriptionLegalText}>
+            • <Text style={{ fontFamily: getFontFamily('600'), color: '#333' }}>Auto-Renewing:</Text> Your subscription will renew automatically every month at ${currentPack.price}/month unless canceled at least 24 hours prior to the end of the current billing cycle.
+            {'\n'}• <Text style={{ fontFamily: getFontFamily('600'), color: '#333' }}>Payment:</Text> Charged to your Apple ID account at confirmation of purchase.
+            {'\n'}• <Text style={{ fontFamily: getFontFamily('600'), color: '#333' }}>Manage / Cancel:</Text> You can manage or cancel your subscription anytime in your App Store Account Settings after purchase.
+          </Text>
+        </View>
+      )}
+
+      {/* Direct Links to EULA (Terms of Use) and Privacy Policy */}
+      <View style={styles.legalLinksRow}>
+        <TouchableOpacity
+          onPress={() => {
+            WebBrowser.openBrowserAsync("https://animatememories.com/terms-of-service");
+          }}
+          activeOpacity={0.7}
+        >
+          <Text style={styles.legalLinkText}>Terms of Use (EULA)</Text>
+        </TouchableOpacity>
+        <Text style={styles.legalLinkDivider}>•</Text>
+        <TouchableOpacity
+          onPress={() => {
+            WebBrowser.openBrowserAsync("https://animatememories.com/privacy-policy");
+          }}
+          activeOpacity={0.7}
+        >
+          <Text style={styles.legalLinkText}>Privacy Policy</Text>
+        </TouchableOpacity>
+        <Text style={styles.legalLinkDivider}>•</Text>
+        <TouchableOpacity
+          onPress={() => {
+            WebBrowser.openBrowserAsync("https://www.apple.com/legal/internet-services/itunes/dev/stdeula/");
+          }}
+          activeOpacity={0.7}
+        >
+          <Text style={styles.legalLinkText}>Apple EULA</Text>
+        </TouchableOpacity>
+      </View>
+
       {/* Restore Purchases Button for iOS Users */}
       {Platform.OS === 'ios' && (
-        <View style={{ alignItems: 'center', marginBottom: 20 }}>
+        <View style={{ alignItems: 'center', marginBottom: 16 }}>
           <TouchableOpacity 
             style={styles.restoreButton}
             onPress={handleRestorePurchases}
@@ -691,20 +784,27 @@ export default function CreditScreen() {
         </View>
       )}
 
-
-
-      {/* Payment Logos Section */}
-      <View style={{ flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 16, marginBottom: 30, paddingHorizontal: 16, flexWrap: 'wrap' }}>
-        <Text style={{ fontSize: 15, color: '#979797', marginRight: 8, fontFamily: getFontFamily('400') }}>Secured by</Text>
-        {PAYMENT_ICONS.map((icon) => (
-          <SvgUri
-            key={icon}
-            width="36"
-            height="24"
-            uri={`https://www.animatememories.com/payment-icons/${icon}.svg`}
-          />
-        ))}
-      </View>
+      {/* Payment Badges Section - Apple Compliant on iOS */}
+      {Platform.OS === 'ios' ? (
+        <View style={{ alignItems: 'center', marginBottom: 24, paddingHorizontal: 16 }}>
+          <View style={styles.iosSecurityBadge}>
+            <Text style={styles.iosSecurityIcon}>🔒</Text>
+            <Text style={styles.iosSecurityText}>Secured by Apple App Store In-App Purchases</Text>
+          </View>
+        </View>
+      ) : (
+        <View style={{ flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 16, marginBottom: 30, paddingHorizontal: 16, flexWrap: 'wrap' }}>
+          <Text style={{ fontSize: 15, color: '#979797', marginRight: 8, fontFamily: getFontFamily('400') }}>Secured by</Text>
+          {PAYMENT_ICONS.map((icon) => (
+            <SvgUri
+              key={icon}
+              width="36"
+              height="24"
+              uri={`https://www.animatememories.com/payment-icons/${icon}.svg`}
+            />
+          ))}
+        </View>
+      )}
 
       {/* Contact Section */}
       <View style={styles.contactSection}>
@@ -977,7 +1077,6 @@ const styles = StyleSheet.create({
     marginTop: 12,
     marginBottom: 20,
     borderRadius: 12,
-    overflow: 'hidden',
     shadowColor: '#D229FF',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.26,
@@ -985,6 +1084,8 @@ const styles = StyleSheet.create({
     elevation: 4,
   },
   upgradeButtonGradient: {
+    borderRadius: 12,
+    overflow: 'hidden',
     paddingVertical: 14,
     paddingHorizontal: 24,
     flexDirection: 'row',
@@ -1132,5 +1233,62 @@ const styles = StyleSheet.create({
   presetBtnTextActive: {
     color: '#000',
     fontFamily: getFontFamily('700'),
+  },
+  subscriptionLegalCard: {
+    marginHorizontal: 16,
+    marginBottom: 16,
+    padding: 14,
+    backgroundColor: '#F9FAFB',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
+  subscriptionLegalTitle: {
+    fontSize: 15,
+    fontFamily: getFontFamily('600'),
+    color: '#111827',
+    marginBottom: 6,
+  },
+  subscriptionLegalText: {
+    fontSize: 13,
+    fontFamily: getFontFamily('400'),
+    color: '#6B7280',
+    lineHeight: 18,
+  },
+  legalLinksRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginHorizontal: 16,
+    marginBottom: 16,
+  },
+  legalLinkText: {
+    fontSize: 13,
+    fontFamily: getFontFamily('500'),
+    color: '#D229FF',
+    textDecorationLine: 'underline',
+  },
+  legalLinkDivider: {
+    fontSize: 13,
+    color: '#9CA3AF',
+  },
+  iosSecurityBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F3F4F6',
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    borderRadius: 20,
+    gap: 6,
+  },
+  iosSecurityIcon: {
+    fontSize: 14,
+  },
+  iosSecurityText: {
+    fontSize: 13,
+    fontFamily: getFontFamily('500'),
+    color: '#6B7280',
   },
 });

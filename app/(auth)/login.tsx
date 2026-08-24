@@ -99,11 +99,10 @@ const LoginScreen = () => {
         return;
       }
 
-      // Provide helpful message for development
-      if (errorMessage.includes("Invalid authentication credentials")) {
+      if (errorMessage.includes("Invalid authentication credentials") || errorMessage.includes("form_identifier_not_found")) {
         Alert.alert(
           "Login Failed",
-          "Invalid credentials. Try creating a new account first, or use:\n\nEmail: test@animatememories.com\nPassword: TestPassword123!"
+          "Invalid email or password. Please check your credentials and try again."
         );
       } else {
         Alert.alert("Login Failed", errorMessage);

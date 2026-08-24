@@ -6,6 +6,7 @@ import {
   ScrollView,
   Dimensions,
   ActivityIndicator,
+  Platform,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { useState, useEffect, useCallback } from "react";
@@ -154,17 +155,31 @@ export default function PaymentsScreen() {
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Accepted Payment Methods</Text>
             <View style={styles.infoCard}>
-              <Text style={styles.infoText}>
-                We accept all major credit cards, debit cards, and digital
-                wallets powered securely by Stripe:
-              </Text>
-              <View style={styles.paymentIconsRow}>
-                <VisaIcon style={styles.paymentBadge} />
-                <MastercardIcon style={styles.paymentBadge} />
-                <ApplePayIcon style={styles.paymentBadge} />
-                <GooglePayIcon style={styles.paymentBadge} />
-                <PaypalIcon style={styles.paymentBadge} />
-              </View>
+              {Platform.OS === "ios" ? (
+                <>
+                  <Text style={styles.infoText}>
+                    Purchases are processed securely through your Apple ID
+                    using in-app purchases:
+                  </Text>
+                  <View style={styles.paymentIconsRow}>
+                    <ApplePayIcon style={styles.paymentBadge} />
+                  </View>
+                </>
+              ) : (
+                <>
+                  <Text style={styles.infoText}>
+                    We accept all major credit cards, debit cards, and digital
+                    wallets powered securely by Stripe:
+                  </Text>
+                  <View style={styles.paymentIconsRow}>
+                    <VisaIcon style={styles.paymentBadge} />
+                    <MastercardIcon style={styles.paymentBadge} />
+                    <ApplePayIcon style={styles.paymentBadge} />
+                    <GooglePayIcon style={styles.paymentBadge} />
+                    <PaypalIcon style={styles.paymentBadge} />
+                  </View>
+                </>
+              )}
             </View>
           </View>
 

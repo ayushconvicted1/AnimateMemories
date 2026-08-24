@@ -6,14 +6,20 @@
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "animatememories",
-    "userInterfaceStyle": "automatic",
+    "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.hexerve.AnimateMemories",
+      "buildNumber": "1",
+      "userInterfaceStyle": "light",
       "infoPlist": {
-        "NSPhotoLibraryUsageDescription": "We need access to your photo library to upload and animate your photos.",
-        "NSPhotoLibraryAddUsageDescription": "We need access to save your animated videos to your photo library."
+        "NSCameraUsageDescription": "AnimateMemories uses the camera to let you take photos to animate and restore.",
+        "NSPhotoLibraryUsageDescription": "AnimateMemories needs access to your photo library to select photos for animation and restoration.",
+        "NSPhotoLibraryAddUsageDescription": "AnimateMemories needs permission to save your restored photos and animated videos to your photo library.",
+        "ITSAppUsesNonExemptEncryption": false,
+        "UIStatusBarStyle": "UIStatusBarStyleDarkContent",
+        "UIViewControllerBasedStatusBarAppearance": true
       },
       "appleTeamId": "N6M4Z5254R"
     },
@@ -26,6 +32,7 @@
       "predictiveBackGestureEnabled": false,
       "package": "com.hexerve.AnimateMemories",
       "versionCode": 3,
+      "userInterfaceStyle": "light",
       "statusBar": {
         "barStyle": "dark-content",
         "backgroundColor": "#ffffff"

@@ -27,7 +27,6 @@ import HomeArrow from "@/components/images/HomeArrow";
 import StarIcon from "@/components/images/StarIcon";
 import TemplateExplorerModal from "@/components/ui/TemplateExplorerModal";
 import AnimatedTemplateThumb from "@/components/ui/AnimatedTemplateThumb";
-import BlogCard from "@/components/ui/BlogCard";
 import ChevronLeftIcon from "@/components/images/ChevronLeftIcon";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
@@ -124,6 +123,7 @@ TemplateCard.displayName = "TemplateCard";
 const StepVideo = memo(
   ({ source, poster, isVisible }: { source: any; poster: any; isVisible: boolean }) => {
     const videoRef = useRef<Video>(null);
+    const [isReady, setIsReady] = useState(false);
 
     useEffect(() => {
       const video = videoRef.current;
@@ -136,20 +136,40 @@ const StepVideo = memo(
     }, [isVisible]);
 
     return (
-      <Video
-        ref={videoRef}
-        source={source}
-        style={styles.stepVideo}
-        resizeMode={ResizeMode.COVER}
-        shouldPlay={isVisible}
-        isLooping
-        isMuted
-        useNativeControls={false}
-        usePoster
-        posterSource={poster}
-        posterStyle={{ resizeMode: "cover" }}
-        onError={(error) => console.log("Step video failed to load:", error)}
-      />
+      <View style={[styles.stepVideo, { position: "relative" }]}>
+        <Image
+          source={poster}
+          style={[StyleSheet.absoluteFill, styles.stepPngImage]}
+          contentFit="cover"
+        />
+        <Video
+          ref={videoRef}
+          source={source}
+          style={styles.stepVideo}
+          resizeMode={ResizeMode.COVER}
+          shouldPlay={isVisible}
+          isLooping
+          isMuted
+          useNativeControls={false}
+          usePoster
+          posterSource={poster}
+          posterStyle={{ resizeMode: "cover" }}
+          onReadyForDisplay={() => setIsReady(true)}
+          onPlaybackStatusUpdate={(status) => {
+            if (status.isLoaded && status.isPlaying) {
+              setIsReady(true);
+            }
+          }}
+          onError={(error) => console.log("Step video failed to load:", error)}
+        />
+        {!isReady && (
+          <Image
+            source={poster}
+            style={[StyleSheet.absoluteFill, styles.stepPngImage]}
+            contentFit="cover"
+          />
+        )}
+      </View>
     );
   }
 );
@@ -160,17 +180,17 @@ export default function HomeScreen() {
   const { getToken } = useAuth();
   const { startTour, endTour, isActive, currentStep } = useTour();
   const [userCredits, setUserCredits] = useState<number | null>(null);
-  const [latestBlogs, setLatestBlogs] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [animationTemplates, setAnimationTemplates] = useState<any[]>(DEFAULT_TEMPLATES);
   const [selectedCategory, setSelectedCategory] = useState("Trending");
   const [scrollOffset, setScrollOffset] = useState(0);
   const [isTemplateModalVisible, setTemplateModalVisible] = useState(false);
+  const [isHeroVideoReady, setIsHeroVideoReady] = useState(false);
   // Horizontal position of the template carousel (drives navigation arrows).
   const [templateScrollX, setTemplateScrollX] = useState(0);
   // Track active scrolling to pause template video decoders mid-scroll for maximum 60fps smoothness.
   const [isScrolling, setIsScrolling] = useState(false);
-  const scrollEndTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const scrollEndTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const handleScrollBegin = useCallback(() => {
     if (scrollEndTimeoutRef.current) {
@@ -233,10 +253,8 @@ export default function HomeScreen() {
 
   const isHeroVisible = scrollOffset < 600;
   const isTransformationsVisible = scrollOffset > 300 && scrollOffset < 2400;
-  // Play the step demo videos only while the user is in this section of the
-  // page, so they don't stack on top of the hero/transformation videos that
-  // are already decoding (the 256MB Android heap OOMs otherwise).
-  const isStepsVisible = scrollOffset > 200 && scrollOffset < 2600;
+  // Play the step demo videos reliably while the user is viewing this section
+  const isStepsVisible = scrollOffset > 50 && scrollOffset < 3500;
 
   useEffect(() => {
     const fetchUserCredits = async () => {
@@ -271,17 +289,6 @@ export default function HomeScreen() {
       }
     };
 
-    const fetchBlogs = async () => {
-      try {
-        const response = await api.getBlogs(3);
-        const blogs = response?.blogs || [];
-        if (blogs.length > 0) setLatestBlogs(blogs);
-      } catch (error) {
-        console.error("Failed to fetch blogs", error);
-      }
-    };
-
-    fetchBlogs();
     fetchTemplates();
 
     if (user) {
@@ -320,8 +327,8 @@ export default function HomeScreen() {
 
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        allowsEditing: true,
-        quality: 0.8,
+        allowsEditing: false,
+        quality: 0.9,
       });
 
       if (result.canceled || !result.assets || !result.assets[0]) {
@@ -459,6 +466,11 @@ export default function HomeScreen() {
 
             {/* Main Hero Video from web */}
             <View style={styles.mainHeroPhotoCard}>
+              <Image
+                source={require("@/assets/images/herovideo-first-frame.jpg")}
+                style={[StyleSheet.absoluteFill, styles.mainHeroImage]}
+                contentFit="cover"
+              />
               <Video
                 source={require("@/assets/videos/HomeVideo.mp4")}
                 style={styles.mainHeroImage}
@@ -468,9 +480,22 @@ export default function HomeScreen() {
                 isMuted
                 useNativeControls={false}
                 usePoster={true}
-                posterSource={require("@/assets/images/HomePhoto.jpeg")}
+                posterSource={require("@/assets/images/herovideo-first-frame.jpg")}
                 posterStyle={{ resizeMode: "cover" }}
+                onReadyForDisplay={() => setIsHeroVideoReady(true)}
+                onPlaybackStatusUpdate={(status) => {
+                  if (status.isLoaded && status.isPlaying) {
+                    setIsHeroVideoReady(true);
+                  }
+                }}
               />
+              {!isHeroVideoReady && (
+                <Image
+                  source={require("@/assets/images/herovideo-first-frame.jpg")}
+                  style={[StyleSheet.absoluteFill, styles.mainHeroImage]}
+                  contentFit="cover"
+                />
+              )}
             </View>
           </View>
 
@@ -607,20 +632,20 @@ export default function HomeScreen() {
 
         {/* How to Animate Section */}
         <View style={styles.howToSection}>
-          <Text style={styles.howToTitle}>
+          <GradientText style={styles.howToTitle}>
             How to Animate Old Pictures with AI?
-          </Text>
+          </GradientText>
 
           {/* Step 1 */}
           <View style={styles.stepRow}>
             <View style={styles.stepImageWrapper}>
               <Image
-                source={require("@/assets/images/1.png")}
+                source={require("@/assets/images/1.jpg")}
                 style={styles.stepPngImage}
-                contentFit="contain"
+                contentFit="cover"
               />
             </View>
-            <View style={styles.stepTextWrapper}>
+            <View style={[styles.stepTextWrapper, styles.stepTextWrapperRight]}>
               <Text style={styles.stepNumber}>Step 1</Text>
               <GradientText style={styles.stepHeaderTitle}>
                 Upload Your Image
@@ -634,7 +659,7 @@ export default function HomeScreen() {
 
           {/* Step 2 */}
           <View style={styles.stepRow}>
-            <View style={styles.stepTextWrapper}>
+            <View style={[styles.stepTextWrapper, styles.stepTextWrapperLeft]}>
               <Text style={styles.stepNumber}>Step 2</Text>
               <GradientText style={styles.stepHeaderTitle}>
                 Animate Your Photo
@@ -657,12 +682,12 @@ export default function HomeScreen() {
           <View style={styles.stepRow}>
             <View style={styles.stepImageWrapper}>
               <StepVideo
-                source={require("@/assets/videos/GirlVideo.mp4")}
+                source={require("@/assets/videos/3.mp4")}
                 poster={require("@/assets/images/3.png")}
                 isVisible={isStepsVisible}
               />
             </View>
-            <View style={styles.stepTextWrapper}>
+            <View style={[styles.stepTextWrapper, styles.stepTextWrapperRight]}>
               <Text style={styles.stepNumber}>Step 3</Text>
               <GradientText style={styles.stepHeaderTitle}>
                 Export and Download
@@ -785,43 +810,6 @@ export default function HomeScreen() {
           </ScrollView>
         </View>
 
-        {/* Latest Blogs feed */}
-        {latestBlogs.length > 0 && (
-          <View style={styles.blogsSection}>
-            <GradientText style={styles.sectionHeadingTitle}>
-              Latest Blogs
-            </GradientText>
-            <Text style={styles.sectionSubtitle}>
-              Tips, stories & updates on AI photo animation.
-            </Text>
-
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.blogsContainer}
-            >
-              {latestBlogs.map((blog) => (
-                <BlogCard key={blog.id} blog={blog} width={280} />
-              ))}
-            </ScrollView>
-
-            <TouchableOpacity
-              style={styles.blogsViewAllButton}
-              onPress={() => router.push("/blogs")}
-              activeOpacity={0.85}
-            >
-              <LinearGradient
-                colors={["#38BDF8", "#A855F7", "#D229FF"]}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={styles.blogsViewAllGradient}
-              >
-                <Text style={styles.blogsViewAllText}>View All Blogs</Text>
-              </LinearGradient>
-            </TouchableOpacity>
-          </View>
-        )}
-
         <TemplateExplorerModal 
           visible={isTemplateModalVisible} 
           onClose={() => setTemplateModalVisible(false)} 
@@ -866,7 +854,6 @@ const styles = StyleSheet.create({
     width: 104,
     height: 76,
     borderRadius: 14,
-    overflow: "hidden",
     zIndex: 1,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 4 },
@@ -877,6 +864,8 @@ const styles = StyleSheet.create({
   smallPhotoImage: {
     width: "100%",
     height: "100%",
+    borderRadius: 14,
+    overflow: "hidden",
   },
   arrowContainer: {
     position: "absolute",
@@ -891,7 +880,6 @@ const styles = StyleSheet.create({
     width: CONTENT_WIDTH * 0.80,
     height: 198,
     borderRadius: 20,
-    overflow: "hidden",
     zIndex: 5,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 8 },
@@ -902,6 +890,8 @@ const styles = StyleSheet.create({
   mainHeroImage: {
     width: "100%",
     height: "100%",
+    borderRadius: 20,
+    overflow: "hidden",
   },
   heroTitle: {
     fontSize: SCREEN_WIDTH < 380 ? 24 : 28,
@@ -920,7 +910,6 @@ const styles = StyleSheet.create({
   },
   uploadButtonContainer: {
     borderRadius: 12,
-    overflow: "hidden",
     shadowColor: "#D229FF",
     shadowOffset: { width: 0, height: 3 },
     shadowOpacity: 0.2,
@@ -928,6 +917,8 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   uploadGradientButton: {
+    borderRadius: 12,
+    overflow: "hidden",
     paddingVertical: 12,
     paddingHorizontal: 28,
     alignItems: "center",
@@ -993,7 +984,6 @@ const styles = StyleSheet.create({
     width: 116,
     height: 152,
     borderRadius: 16,
-    overflow: "hidden",
     backgroundColor: "#F1F5F9",
     position: "relative",
     shadowColor: "#000",
@@ -1007,10 +997,14 @@ const styles = StyleSheet.create({
   templateImage: {
     width: "100%",
     height: "100%",
+    borderRadius: 16,
+    overflow: "hidden",
   },
   templatePlaceholder: {
     width: "100%",
     height: "100%",
+    borderRadius: 16,
+    overflow: "hidden",
     backgroundColor: "#E2E8F0",
   },
   starBadgeContainer: {
@@ -1092,26 +1086,47 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    marginBottom: 18,
+    marginBottom: 22,
+    gap: 14,
   },
   stepImageWrapper: {
-    width: "52%",
-    height: 180,
+    width: "48%",
+    aspectRatio: 1296 / 948,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "transparent",
+    backgroundColor: "#F8FAFC",
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+    overflow: "hidden",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 5,
+    elevation: 2,
   },
   stepPngImage: {
     width: "100%",
     height: "100%",
+    borderRadius: 16,
   },
   stepVideo: {
     width: "100%",
     height: "100%",
     backgroundColor: "transparent",
+    borderRadius: 16,
   },
   stepTextWrapper: {
-    width: "44%",
+    flex: 1,
+    justifyContent: "center",
+  },
+  stepTextWrapperLeft: {
+    paddingLeft: 6,
+    paddingRight: 2,
+  },
+  stepTextWrapperRight: {
+    paddingLeft: 4,
+    paddingRight: 4,
   },
   stepNumber: {
     fontSize: 19,
@@ -1138,7 +1153,6 @@ const styles = StyleSheet.create({
   bigTryButtonContainer: {
     alignSelf: "center",
     borderRadius: 12,
-    overflow: "hidden",
     marginTop: 8,
     shadowColor: "#D229FF",
     shadowOffset: { width: 0, height: 3 },
@@ -1147,6 +1161,8 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   bigTryGradient: {
+    borderRadius: 12,
+    overflow: "hidden",
     paddingVertical: 12,
     paddingHorizontal: 40,
     alignItems: "center",
@@ -1188,7 +1204,6 @@ const styles = StyleSheet.create({
     width: (CONTENT_WIDTH - 12) / 2,
     height: 170,
     borderRadius: 16,
-    overflow: "hidden",
     backgroundColor: "#F1F5F9",
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 3 },
@@ -1199,6 +1214,8 @@ const styles = StyleSheet.create({
   gridImage: {
     width: "100%",
     height: "100%",
+    borderRadius: 16,
+    overflow: "hidden",
   },
   trustedSection: {
     width: CONTENT_WIDTH,
@@ -1252,29 +1269,5 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontFamily: getFontFamily("600"),
     color: "#7C3AED",
-  },
-  blogsSection: {
-    width: CONTENT_WIDTH,
-    alignSelf: "center",
-    marginBottom: 32,
-  },
-  blogsContainer: {
-    paddingRight: 16,
-    gap: 14,
-  },
-  blogsViewAllButton: {
-    alignSelf: "center",
-    marginTop: 20,
-    borderRadius: 999,
-    overflow: "hidden",
-  },
-  blogsViewAllGradient: {
-    paddingHorizontal: 28,
-    paddingVertical: 13,
-  },
-  blogsViewAllText: {
-    fontSize: 16,
-    fontFamily: getFontFamily("600"),
-    color: "#FFFFFF",
   },
 });

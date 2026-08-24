@@ -1,8 +1,11 @@
 import { Tabs } from "expo-router";
 import { PlatformPressable } from '@react-navigation/elements';
-import React, { useEffect, useRef } from "react";
-import { Platform, StyleSheet, View, Text } from "react-native";
+import { BottomTabBar } from "@react-navigation/bottom-tabs";
+import type { BottomTabBarProps } from "@react-navigation/bottom-tabs";
+import React, { useEffect, useMemo, useRef } from "react";
+import { Platform, StyleSheet, View, Text, ViewStyle } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
+import { GlassView, isLiquidGlassAvailable } from "@/lib/glassEffect";
 import MaskedView from "@react-native-masked-view/masked-view";
 import Animated, {
   useSharedValue,
@@ -15,7 +18,7 @@ import Animated, {
 } from "react-native-reanimated";
 
 import { HapticTab } from "@/components/HapticTab";
-import TabBarBackground from "@/components/ui/TabBarBackground";
+import GlassTabBackground from "@/components/ui/TabBarBackground";
 import AnimateMemoriesTabsLogo from "@/components/images/AnimateMemoriesTabsLogo";
 import HomeIcon from "@/components/images/HomeIcon";
 import GalleryIcon from "@/components/images/GalleryIcon";
@@ -28,53 +31,84 @@ import { useTour } from "@/contexts/TourContext";
 
 const AnimatedLinearGradient = Animated.createAnimatedComponent(LinearGradient);
 
-// Reusable animated icon wrapper that bounces when focused
+// Custom tab bar: keeps the default bar (labels, haptics, create button, tour
+// blocking) and renders the Liquid Glass background + sliding active-tab oval
+// behind it.
+function GlassTabBar(props: BottomTabBarProps) {
+  "use no memo";
+
+  const focusedKey = props.state.routes[props.state.index].key;
+  const focusedOptions = props.descriptors[focusedKey].options;
+
+  // Only tabs that actually render take space.
+  const VISIBLE_TABS = ["index", "gallery", "animate", "credit", "you"];
+  const visibleRoutes = props.state.routes.filter((route) => {
+    return VISIBLE_TABS.includes(route.name);
+  });
+  const visibleIndex = Math.max(
+    0,
+    visibleRoutes.findIndex((route) => route.key === focusedKey)
+  );
+
+  // Align the glass background to the same rect as the bar by reusing the
+  // shared tabBarStyle, minus shadow/zIndex so we don't double-render them.
+  const barStyle = focusedOptions.tabBarStyle;
+  const bgStyle: ViewStyle | undefined = barStyle
+    ? ({
+        ...StyleSheet.flatten(barStyle),
+        shadowColor: undefined,
+        shadowOffset: undefined,
+        shadowOpacity: undefined,
+        shadowRadius: undefined,
+        elevation: undefined,
+        zIndex: undefined,
+        paddingTop: 0,
+        paddingBottom: 0,
+        paddingLeft: 0,
+        paddingRight: 0,
+        paddingHorizontal: 0,
+      } as ViewStyle)
+    : undefined;
+
+  const filteredProps = {
+    ...props,
+    state: {
+      ...props.state,
+      routes: visibleRoutes,
+    },
+  };
+
+  // BottomTabBar insets its item row by paddingHorizontal: max(insets.left,
+  // insets.right). Pass the same value so the pill centers on the real tabs.
+  const itemInset = Math.max(props.insets.left, props.insets.right);
+
+  return (
+    <>
+      <GlassTabBackground
+        style={bgStyle}
+        visibleIndex={visibleIndex}
+        tabCount={visibleRoutes.length}
+        itemInset={itemInset}
+      />
+      <BottomTabBar {...filteredProps} />
+    </>
+  );
+}
+
+// Wrapper for tab icons. The active sliding liquid glass pill is rendered by GlassTabBackground.
 const AnimatedIconWrapper = ({
   children,
-  focused,
 }: {
   children: React.ReactNode;
-  focused: boolean;
+  focused?: boolean;
 }) => {
-  const scale = useSharedValue(1);
-  const prevFocusedRef = useRef<boolean | null>(null);
-
-  useEffect(() => {
-    // Animate when tab becomes focused (skip initial mount)
-    if (prevFocusedRef.current !== null) {
-      if (focused && !prevFocusedRef.current) {
-        scale.value = withSequence(
-          withSpring(1.2, {
-            damping: 6,
-            stiffness: 200,
-            mass: 0.8,
-          }),
-          withSpring(1, {
-            damping: 8,
-            stiffness: 300,
-            mass: 0.5,
-          })
-        );
-      } else if (!focused) {
-        // Reset when unfocused
-        scale.value = withTiming(1, { duration: 200 });
-      }
-    }
-    prevFocusedRef.current = focused;
-  }, [focused]);
-
-  const animatedStyle = useAnimatedStyle(() => {
-    return {
-      transform: [{ scale: scale.value }],
-    };
-  });
-
-  return <Animated.View style={animatedStyle}>{children}</Animated.View>;
+  return <View style={styles.tabItemContainer}>{children}</View>;
 };
 
 const CreateButton = ({ focused }: { focused: boolean }) => {
   const { isActive, currentStep } = useTour();
   const isTourStep1 = isActive && currentStep === 1;
+  const liquidGlass = useMemo(() => isLiquidGlassAvailable(), []);
   const scale = useSharedValue(1);
   const glow = useSharedValue(1);
   const gradientProgress = useSharedValue(focused || isTourStep1 ? 1 : 0);
@@ -91,15 +125,13 @@ const CreateButton = ({ focused }: { focused: boolean }) => {
 
   // Bouncy animation when tab becomes focused
   useEffect(() => {
-    // Animate when tab becomes focused (skip initial mount)
     if (prevFocusedRef.current !== null) {
       if (focused && !prevFocusedRef.current) {
-        // Bounce animation when becoming focused
         scale.value = withSequence(
-          withSpring(1.2, {
-            damping: 6,
-            stiffness: 200,
-            mass: 0.8,
+          withSpring(1.3, {
+            damping: 5,
+            stiffness: 240,
+            mass: 0.6,
           }),
           withSpring(1, {
             damping: 8,
@@ -108,7 +140,6 @@ const CreateButton = ({ focused }: { focused: boolean }) => {
           })
         );
       } else if (!focused) {
-        // Reset when unfocused
         scale.value = withTiming(1, { duration: 200 });
       }
     }
@@ -149,7 +180,12 @@ const CreateButton = ({ focused }: { focused: boolean }) => {
 
   return (
     <View style={styles.centerButtonContainer}>
-      <Animated.View style={[styles.centerButtonWrapper, animatedStyle]}>
+      <Animated.View
+        style={[
+          styles.centerButtonWrapper,
+          animatedStyle,
+        ]}
+      >
         {isTourStep1 && (
           <>
             <View style={styles.spotlightBackdrop} pointerEvents="none" />
@@ -195,34 +231,63 @@ export default function TabLayout() {
 
   const { isActive, currentStep } = useTour();
   const insets = useSafeAreaInsets();
+  const liquidGlass = useMemo(() => isLiquidGlassAvailable(), []);
+
+  const isIos = Platform.OS === "ios";
+
+  // iOS floating glass pill / Android clean bottom bar
+  const tabBarStyle: any = isIos
+    ? {
+        position: "absolute",
+        bottom: 14,
+        left: 12,
+        right: 12,
+        borderTopWidth: 0,
+        backgroundColor: "transparent",
+        zIndex: 1000,
+        elevation: 1000,
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.12,
+        shadowRadius: 12,
+        height: 68 + (insets.bottom > 24 ? Math.max(insets.bottom - 26, 8) : 16),
+        paddingBottom: insets.bottom > 24 ? 10 : 16,
+        paddingTop: 8,
+        paddingHorizontal: 12,
+        borderRadius: 28,
+      }
+    : {
+        position: "absolute",
+        bottom: 0,
+        left: 0,
+        right: 0,
+        borderTopWidth: 0,
+        backgroundColor: "#FFFFFF",
+        zIndex: 1000,
+        elevation: 1000,
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: -2 },
+        shadowOpacity: 0.08,
+        shadowRadius: 6,
+        height: 65 + Math.max(insets.bottom, 16),
+        paddingBottom: Math.max(insets.bottom, 16),
+        paddingTop: 10,
+        borderRadius: 10,
+        marginHorizontal: 0,
+        marginBottom: 0,
+        borderTopLeftRadius: 10,
+        borderTopRightRadius: 10,
+      };
 
   return (
     <View style={{ flex: 1 }}>
       <Tabs
+        tabBar={GlassTabBar}
         screenOptions={{
           tabBarActiveTintColor: "#282828",
           tabBarInactiveTintColor: "#979797",
           headerShown: false,
-          tabBarButton: HapticTab,
-          tabBarBackground: TabBarBackground,
-          tabBarStyle: {
-            position: "absolute",
-            bottom: 0,
-            left: 0,
-            right: 0,
-            borderTopWidth: 0,
-            backgroundColor: "#FFFFFF",
-            zIndex: 1000,
-            elevation: 1000,
-            height: (Platform.OS === "ios" ? 75 : 65) + Math.max(insets.bottom, Platform.OS === "ios" ? 30 : 16),
-            paddingBottom: Math.max(insets.bottom, Platform.OS === "ios" ? 30 : 16),
-            paddingTop: 10,
-            borderRadius: 10,
-            marginHorizontal: 0,
-            marginBottom: 0,
-            borderTopLeftRadius: 10,
-            borderTopRightRadius: 10,
-          },
+          tabBarStyle,
           tabBarLabelStyle: {
             fontSize: 13,
             fontFamily: getFontFamily("500"),
@@ -238,6 +303,7 @@ export default function TabLayout() {
         listeners={createTourBlockerListener}
         options={{
           title: "Home",
+          tabBarButton: HapticTab,
           tabBarIcon: ({ color, focused }) => (
             <AnimatedIconWrapper focused={focused}>
               <View style={styles.iconContainer}>
@@ -252,6 +318,7 @@ export default function TabLayout() {
         listeners={createTourBlockerListener}
         options={{
           title: "Gallery",
+          tabBarButton: HapticTab,
           tabBarIcon: ({ color, focused }) => (
             <AnimatedIconWrapper focused={focused}>
               <View style={styles.iconContainer}>
@@ -280,7 +347,6 @@ export default function TabLayout() {
         name="animate"
         listeners={() => ({
           tabPress: (e: any) => {
-            // Advancing from Step 1 (Create tab) to Step 2
             try {
               const { isActive, currentStep, nextStep } = require("@/contexts/TourContext").useTour();
               if (isActive && currentStep === 1) {
@@ -315,6 +381,7 @@ export default function TabLayout() {
         listeners={createTourBlockerListener}
         options={{
           title: "Credit",
+          tabBarButton: HapticTab,
           tabBarIcon: ({ color, focused }) => (
             <AnimatedIconWrapper focused={focused}>
               <View style={styles.iconContainer}>
@@ -329,6 +396,7 @@ export default function TabLayout() {
         listeners={createTourBlockerListener}
         options={{
           title: "You",
+          tabBarButton: HapticTab,
           tabBarIcon: ({ color, focused }) => (
             <AnimatedIconWrapper focused={focused}>
               <View style={styles.iconContainer}>
@@ -438,6 +506,12 @@ const styles = StyleSheet.create({
   iconContainer: {
     alignItems: "center",
     justifyContent: "center",
+  },
+  tabItemContainer: {
+    alignItems: "center",
+    justifyContent: "center",
+    width: 48,
+    height: 40,
   },
   maskedView: {
     width: 28,

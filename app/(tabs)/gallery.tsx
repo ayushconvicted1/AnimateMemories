@@ -587,7 +587,6 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.15,
     shadowRadius: 8,
     elevation: 5,
-    overflow: "hidden",
   },
   statNumber: {
     fontSize: 28,

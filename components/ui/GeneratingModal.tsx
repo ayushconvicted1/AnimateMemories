@@ -249,7 +249,6 @@ const styles = StyleSheet.create({
     maxWidth: 340,
     backgroundColor: "#FFFFFF",
     borderRadius: 24,
-    overflow: "hidden",
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 14 },
     shadowOpacity: 0.25,
@@ -258,6 +257,9 @@ const styles = StyleSheet.create({
   },
   topBar: {
     height: 5,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    overflow: "hidden",
   },
   cardBody: {
     padding: 24,

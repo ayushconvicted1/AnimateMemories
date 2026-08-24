@@ -453,6 +453,15 @@ export const api = {
     });
   },
 
+  // Delete user account and all associated data (Apple Guideline 5.1.1(v))
+  deleteUser: async (userEmail: string, token?: string | null) => {
+    return apiRequest("/api/delete-user", {
+      method: "POST",
+      body: { userEmail },
+      token,
+    });
+  },
+
   // Get user's last purchased plan
   getUserPlan: async (userEmail: string, token?: string | null) => {
     return apiRequest(
@@ -479,11 +488,20 @@ export const api = {
   verifyIAPReceipt: async (
     receiptData: string,
     userEmail: string,
-    token?: string | null
+    token?: string | null,
+    productId?: string,
+    transactionId?: string,
+    originalTransactionId?: string
   ) => {
     return apiRequest("/api/iap-verify", {
       method: "POST",
-      body: { receiptData, userEmail },
+      body: {
+        receiptData,
+        userEmail,
+        productId,
+        transactionId,
+        originalTransactionId,
+      },
       token,
     });
   },
@@ -492,11 +510,16 @@ export const api = {
   restoreIAPPurchases: async (
     receiptData: string,
     userEmail: string,
-    token?: string | null
+    token?: string | null,
+    transactions?: Array<{ productId: string; transactionId: string; originalTransactionId?: string }>
   ) => {
     return apiRequest("/api/iap-restore", {
       method: "POST",
-      body: { receiptData, userEmail },
+      body: {
+        receiptData,
+        userEmail,
+        transactions,
+      },
       token,
     });
   },

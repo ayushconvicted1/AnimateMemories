@@ -1,5 +1,4 @@
 import LandingLogo from "@/components/images/LandingLogo";
-import { Video, ResizeMode } from "expo-av";
 import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
 import React from "react";
@@ -23,16 +22,6 @@ const LandingAuth = () => {
         justifyContent: "center",
       }}
     >
-      {/* Looping video background */}
-      <Video
-        source={require("@/assets/videos/Lock.mp4")}
-        style={StyleSheet.absoluteFill}
-        resizeMode={ResizeMode.COVER}
-        isLooping
-        shouldPlay
-        isMuted
-        useNativeControls={false}
-      />
       <Text style={[styles.whiteText, { marginBottom: 15 }]}>Welcome To</Text>
       <View style={{ marginBottom: "15%" }}>
         <LandingLogo />
@@ -48,7 +37,7 @@ const LandingAuth = () => {
       <View style={{height: '15%'}} />
       <Text style={styles.whiteText}>Login or Sign Up</Text>
       <Text style={styles.paraText}>
-        Log in to track, request, and stay settled.
+        Log in to restore, animate, and relive your memories.
       </Text>
       <TouchableOpacity
         style={{
