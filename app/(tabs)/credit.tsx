@@ -268,13 +268,23 @@ export default function CreditScreen() {
   };
 
   const currentPack = billingType === 'one-time' 
-    ? {
-        name: 'Custom Pack',
-        credits: customAmount,
-        price: getOneTimePrice(customAmount),
-        originalPrice: (customAmount * 0.40).toFixed(2),
-        subtitle: 'Custom credits pack'
-      } 
+    ? (Platform.OS === 'ios'
+        // On iOS the purchase is always one of the fixed App Store products,
+        // so show the selected pack's exact price/credits to match what Apple charges.
+        ? {
+            name: PACK_DETAILS[selectedPack].name,
+            credits: PACK_DETAILS[selectedPack].credits,
+            price: PACK_DETAILS[selectedPack].price,
+            originalPrice: PACK_DETAILS[selectedPack].originalPrice,
+            subtitle: PACK_DETAILS[selectedPack].subtitle,
+          }
+        : {
+            name: 'Custom Pack',
+            credits: customAmount,
+            price: getOneTimePrice(customAmount),
+            originalPrice: (customAmount * 0.40).toFixed(2),
+            subtitle: 'Custom credits pack'
+          })
     : currentSubPack;
 
   const handlePurchasePress = async () => {
@@ -296,6 +306,16 @@ export default function CreditScreen() {
       purchasePrice = dynamicPricing[baseSubPack.id]?.amount ?? baseSubPack.price;
       purchaseCredits = dynamicPricing[baseSubPack.id]?.credits ?? baseSubPack.credits;
       productId = baseSubPack.productId;
+    } else if (Platform.OS === 'ios') {
+      // On iOS, one-time purchases use the fixed premade App Store packs
+      // (no slider/custom amount, which the App Store does not support).
+      const selectedPackDetails = PACK_DETAILS[selectedPack];
+      purchaseCredits = selectedPackDetails.credits;
+      purchasePrice = selectedPackDetails.price;
+      purchaseId = selectedPackDetails.id;
+
+      const iapProduct = IAP_PRODUCTS.find(p => p.id === purchaseId);
+      productId = iapProduct ? iapProduct.productId : selectedPackDetails.productId;
     } else {
       purchaseCredits = customAmount;
       purchasePrice = getOneTimePrice(customAmount);
@@ -606,6 +626,81 @@ export default function CreditScreen() {
                 ]}
               >
                 Premium
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      ) : Platform.OS === 'ios' ? (
+        /* On iOS, one-time purchases use the fixed premade App Store packs (no slider). */
+        <View style={styles.packTabsContainer}>
+          <View style={styles.packTabsWrapper}>
+            <Animated.View style={[styles.packTabIndicator, animatedIndicatorStyle]} pointerEvents="none">
+              <LinearGradient
+                colors={['#28D4FA', '#D229FF']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                style={styles.packTabIndicatorGradient}
+              />
+            </Animated.View>
+            
+            <TouchableOpacity
+              style={styles.packTab}
+              onPress={() => setSelectedPack('starter')}
+              onLayout={(event) => {
+                const { width, x } = event.nativeEvent.layout;
+                tabLayouts.current.starter = { x, width };
+                if (selectedPack === 'starter') updateIndicator('starter', true);
+              }}
+            >
+              <Text
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                style={[
+                  styles.packTabText,
+                  selectedPack === 'starter' && styles.packTabTextSelected
+                ]}
+              >
+                Starter
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.packTab}
+              onPress={() => setSelectedPack('popular')}
+              onLayout={(event) => {
+                const { width, x } = event.nativeEvent.layout;
+                tabLayouts.current.popular = { x, width };
+                if (selectedPack === 'popular') updateIndicator('popular', true);
+              }}
+            >
+              <Text
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                style={[
+                  styles.packTabText,
+                  selectedPack === 'popular' && styles.packTabTextSelected
+                ]}
+              >
+                Popular
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.packTab}
+              onPress={() => setSelectedPack('pro')}
+              onLayout={(event) => {
+                const { width, x } = event.nativeEvent.layout;
+                tabLayouts.current.pro = { x, width };
+                if (selectedPack === 'pro') updateIndicator('pro', true);
+              }}
+            >
+              <Text
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                style={[
+                  styles.packTabText,
+                  selectedPack === 'pro' && styles.packTabTextSelected
+                ]}
+              >
+                Pro
               </Text>
             </TouchableOpacity>
           </View>
