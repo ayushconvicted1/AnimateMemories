@@ -1,7 +1,7 @@
 import LandingLogo from "@/components/images/LandingLogo";
 import { Video, ResizeMode } from "expo-av";
 import { LinearGradient } from "expo-linear-gradient";
-import { router } from "expo-router";
+import { Redirect, router } from "expo-router";
 import React from "react";
 import {
   Platform,
@@ -11,9 +11,17 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useAuth } from "@/contexts/AuthContext";
+import { getFontFamily } from "@/constants/Fonts";
 
 const LandingAuth = () => {
   const insets = useSafeAreaInsets();
+  const { isSignedIn, isLoaded } = useAuth();
+
+  if (isLoaded && isSignedIn) {
+    return <Redirect href="/(tabs)" />;
+  }
+
   return (
     <View
       style={{
@@ -33,39 +41,32 @@ const LandingAuth = () => {
         isMuted
         useNativeControls={false}
       />
-      <Text style={[styles.whiteText, { marginBottom: 15 }]}>Welcome To</Text>
+      <Text style={[styles.welcomeText, { marginBottom: 15 }]}>Welcome To</Text>
       <View style={{ marginBottom: "15%" }}>
         <LandingLogo />
       </View>
-      {/* <Image
-        source={require("@/assets/images/HandsIcon.png")}
-        style={{
-          height: 186,
-          width: 244,
-          marginBottom: "15%",
-        }}
-      /> */}
-      <View style={{height: '15%'}} />
-      <Text style={styles.whiteText}>Login or Sign Up</Text>
+      <View style={{ height: "15%" }} />
+      <Text style={styles.headingText}>Login or Sign Up</Text>
       <Text style={styles.paraText}>
         Log in to track, request, and stay settled.
       </Text>
       <TouchableOpacity
         style={{
-          borderRadius: 5,
+          borderRadius: 8,
           width: "100%",
           alignItems: "center",
         }}
         onPress={() => {
           router.push("/(auth)/login");
         }}
+        activeOpacity={0.8}
       >
         <LinearGradient
           colors={["#28D4FA", "#D229FF"]}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
           style={{
-            borderRadius: 5,
+            borderRadius: 8,
             paddingVertical: 15,
             width: "70%",
             marginTop: "2%",
@@ -83,7 +84,7 @@ const LandingAuth = () => {
           <Text
             style={{
               color: "#fff",
-              fontWeight: "500",
+              fontFamily: getFontFamily("600"),
               fontSize: 18,
             }}
           >
@@ -96,18 +97,19 @@ const LandingAuth = () => {
           router.push("/(auth)/signup");
         }}
         style={{
-          borderRadius: 5,
+          borderRadius: 8,
           width: "100%",
           alignItems: "center",
         }}
+        activeOpacity={0.8}
       >
         <View
           style={{
-            borderRadius: 5,
+            borderRadius: 8,
             paddingVertical: 15,
             width: "70%",
             marginTop: 20,
-            backgroundColor: '#fff',
+            backgroundColor: "#fff",
             alignItems: "center",
             ...(Platform.OS === "ios"
               ? {
@@ -122,7 +124,7 @@ const LandingAuth = () => {
           <Text
             style={{
               color: "#000",
-              fontWeight: "500",
+              fontFamily: getFontFamily("600"),
               fontSize: 18,
             }}
           >
@@ -130,38 +132,30 @@ const LandingAuth = () => {
           </Text>
         </View>
       </TouchableOpacity>
-      {/* <TouchableOpacity
-        onPress={() => {
-          // router.replace("/(tabs)");
-        }}
-      >
-        <Text
-          style={[
-            styles.whiteText,
-            {
-              fontSize: 16,
-              marginTop: "7%",
-            },
-          ]}
-        >
-          Later
-        </Text>
-      </TouchableOpacity> */}
     </View>
   );
 };
 
 const styles = StyleSheet.create({
-  whiteText: {
-    fontSize: 26,
-    fontWeight: "500",
+  welcomeText: {
+    fontSize: 28,
+    fontFamily: getFontFamily("700"),
+    color: "#fff",
+    textAlign: "center",
+  },
+  headingText: {
+    fontSize: 24,
+    fontFamily: getFontFamily("600"),
     color: "#fff",
     textAlign: "center",
   },
   paraText: {
     fontSize: 16,
-    color: "#A6A6A6",
+    fontFamily: getFontFamily("400"),
+    color: "#CBD5E1",
     marginVertical: 10,
+    textAlign: "center",
   },
 });
+
 export default LandingAuth;

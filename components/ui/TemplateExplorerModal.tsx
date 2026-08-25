@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   FlatList,
   Modal,
@@ -33,20 +33,43 @@ export default function TemplateExplorerModal({ visible, onClose, templates, onS
   const { width } = useWindowDimensions();
   const [query, setQuery] = useState("");
   const [activeCategory, setActiveCategory] = useState("all");
-  // Template cards currently inside the viewport — only these autoplay their
-  // preview video, so a full grid never holds dozens of native players.
+  // Template cards currently inside the viewport — capped to top 4 cards so Android hardware MediaCodec decoders never starve
   const [visibleIds, setVisibleIds] = useState<Set<string>>(() => new Set());
+  const isDraggingRef = useRef(false);
+  const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const cardWidth = Math.floor((width - 48) / 2);
-  const viewabilityConfig = useRef({ itemVisiblePercentThreshold: 55 }).current;
+
+  // Clear active decoders when modal is hidden
+  useEffect(() => {
+    if (!visible) {
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current);
+      }
+      setVisibleIds(new Set());
+    }
+  }, [visible]);
+
+  const viewabilityConfig = useRef({
+    itemVisiblePercentThreshold: 60,
+    minimumViewTime: 150,
+  }).current;
+
   const onViewableItemsChanged = useRef(
     ({ viewableItems }: { viewableItems: any[] }) => {
-      setVisibleIds(
-        new Set(
-          viewableItems.map((v: any) =>
-            String(v.item?.slug || v.item?.id)
-          )
-        )
-      );
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current);
+      }
+      // Debounce video activation so fast scrolling displays instant static posters without churning decoders
+      debounceTimerRef.current = setTimeout(() => {
+        if (!isDraggingRef.current) {
+          // Strictly cap active playing decoders to top 4 cards
+          const top4 = viewableItems.slice(0, 4);
+          setVisibleIds(
+            new Set(top4.map((v: any) => String(v.item?.slug || v.item?.id)))
+          );
+        }
+      }, 150);
     }
   ).current;
 
@@ -143,8 +166,21 @@ export default function TemplateExplorerModal({ visible, onClose, templates, onS
             columnWrapperStyle={visibleTemplates.length > 1 ? styles.row : undefined}
             contentContainerStyle={[styles.grid, { paddingBottom: Math.max(insets.bottom + 85, 100) }]}
             showsVerticalScrollIndicator={false}
+            initialNumToRender={6}
+            maxToRenderPerBatch={4}
+            windowSize={5}
+            removeClippedSubviews={Platform.OS === "android"}
             viewabilityConfig={viewabilityConfig}
             onViewableItemsChanged={onViewableItemsChanged}
+            onScrollBeginDrag={() => {
+              isDraggingRef.current = true;
+            }}
+            onScrollEndDrag={() => {
+              isDraggingRef.current = false;
+            }}
+            onMomentumScrollEnd={() => {
+              isDraggingRef.current = false;
+            }}
             renderItem={({ item }) => {
               const rawImage = item.thumbnailUrl || item.image;
               const image =

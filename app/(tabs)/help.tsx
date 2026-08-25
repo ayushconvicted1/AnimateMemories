@@ -86,7 +86,7 @@ export default function HelpScreen() {
               <Text style={styles.helpItemTitle}>Supported File Formats</Text>
               <Text style={styles.helpItemText}>
                 • JPEG (.jpg, .jpeg){"\n"}• PNG (.png){"\n"}• Maximum file size:
-                10MB{"\n"}• Minimum resolution: 300x300px
+                20MB{"\n"}• Minimum resolution: 300x300px
               </Text>
             </View>
           </View>
@@ -119,7 +119,7 @@ export default function HelpScreen() {
             <View style={styles.helpItem}>
               <Text style={styles.helpItemTitle}>Refund Policy</Text>
               <Text style={styles.helpItemText}>
-                Unused credits can be refunded within 30 days of purchase.
+                Unused credits can be refunded within 7 days of purchase.
                 Contact support for assistance with refunds.
               </Text>
             </View>
@@ -153,7 +153,7 @@ export default function HelpScreen() {
             <View style={styles.helpItem}>
               <Text style={styles.helpItemTitle}>Upload Issues</Text>
               <Text style={styles.helpItemText}>
-                • Check file size (max 10MB){"\n"}• Verify file format (JPEG or
+                • Check file size (max 20MB){"\n"}• Verify file format (JPEG or
                 PNG){"\n"}• Ensure stable internet connection{"\n"}• Try a
                 different image
               </Text>

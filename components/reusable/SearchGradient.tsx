@@ -8,6 +8,7 @@ import {
   View,
 } from "react-native";
 import Svg, { Path } from "react-native-svg";
+import { getFontFamily } from "@/constants/Fonts";
 
 const FilterIcon = ({ color, size }: any) => (
   <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
@@ -137,7 +138,7 @@ const SearchGradient = ({
         ) : (
           <TextInput
             placeholder={inputPlaceholder}
-            placeholderTextColor="#7A7A7A"
+            placeholderTextColor={password ? "#CBD5E1" : "#9CA3AF"}
             secureTextEntry={secure}
             style={styles.textInput}
             value={value}
@@ -177,7 +178,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: "#fff",
     marginBottom: 8,
-    fontWeight: "500",
+    fontFamily: getFontFamily("500"),
   },
   container: {
     flexDirection: "row",
@@ -191,17 +192,19 @@ const styles = StyleSheet.create({
   },
   textInput: {
     flex: 1,
-    fontSize: 18,
+    fontSize: 17,
     color: "#000",
     height: "100%",
+    fontFamily: getFontFamily("400"),
   },
   dropdownContainer: {
     flex: 1,
     justifyContent: "center",
   },
   dropdownText: {
-    fontSize: 18,
+    fontSize: 17,
     color: "#000",
+    fontFamily: getFontFamily("400"),
   },
 });
 

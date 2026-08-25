@@ -27,10 +27,10 @@ type PhaseIcon = React.ComponentProps<typeof MaterialIcons>["name"];
 
 const PHASES: { at: number; icon: PhaseIcon; title: string; sub: string }[] = [
   { at: 0, icon: "cloud-upload", title: "Uploading your photo", sub: "Securely sending your image to the AI studio" },
-  { at: 18, icon: "memory", title: "Waking up the AI", sub: "Loading the generation engine" },
-  { at: 38, icon: "face", title: "Analyzing your photo", sub: "Studying faces, motion and composition" },
-  { at: 60, icon: "auto-awesome", title: "Working its magic", sub: "Applying the AI transformation frame by frame" },
-  { at: 82, icon: "movie", title: "Polishing the result", sub: "Final quality pass before delivery" },
+  { at: 15, icon: "memory", title: "Initializing AI engine", sub: "Loading models and allocating compute resources" },
+  { at: 35, icon: "face", title: "Analyzing composition", sub: "Detecting facial expressions, depth and lighting" },
+  { at: 60, icon: "auto-awesome", title: "Generating frames", sub: "Synthesizing realistic motion and life" },
+  { at: 85, icon: "movie", title: "Polishing & encoding", sub: "Final high-definition video rendering" },
 ];
 
 const TITLES: Record<string, { title: string; sub: string }> = {
@@ -90,32 +90,53 @@ export default function GeneratingModal({
       Animated.timing(scanAnim, { toValue: 1, duration: 2400, useNativeDriver: true })
     ).start();
     Animated.loop(
-      Animated.timing(ringAnim, { toValue: 1, duration: 5000, useNativeDriver: true })
+      Animated.timing(ringAnim, { toValue: 1, duration: 3200, useNativeDriver: true })
     ).start();
     Animated.loop(
       Animated.timing(shimmerAnim, { toValue: 1, duration: 1600, useNativeDriver: false })
     ).start();
 
-    // Only run the fake progress timer when no real progress is available.
-    let progressTimer: ReturnType<typeof setInterval> | null = null;
-    if (!hasRealProgress) {
-      progressTimer = setInterval(() => {
-        setSimulatedProgress((prev) => {
-          if (prev >= 97) return prev;
-          const remaining = 97 - prev;
-          return prev + Math.max(0.4, remaining * 0.08);
-        });
-      }, 1200);
-    }
-    const elapsedTimer = setInterval(() => setElapsed((e) => e + 1), 1000);
-    const tipTimer = setInterval(() => setTipIndex((i) => (i + 1) % TIPS.length), 4500);
+    // Realistic Replicate duration baseline: ~70s for video generation, ~15s for image restoration
+    const expectedDuration = tool === "animate" ? 70 : 15;
+
+    const ticker = setInterval(() => {
+      setElapsed((prevElapsed) => {
+        const nextElapsed = prevElapsed + 1;
+
+        if (!hasRealProgress) {
+          setSimulatedProgress(() => {
+            const ratio = nextElapsed / expectedDuration;
+            let targetPct = 0;
+
+            if (ratio <= 0.15) {
+              // 0% -> 15% (Initial warm up / upload)
+              targetPct = (ratio / 0.15) * 15;
+            } else if (ratio <= 0.6) {
+              // 15% -> 62% (Active generation)
+              targetPct = 15 + ((ratio - 0.15) / 0.45) * 47;
+            } else if (ratio <= 1.0) {
+              // 62% -> 92% (Final frame synthesis)
+              targetPct = 62 + ((ratio - 0.6) / 0.4) * 30;
+            } else {
+              // Gentle overtime creep up to 98%
+              const overtime = nextElapsed - expectedDuration;
+              targetPct = 92 + Math.min(6, (overtime / 30) * 6);
+            }
+
+            return Math.min(98, Math.max(1, Math.round(targetPct)));
+          });
+        }
+        return nextElapsed;
+      });
+    }, 1000);
+
+    const tipTimer = setInterval(() => setTipIndex((i) => (i + 1) % TIPS.length), 5000);
 
     return () => {
-      if (progressTimer) clearInterval(progressTimer);
-      clearInterval(elapsedTimer);
+      clearInterval(ticker);
       clearInterval(tipTimer);
     };
-  }, [visible, hasRealProgress, scanAnim, ringAnim, shimmerAnim]);
+  }, [visible, hasRealProgress, tool, scanAnim, ringAnim, shimmerAnim]);
 
   const pct = Math.min(
     100,
@@ -152,7 +173,7 @@ export default function GeneratingModal({
           />
 
           <View style={styles.cardBody}>
-            {/* Photo with scanning beam + spinning ring */}
+            {/* Photo with scanning beam + cleanly encircling spinning ring */}
             <View style={styles.photoWrap}>
               <Animated.View
                 style={[styles.ring, { transform: [{ rotate: ringRotate }] }]}
@@ -264,16 +285,17 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   photoWrap: {
-    width: PHOTO_SIZE,
-    height: PHOTO_SIZE,
+    width: PHOTO_SIZE + 18,
+    height: PHOTO_SIZE + 18,
+    alignItems: "center",
+    justifyContent: "center",
+    position: "relative",
   },
   ring: {
     position: "absolute",
-    width: PHOTO_SIZE + 16,
-    height: PHOTO_SIZE + 16,
-    top: -8,
-    left: -8,
-    borderRadius: (PHOTO_SIZE + 16) / 2,
+    width: PHOTO_SIZE + 18,
+    height: PHOTO_SIZE + 18,
+    borderRadius: (PHOTO_SIZE + 18) / 2,
     borderWidth: 3,
     borderColor: "transparent",
     borderTopColor: "#38BDF8",
@@ -282,7 +304,7 @@ const styles = StyleSheet.create({
   photoBox: {
     width: PHOTO_SIZE,
     height: PHOTO_SIZE,
-    borderRadius: 20,
+    borderRadius: PHOTO_SIZE / 2,
     overflow: "hidden",
     backgroundColor: "#F3F0FF",
     borderWidth: 3,

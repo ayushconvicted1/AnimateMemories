@@ -1,159 +1,154 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   StyleProp,
   StyleSheet,
-  Text,
   View,
   ViewStyle,
 } from "react-native";
 import { Image } from "expo-image";
 import { Video, ResizeMode } from "expo-av";
+import { Ionicons } from "@expo/vector-icons";
 
 interface AnimatedTemplateThumbProps {
-  /** Fallback poster image source: URL string, {uri}, or a require()'d asset.
-   *  Only shown when there is no video (or no Cloudinary-derived last-frame poster). */
+  /** Fallback poster image source: URL string, {uri}, or a require()'d asset. */
   thumbnail?: string | number | { uri: string } | null;
-  /** Optional preview video (Cloudinary URL). Its LAST frame is the placeholder. */
+  /** Optional preview video (Cloudinary or direct video URL). */
   videoUrl?: string | null;
   /** Explicit play (e.g. the selected template). */
   active?: boolean;
-  /** Autoplay the preview. Parents gate this with viewport visibility so only
-   *  on-screen cards ever hold a native player — off-screen cards unmount and
-   *  free their decoder instantly (keeps scrolling smooth and the heap small). */
+  /** Autoplay the preview (active for cards on the visible page). */
   autoPlay?: boolean;
-  /** Style applied to the container (should fill the card image area). */
+  /** Style applied to the container. */
   style?: StyleProp<ViewStyle>;
   /** Content fit for the fallback image. */
   imageContentFit?: "cover" | "contain";
+  /** Item index in grid (0-5) to stagger hardware decoder initialization and maintain 60fps */
+  index?: number;
 }
 
 const CLOUDINARY_VIDEO_SEGMENT = "/video/upload/";
 
-/**
- * Shared sync clock: every mounted template preview seeks to the same global
- * position so visible cards play the same moment of their videos at the same
- * time (best effort — clips with equal duration stay in sync; others re-align
- * after each loop via the drift correction in onPlaybackStatusUpdate).
- */
-const SYNC_START = Date.now();
-const DRIFT_TOLERANCE_MS = 600;
-
-function syncPositionMillis(durationMillis: number): number {
-  if (!Number.isFinite(durationMillis) || durationMillis <= 0) return 0;
-  return (Date.now() - SYNC_START) % durationMillis;
-}
-
-/**
- * Insert a transformation into a Cloudinary video URL, optionally stripping the
- * file extension (needed when converting a video to an image, e.g. f_jpg).
- */
 function transformCloudinaryUrl(
   videoUrl?: string | null,
   transforms = "",
-  stripExtension = false
+  targetExtension?: string
 ): string | null {
-  if (!videoUrl || !videoUrl.includes(CLOUDINARY_VIDEO_SEGMENT)) return null;
+  if (!videoUrl) return null;
+  if (!videoUrl.includes(CLOUDINARY_VIDEO_SEGMENT)) return videoUrl;
   try {
     let base = videoUrl;
-    if (stripExtension) {
-      base = videoUrl.replace(/\.(mp4|mov|webm|m4v|m3u8)(\?.*)?$/i, "");
+    if (targetExtension) {
+      base = videoUrl.replace(/\.(mp4|mov|webm|m4v|m3u8)(\?.*)?$/i, `.${targetExtension}`);
     }
     return base.replace(
       CLOUDINARY_VIDEO_SEGMENT,
       `${CLOUDINARY_VIDEO_SEGMENT}${transforms}/`
     );
   } catch {
-    return null;
+    return videoUrl;
   }
 }
 
-/** Static JPEG of the video's FIRST FRAME (so_0 ≈ start of the clip). */
-const buildVideoPosterUrl = (videoUrl?: string | null) =>
-  transformCloudinaryUrl(videoUrl, "so_0,f_jpg,q_auto:best,w_720", true);
+/** Static JPEG of the video's FIRST FRAME for instant, seamless placeholder display. */
+const buildVideoPosterUrl = (videoUrl?: string | null) => {
+  if (!videoUrl || !videoUrl.includes(CLOUDINARY_VIDEO_SEGMENT)) return null;
+  return transformCloudinaryUrl(videoUrl, "so_0,f_jpg,q_auto:good,w_360", "jpg");
+};
 
 /**
- * Playback stream at optimal 720px quality with high-bitrate H.264 profile
- * to completely eliminate on-the-fly macroblocking and pixelation artifacts.
+ * Mobile-optimized video stream: 240px pre-cached stream for ultra-lightweight multi-video grids.
  */
-const buildVideoPlayUrl = (videoUrl?: string | null) =>
-  transformCloudinaryUrl(videoUrl, "q_auto:best,vc_h264,w_720", false) || videoUrl;
+const buildVideoPlayUrl = (videoUrl?: string | null) => {
+  if (!videoUrl) return null;
+  if (!videoUrl.includes(CLOUDINARY_VIDEO_SEGMENT)) return videoUrl;
+  return (
+    transformCloudinaryUrl(videoUrl, "w_240,q_auto:good", "mp4") ||
+    videoUrl
+  );
+};
 
-export default function AnimatedTemplateThumb({
+function AnimatedTemplateThumb({
   thumbnail,
   videoUrl,
   active = false,
   autoPlay = false,
   style,
   imageContentFit = "cover",
+  index = 0,
 }: AnimatedTemplateThumbProps) {
-  // First-frame poster derived from the Cloudinary URL (static image).
   const posterUrl = useMemo(() => buildVideoPosterUrl(videoUrl), [videoUrl]);
-  // High quality stream used for actual playback.
   const playUrl = useMemo(() => buildVideoPlayUrl(videoUrl), [videoUrl]);
-  // Ref to the mounted player.
-  const videoRef = useRef<Video>(null);
+
+  // Stagger hardware decoder allocation across frames to prevent UI thread spikes
+  const [mounted, setMounted] = useState(!autoPlay || active);
+
+  useEffect(() => {
+    if (active) {
+      setMounted(true);
+      return;
+    }
+    if (autoPlay) {
+      const timer = setTimeout(() => {
+        setMounted(true);
+      }, Math.min((index || 0) * 20, 80));
+      return () => clearTimeout(timer);
+    } else {
+      setMounted(false);
+    }
+  }, [autoPlay, active, index]);
+
+  const shouldPlay = (active || (autoPlay && mounted)) && !!playUrl;
+  const imageSource = posterUrl ? { uri: posterUrl } : thumbnail;
+
   const [isReady, setIsReady] = useState(false);
 
-  const playing = active || autoPlay;
-
-  // Handle play/pause smoothly without native player recreation
+  // Reset isReady when playback stops or unmounts
   useEffect(() => {
-    if (!videoRef.current) return;
-    if (playing) {
-      videoRef.current.playAsync().catch(() => {});
-    } else {
-      videoRef.current.pauseAsync().catch(() => {});
+    if (!shouldPlay) {
+      setIsReady(false);
     }
-  }, [playing]);
+  }, [shouldPlay]);
 
   return (
     <View style={style}>
-      {posterUrl ? (
+      {/* 1. Instant Cached Image: Always rendered underneath to eliminate black frames */}
+      {imageSource ? (
         <Image
-          source={{ uri: posterUrl }}
-          style={StyleSheet.absoluteFill}
-          contentFit="cover"
-          transition={100}
-        />
-      ) : thumbnail ? (
-        <Image
-          source={thumbnail as any}
+          source={imageSource as any}
           style={StyleSheet.absoluteFill}
           contentFit={imageContentFit}
-          transition={100}
+          cachePolicy="memory-disk"
         />
       ) : (
         <View style={[StyleSheet.absoluteFill, styles.placeholder]} />
       )}
 
-      {/* Keep the player mounted so ExoPlayer prebuffers in memory,
-          playing instantly at full crystal-clear quality without pixelation */}
-      {playUrl ? (
+      {/* 2. Direct Video Player: Seamless transition on onReadyForDisplay to eliminate blip */}
+      {shouldPlay && playUrl ? (
         <Video
-          ref={videoRef}
           source={{ uri: playUrl }}
           style={[StyleSheet.absoluteFill, { opacity: isReady ? 1 : 0 }]}
           resizeMode={ResizeMode.COVER}
-          shouldPlay={playing}
+          shouldPlay={true}
           isLooping={true}
           isMuted={true}
           useNativeControls={false}
           onReadyForDisplay={() => setIsReady(true)}
-          onError={(error) =>
-            console.log("Template preview video failed to load:", error)
-          }
+          progressUpdateIntervalMillis={10000}
         />
       ) : null}
 
-      {/* Play badge on every template not set to autoplay */}
-      {!!videoUrl && !autoPlay && !active && (
+      {/* 3. Play indicator badge: Perfectly synchronized to disappear the exact moment video playback starts */}
+      {!!videoUrl && (!shouldPlay || !isReady) && (
         <View style={styles.playBadge} pointerEvents="none">
-          <Text style={styles.playIcon}>▶</Text>
+          <Ionicons name="play" size={10} color="#FFFFFF" style={{ marginLeft: 1 }} />
         </View>
       )}
     </View>
   );
 }
+
+export default React.memo(AnimatedTemplateThumb);
 
 const styles = StyleSheet.create({
   placeholder: {
@@ -169,10 +164,5 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(0, 0, 0, 0.55)",
     alignItems: "center",
     justifyContent: "center",
-  },
-  playIcon: {
-    color: "#FFFFFF",
-    fontSize: 9,
-    marginLeft: 1,
   },
 });

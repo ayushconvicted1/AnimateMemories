@@ -14,6 +14,7 @@ import {
 import { LinearGradient } from "expo-linear-gradient";
 import { useAuth } from "@/contexts/AuthContext";
 import { useAuth as useClerkAuth, useUser } from "@clerk/clerk-expo";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { router } from "expo-router";
 import { useState, useEffect, useCallback } from "react";
 import * as ImagePicker from "expo-image-picker";
@@ -294,11 +295,19 @@ export default function YouScreen() {
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
         allowsEditing: true,
         aspect: [1, 1],
-        quality: 0.8,
+        quality: 0.9,
       });
 
       if (!result.canceled && result.assets && result.assets[0]) {
-        await updateProfileImage(result.assets[0].uri);
+        const asset = result.assets[0];
+        if (asset.fileSize && asset.fileSize > 20 * 1024 * 1024) {
+          Alert.alert(
+            "File Too Large",
+            "The selected image exceeds the maximum allowed size of 20MB. Please choose a smaller image."
+          );
+          return;
+        }
+        await updateProfileImage(asset.uri);
       }
     } catch (error: any) {
       console.error("Error opening camera:", error);
@@ -318,11 +327,19 @@ export default function YouScreen() {
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
         allowsEditing: true,
         aspect: [1, 1],
-        quality: 0.8,
+        quality: 0.9,
       });
 
       if (!result.canceled && result.assets && result.assets[0]) {
-        await updateProfileImage(result.assets[0].uri);
+        const asset = result.assets[0];
+        if (asset.fileSize && asset.fileSize > 20 * 1024 * 1024) {
+          Alert.alert(
+            "File Too Large",
+            "The selected image exceeds the maximum allowed size of 20MB. Please choose a smaller image."
+          );
+          return;
+        }
+        await updateProfileImage(asset.uri);
       }
     } catch (error: any) {
       console.error("Error opening gallery:", error);
@@ -647,11 +664,22 @@ export default function YouScreen() {
                   style: "destructive",
                   onPress: async () => {
                     try {
+                      const userId = clerkUser?.id;
                       await clerkUser?.delete();
+                      if (userId) {
+                        await AsyncStorage.removeItem(`@tour_completed_${userId}`).catch(() => {});
+                      }
+                      await AsyncStorage.removeItem("@tour_completed").catch(() => {});
                       await signOut();
+                      router.replace("/(auth)");
                     } catch (err) {
                       console.error("Error deleting account:", err);
-                      Alert.alert("Error", "Failed to delete account. Please try again or contact support.");
+                      try {
+                        await signOut();
+                        router.replace("/(auth)");
+                      } catch {
+                        Alert.alert("Error", "Failed to delete account. Please try again or contact support.");
+                      }
                     }
                   }
                 }

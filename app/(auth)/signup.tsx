@@ -7,6 +7,7 @@ import { useSignUp, useOAuth } from "@clerk/clerk-expo";
 import * as WebBrowser from "expo-web-browser";
 import { Platform } from "react-native";
 import { OAUTH_REDIRECT_URL } from "@/constants/OAuth";
+import { getFontFamily } from "@/constants/Fonts";
 
 // Debug: Check if Clerk key is loaded
 console.log(
@@ -20,7 +21,7 @@ WebBrowser.maybeCompleteAuthSession();
 import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
 import React, { useState } from "react";
-import { Alert, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { Alert, StyleSheet, Text, TouchableOpacity, View, ActivityIndicator } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Svg, { Path } from "react-native-svg";
 
@@ -128,7 +129,6 @@ const SignUpScreen = () => {
         // Try to update user profile with name after successful signup
         try {
           if (signUpAttempt.createdUserId) {
-            // We can store the name in user metadata or update profile later
             console.log(
               "User created successfully, name can be updated in profile:",
               formData.fullName
@@ -256,7 +256,6 @@ const SignUpScreen = () => {
         errorMessage.toLowerCase().includes("session already exists") ||
         errorMessage.toLowerCase().includes("active session")
       ) {
-        if (router.canDismiss()) router.dismissAll();
         router.replace("/(tabs)");
         return;
       }
@@ -306,7 +305,6 @@ const SignUpScreen = () => {
         errorMessage.toLowerCase().includes("session already exists") ||
         errorMessage.toLowerCase().includes("active session")
       ) {
-        if (router.canDismiss()) router.dismissAll();
         router.replace("/(tabs)");
         return;
       }
@@ -475,11 +473,18 @@ const SignUpScreen = () => {
         style={styles.loginLink}
         onPress={() => router.push("/(auth)/login")}
       >
-        <Text style={styles.loginText}>
+        <Text style={styles.loginLinkOuterText}>
           Already have an account?{" "}
           <Text style={styles.loginLinkText}>Log In</Text>
         </Text>
       </TouchableOpacity>
+
+      {isLoading && (
+        <View style={styles.loadingOverlay}>
+          <ActivityIndicator size="large" color="#28D4FA" />
+          <Text style={styles.loadingText}>Creating your account...</Text>
+        </View>
+      )}
     </TopScrollComponent>
   );
 };
@@ -504,8 +509,8 @@ const styles = StyleSheet.create({
   },
   title: {
     color: "#fff",
-    fontSize: 27,
-    fontWeight: "600",
+    fontSize: 28,
+    fontFamily: getFontFamily("700"),
     textAlign: "center",
     marginBottom: 20,
   },
@@ -525,12 +530,14 @@ const styles = StyleSheet.create({
   },
   socialText: {
     color: "#000",
-    fontSize: 20,
+    fontSize: 18,
+    fontFamily: getFontFamily("500"),
     marginLeft: 10,
   },
   divider: {
     color: "#fff",
     fontSize: 16,
+    fontFamily: getFontFamily("500"),
     textAlign: "center",
     marginVertical: 15,
   },
@@ -541,28 +548,47 @@ const styles = StyleSheet.create({
   },
   loginText: {
     color: "#fff",
-    fontWeight: "600",
+    fontFamily: getFontFamily("600"),
     fontSize: 18,
   },
   loginLink: {
     marginTop: 20,
     alignItems: "center",
   },
+  loginLinkOuterText: {
+    color: "#fff",
+    fontSize: 16,
+    fontFamily: getFontFamily("400"),
+  },
   loginLinkText: {
     color: "#28D4FA",
-    fontWeight: "600",
+    fontFamily: getFontFamily("600"),
     textDecorationLine: "underline",
   },
   verificationText: {
     color: "#fff",
     fontSize: 18,
+    fontFamily: getFontFamily("400"),
     textAlign: "center",
     marginBottom: 20,
     lineHeight: 26,
   },
   backButtonText: {
     color: "#28D4FA",
-    fontSize: 18,
-    fontWeight: "500",
+    fontSize: 17,
+    fontFamily: getFontFamily("500"),
+  },
+  loadingOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(11, 15, 25, 0.88)",
+    justifyContent: "center",
+    alignItems: "center",
+    zIndex: 9999,
+  },
+  loadingText: {
+    color: "#fff",
+    marginTop: 16,
+    fontSize: 16,
+    fontFamily: getFontFamily("500"),
   },
 });

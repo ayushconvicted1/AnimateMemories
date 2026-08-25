@@ -16,6 +16,7 @@ import {
 import { LinearGradient } from "expo-linear-gradient";
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import * as ImagePicker from "expo-image-picker";
+import { Ionicons } from "@expo/vector-icons";
 import { Video, ResizeMode } from "expo-av";
 import ScreenWrapper from "@/components/ui/ScreenWrapper";
 import AnimatedTemplateThumb from "@/components/ui/AnimatedTemplateThumb";
@@ -30,6 +31,8 @@ import GenerateIcon from "@/components/images/GenerateIcon";
 import GenerateCreditIcon from "@/components/images/GenerateCreditIcon";
 import SearchIcon from "@/components/images/SearchIcon";
 import EditIcon from "@/components/images/EditIcon";
+import CreditIcon from "@/components/images/CreditIcon";
+import BeforeAfterSlider from "@/components/ui/BeforeAfterSlider";
 import { useAuth as useAuthContext } from "@/contexts/AuthContext";
 import { useAuth } from "@clerk/clerk-expo";
 import { api } from "@/services/api";
@@ -73,7 +76,7 @@ const VIDEO_MODELS = [
     allowedDurations: [5, 10],
     supportedResolutions: ["720p", "1080p"],
     costPerSecond: 0.05,
-    creditsPerSecond: { "720p": 1.2, "1080p": 2.25 },
+    creditsPerSecond: { "720p": 0.8, "1080p": 1.6 },
   },
   {
     id: "seedance-2-fast",
@@ -84,7 +87,7 @@ const VIDEO_MODELS = [
     maxDuration: 10,
     supportedResolutions: ["720p"],
     costPerSecond: 0.08,
-    creditsPerSecond: { "720p": 2.0 },
+    creditsPerSecond: { "720p": 1.0 },
   },
   {
     id: "seedance-2",
@@ -95,31 +98,40 @@ const VIDEO_MODELS = [
     maxDuration: 10,
     supportedResolutions: ["720p", "1080p"],
     costPerSecond: 0.15,
-    creditsPerSecond: { "720p": 3.0, "1080p": 5.0 },
+    creditsPerSecond: { "720p": 1.6, "1080p": 2.6 },
   },
 ];
 
 function calculateCreditCost(modelId: string, quality: string, duration: number, featureCosts?: any) {
   const model = VIDEO_MODELS.find((m) => m.id === modelId);
   const dur = Number(duration) || 5;
-  if (!model) return 3;
 
   if (featureCosts) {
     const key = `model_${modelId.replace(/-/g, "_")}_${quality}`;
     if (featureCosts[key] !== undefined && featureCosts[key] !== null) {
-      return Math.ceil(Number(featureCosts[key]) * dur);
+      const val = Number(featureCosts[key]);
+      return Math.ceil(val * dur);
+    }
+    const directModelKey = `model_${modelId.replace(/-/g, "_")}`;
+    if (featureCosts[directModelKey] !== undefined && featureCosts[directModelKey] !== null) {
+      const val = Number(featureCosts[directModelKey]);
+      return Math.ceil(val * (dur / 5));
+    }
+    const featureKey = quality === "1080p" ? "animate_photo_uhd" : quality === "720p" ? "animate_photo_hd" : "animate_photo";
+    if (featureCosts[featureKey] !== undefined && featureCosts[featureKey] !== null) {
+      return Number(featureCosts[featureKey]);
+    }
+    if (featureCosts.animate_photo !== undefined && featureCosts.animate_photo !== null) {
+      return Number(featureCosts.animate_photo);
     }
   }
 
-  if (model.creditsPerSecond) {
+  if (model?.creditsPerSecond) {
     const perSec = (model.creditsPerSecond as any)[quality] || Object.values(model.creditsPerSecond)[0];
     if (perSec) return Math.ceil(perSec * dur);
   }
 
-  const costPerSec = model.costPerSecond || 0.05;
-  const totalCost = costPerSec * dur;
-  const targetRevenue = totalCost * 4;
-  return Math.ceil(targetRevenue / 0.16);
+  return 4;
 }
 
 export default function AnimateScreen() {
@@ -201,7 +213,7 @@ export default function AnimateScreen() {
   const [loading, setLoading] = useState(false);
   const isSubmittingRef = useRef(false);
   const [uploading, setUploading] = useState(false);
-  const [userCredits, setUserCredits] = useState<number>(0);
+  const [userCredits, setUserCredits] = useState<number | null>(null);
   const [isSurpriseLoading, setIsSurpriseLoading] = useState<boolean>(false);
   const [uploadHighlighted, setUploadHighlighted] = useState<boolean>(false);
   const [surpriseSubject, setSurpriseSubject] = useState<string>("");
@@ -224,6 +236,7 @@ export default function AnimateScreen() {
   } | null>(null);
   const [hasProcessedInitialImage, setHasProcessedInitialImage] = useState(false);
   const [isPreviewPlaying, setIsPreviewPlaying] = useState(false);
+  const [isResultVideoLoading, setIsResultVideoLoading] = useState(true);
   const previewVideoRef = useRef<Video>(null);
   const [featureCosts, setFeatureCosts] = useState<any>(null);
   const [selectedQuality, setSelectedQuality] = useState<"480p" | "720p" | "1080p">("720p");
@@ -235,19 +248,25 @@ export default function AnimateScreen() {
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [animationTemplates, setAnimationTemplates] = useState<any[]>([]);
+  const [isPagerScrolling, setIsPagerScrolling] = useState(false);
   // Autoplay the current page's template previews only while the grid is on
   // screen — as soon as it scrolls out of view the videos unmount, so hidden
   // cards never hold a native player.
-  const [gridOnScreen, setGridOnScreen] = useState(false);
+  const [gridOnScreen, setGridOnScreen] = useState(true);
   const scrollYRef = useRef(0);
   const templatesGridYRef = useRef(0);
   const templatesGridHRef = useRef(0);
 
   const updateGridVisibility = useCallback(() => {
+    if (!templatesLayoutYRef.current) {
+      setGridOnScreen(true);
+      return;
+    }
     const top = templatesLayoutYRef.current + templatesGridYRef.current;
-    const bottom = top + templatesGridHRef.current;
+    const bottom = top + (templatesGridHRef.current || 400);
     const visible =
-      scrollYRef.current + SCREEN_HEIGHT > top && scrollYRef.current < bottom;
+      scrollYRef.current + SCREEN_HEIGHT > top - 150 &&
+      scrollYRef.current < bottom + 150;
     setGridOnScreen((prev) => (prev === visible ? prev : visible));
   }, []);
 
@@ -282,20 +301,31 @@ export default function AnimateScreen() {
   }, [categories]);
 
   const categoryPillsScrollRef = useRef<ScrollView>(null);
+  const templatePagerRef = useRef<ScrollView>(null);
 
-  const allCatList = useMemo(() => [
-    { id: "all", name: "All", slug: "all" },
-    ...categories
-  ], [categories]);
+  const allCatList = useMemo(() => {
+    const list = [{ id: "all", name: "All", slug: "all" }];
+    const seen = new Set(["all"]);
+    categories.forEach((cat: any) => {
+      const slug = (cat.slug || cat.name || cat.id || "").toLowerCase();
+      if (slug && !seen.has(slug)) {
+        seen.add(slug);
+        list.push(cat);
+      }
+    });
+    return list;
+  }, [categories]);
 
   const handleCategoryPillPress = useCallback((catValue: string) => {
     setSelectedCategory(catValue);
     setCurrentPage(1);
+    templatePagerRef.current?.scrollTo({ x: 0, animated: false });
   }, []);
 
   const handleSearchChange = useCallback((text: string) => {
     setSearchQuery(text);
     setCurrentPage(1);
+    templatePagerRef.current?.scrollTo({ x: 0, animated: false });
   }, []);
 
   const filteredTemplates = useMemo(() => {
@@ -312,20 +342,37 @@ export default function AnimateScreen() {
     return result;
   }, [animationTemplates, selectedCategory, searchQuery, isCategoryMatch]);
 
-  const allItems = useMemo(() => {
-    return filteredTemplates;
+  const templatePages = useMemo(() => {
+    const chunks: any[][] = [];
+    for (let i = 0; i < filteredTemplates.length; i += ITEMS_PER_PAGE) {
+      chunks.push(filteredTemplates.slice(i, i + ITEMS_PER_PAGE));
+    }
+    return chunks.length > 0 ? chunks : [[]];
   }, [filteredTemplates]);
 
-  const totalPages = useMemo(() => {
-    return Math.max(1, Math.ceil(allItems.length / ITEMS_PER_PAGE));
-  }, [allItems]);
-
-  const currentPageItems = useMemo(() => {
-    const startIdx = (currentPage - 1) * ITEMS_PER_PAGE;
-    return allItems.slice(startIdx, startIdx + ITEMS_PER_PAGE);
-  }, [allItems, currentPage]);
+  const totalPages = Math.max(1, templatePages.length);
 
   const currentModel = VIDEO_MODELS.find((m) => m.id === selectedModel) || VIDEO_MODELS[0];
+
+  const handleSelectModel = (modelId: string) => {
+    setSelectedModel(modelId);
+    const model = VIDEO_MODELS.find((m) => m.id === modelId);
+    if (model) {
+      if (model.allowedDurations && model.allowedDurations.length > 0) {
+        if (!model.allowedDurations.includes(selectedDuration)) {
+          setSelectedDuration(model.allowedDurations[0]);
+        }
+      } else {
+        if (selectedDuration === 5 && model.minDuration === 4) {
+          setSelectedDuration(4);
+        } else if (selectedDuration < model.minDuration) {
+          setSelectedDuration(model.minDuration);
+        } else if (selectedDuration > model.maxDuration) {
+          setSelectedDuration(model.maxDuration);
+        }
+      }
+    }
+  };
 
   // Auto-advance from Step 1 to Step 2 upon entering Animate screen during tour
   useEffect(() => {
@@ -504,23 +551,47 @@ export default function AnimateScreen() {
     }
   }, [getToken, animationTemplates, currentStep, nextStep]);
 
-  const pickImage = async () => {
+  const getAspectForMode = (
+    mode: "vertical" | "horizontal" | "square"
+  ): [number, number] => {
+    if (mode === "horizontal") return [16, 9];
+    if (mode === "square") return [1, 1];
+    return [9, 16]; // vertical
+  };
+
+  const pickImage = async (overrideAspect?: "vertical" | "horizontal" | "square") => {
     try {
       const hasPermission = await requestImagePermission();
       if (!hasPermission) return;
 
+      const targetRatio = overrideAspect || selectedAspectRatio;
+      const aspect =
+        selectedTool === "animate"
+          ? getAspectForMode(targetRatio)
+          : undefined;
+
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
         allowsEditing: true,
-        quality: 0.8,
+        aspect: aspect,
+        quality: 0.9,
       });
 
       if (result.canceled || !result.assets || !result.assets[0]) {
         return;
       }
 
+      const asset = result.assets[0];
+      if (asset.fileSize && asset.fileSize > 20 * 1024 * 1024) {
+        Alert.alert(
+          "File Too Large",
+          "The selected image exceeds the maximum allowed size of 20MB. Please choose a smaller image."
+        );
+        return;
+      }
+
       setUploading(true);
-      const imageUri = result.assets[0].uri;
+      const imageUri = asset.uri;
 
       if (!imageUri) {
         throw new Error("Image URI is missing");
@@ -570,10 +641,10 @@ export default function AnimateScreen() {
       return;
     }
 
-    if (userCredits < 1) {
+    if ((userCredits ?? 0) < 1) {
       Alert.alert(
         "Insufficient Credits",
-        `You need at least 1 credit to use Surprise Me. You currently have ${userCredits} credit(s).`,
+        `You need at least 1 credit to use Surprise Me. You currently have ${userCredits ?? 0} credit(s).`,
         [
           { text: "Cancel", style: "cancel" },
           { text: "Buy Credits", onPress: () => router.push("/(tabs)/credit") },
@@ -601,7 +672,7 @@ export default function AnimateScreen() {
         if (typeof res.remainingCredits === "number") {
           setUserCredits(res.remainingCredits);
         } else {
-          setUserCredits((prev) => Math.max(0, prev - 1));
+          setUserCredits((prev) => Math.max(0, (prev ?? 1) - 1));
         }
       } else {
         throw new Error(res?.error || "Failed to generate AI prompt");
@@ -644,10 +715,10 @@ export default function AnimateScreen() {
     }
 
     const cost = featureCosts?.restore_photo || 1;
-    if (userCredits < cost) {
+    if ((userCredits ?? 0) < cost) {
       Alert.alert(
         "Insufficient Credits",
-        `You need at least ${cost} credit(s) to restore images. You currently have ${userCredits} credit(s).`
+        `You need at least ${cost} credit(s) to restore images. You currently have ${userCredits ?? 0} credit(s).`
       );
       return;
     }
@@ -702,7 +773,7 @@ export default function AnimateScreen() {
       return;
     }
 
-    if (userCredits < totalCost) {
+    if ((userCredits ?? 0) < totalCost) {
       Alert.alert(
         "Insufficient Credits",
         `You need at least ${totalCost} credits to perform this enhancement. Please purchase more credits to continue.`
@@ -764,10 +835,10 @@ export default function AnimateScreen() {
     }
 
     const requiredCredits = calculateCreditCost(selectedModel, selectedQuality, selectedDuration, featureCosts);
-    if (userCredits < requiredCredits) {
+    if ((userCredits ?? 0) < requiredCredits) {
       Alert.alert(
         "Insufficient Credits",
-        `You need at least ${requiredCredits} credit(s) to animate images. You currently have ${userCredits} credit(s).`,
+        `You need at least ${requiredCredits} credit(s) to animate images. You currently have ${userCredits ?? 0} credit(s).`,
         [
           { text: "Cancel", style: "cancel" },
           { text: "Buy Credits", onPress: () => router.push("/(tabs)/credit") },
@@ -823,22 +894,65 @@ export default function AnimateScreen() {
     }
   };
 
+  const totalEnhanceCost = useMemo(() => {
+    let cost = 0;
+    if (enhanceOptions.upscale) cost += featureCosts?.enhance_upscale || 1;
+    if (enhanceOptions.faceEnhance) cost += featureCosts?.enhance_face || 1;
+    if (enhanceOptions.colorize) cost += featureCosts?.enhance_colorize || 1;
+    return cost;
+  }, [enhanceOptions, featureCosts]);
+
   const getCreditCost = () => {
     if (selectedTool === "restore") {
       return featureCosts?.restore_photo || 1;
     }
     if (selectedTool === "enhance") {
-      let cost = 0;
-      if (enhanceOptions.upscale) cost += featureCosts?.enhance_upscale || 1;
-      if (enhanceOptions.faceEnhance) cost += featureCosts?.enhance_face || 1;
-      if (enhanceOptions.colorize) cost += featureCosts?.enhance_colorize || 1;
-      return cost;
+      return totalEnhanceCost;
     }
     if (selectedTool === "animate") {
       return calculateCreditCost(selectedModel, selectedQuality, selectedDuration, featureCosts);
     }
     return 0;
   };
+
+  const handleAction = () => {
+    if (isActive && currentStep === 4) {
+      endTour();
+    }
+    const cost = getCreditCost();
+    if (userCredits !== null && userCredits < cost) {
+      router.push("/(tabs)/credit");
+      return;
+    }
+    if (!uploadedImage) {
+      setUploadHighlighted(true);
+      mainScrollViewRef.current?.scrollTo({ y: 0, animated: true });
+      Alert.alert(
+        "Upload Required",
+        "Please upload a photo first to generate your animation!",
+        [
+          { text: "Cancel", style: "cancel" },
+          { text: "Upload Photo", onPress: () => pickImage() },
+        ]
+      );
+      return;
+    }
+    if (selectedTool === "restore") {
+      handleRestore();
+    } else if (selectedTool === "enhance") {
+      handleEnhance();
+    } else if (selectedTool === "animate") {
+      handleAnimate();
+    }
+  };
+
+  const requiredCredits = getCreditCost();
+  const hasInsufficientCredits = userCredits !== null && userCredits < requiredCredits;
+  const isActionDisabled =
+    loading ||
+    uploading ||
+    isSubmittingRef.current ||
+    (selectedTool === "enhance" && requiredCredits === 0);
 
   const handleDownload = async (url: string, type: "image" | "video") => {
     setDownloading(true);
@@ -914,10 +1028,10 @@ export default function AnimateScreen() {
   );
 
   return (
-    <View style={{ flex: 1 }} {...panResponder.panHandlers}>
+    <View style={{ flex: 1 }} {...(isActive && currentStep === 2 ? panResponder.panHandlers : {})}>
       <ScreenWrapper
         addBottomPadding={true}
-        creditsText={userCredits !== null ? `${userCredits} Credits` : "Loading..."}
+        creditsText={userCredits !== null ? `${userCredits} Credits` : undefined}
         useCustomScroll={true}
       >
         <ScrollView
@@ -925,16 +1039,14 @@ export default function AnimateScreen() {
           style={{ flex: 1 }}
           contentContainerStyle={{ paddingBottom: 30 }}
           showsVerticalScrollIndicator={false}
-          scrollEnabled={true}
-          onScrollBeginDrag={triggerAutoScrollToTemplates}
+          scrollEnabled={!isPagerScrolling}
+          nestedScrollEnabled={true}
+          directionalLockEnabled={true}
+          scrollEventThrottle={16}
           onScroll={(e) => {
-            scrollYRef.current = e.nativeEvent?.contentOffset?.y || 0;
-            if (scrollYRef.current > 0) {
-              triggerAutoScrollToTemplates();
-            }
+            scrollYRef.current = e.nativeEvent.contentOffset.y;
             updateGridVisibility();
           }}
-          scrollEventThrottle={16}
         >
         {/* Title Section */}
         <View style={styles.titleSection}>
@@ -1030,15 +1142,31 @@ export default function AnimateScreen() {
                         style={styles.uploadedImage}
                         resizeMode="contain"
                       />
-                      <TouchableOpacity
-                        style={styles.removeButton}
-                        onPress={(e) => {
-                          e.stopPropagation();
-                          handleReset();
-                        }}
-                      >
-                        <Text style={styles.removeButtonText}>×</Text>
-                      </TouchableOpacity>
+                      <View style={styles.uploadedActionButtons}>
+                        {selectedTool === "animate" && (
+                          <TouchableOpacity
+                            style={styles.recropButton}
+                            onPress={(e) => {
+                              e.stopPropagation();
+                              pickImage();
+                            }}
+                            activeOpacity={0.75}
+                          >
+                            <Ionicons name="crop" size={13} color="#FFFFFF" style={{ marginRight: 4 }} />
+                            <Text style={styles.recropButtonText}>Re-Crop</Text>
+                          </TouchableOpacity>
+                        )}
+                        <TouchableOpacity
+                          style={styles.removeButton}
+                          onPress={(e) => {
+                            e.stopPropagation();
+                            handleReset();
+                          }}
+                          activeOpacity={0.7}
+                        >
+                          <Ionicons name="close" size={18} color="#FFFFFF" />
+                        </TouchableOpacity>
+                      </View>
                     </View>
                   ) : (
                     <View style={styles.uploadCardContent}>
@@ -1047,7 +1175,7 @@ export default function AnimateScreen() {
                         <View style={styles.uploadTitleUnderline} />
                         <Text style={styles.uploadCardSubtext}>
                           Supported formats: jpg, jpeg, png{"\n"}
-                          Max file size: 10MB. Min resolution 300x300px.
+                          Max file size: 20MB. Min resolution 300x300px.
                         </Text>
                       </View>
                       <View style={styles.uploadCardRight}>
@@ -1076,7 +1204,7 @@ export default function AnimateScreen() {
                       <TouchableOpacity
                         key={model.id}
                         style={[styles.modelChip, isSelected && styles.modelChipSelected]}
-                        onPress={() => setSelectedModel(model.id)}
+                        onPress={() => handleSelectModel(model.id)}
                         activeOpacity={0.75}
                       >
                         {isSelected ? (
@@ -1104,6 +1232,7 @@ export default function AnimateScreen() {
               {/* Duration Slider */}
               <View style={styles.qualitySectionCard}>
                 <DurationSlider
+                  key={selectedModel}
                   value={selectedDuration}
                   min={currentModel?.minDuration || 4}
                   max={currentModel?.maxDuration || 10}
@@ -1123,9 +1252,11 @@ export default function AnimateScreen() {
                     const label = res === "480p" ? "SD" : res === "720p" ? "HD" : "FHD";
                     const isSelected = selectedQuality === res;
                     const gradientColors: [string, string] =
-                      res === "480p" ? ["#28A4F0", "#38BDF8"] :
-                        res === "720p" ? ["#A855F7", "#EC4899"] :
-                          ["#F59E0B", "#F97316"];
+                      res === "480p"
+                        ? ["#38BDF8", "#2563EB"]
+                        : res === "720p"
+                        ? ["#38BDF8", "#D229FF"]
+                        : ["#F59E0B", "#EF4444"];
                     return (
                       <TouchableOpacity
                         key={res}
@@ -1137,17 +1268,19 @@ export default function AnimateScreen() {
                           <LinearGradient
                             colors={gradientColors}
                             start={{ x: 0, y: 0 }}
-                            end={{ x: 1, y: 1 }}
+                            end={{ x: 1, y: 0 }}
                             style={styles.qualityCardGradient}
                           >
-                            <Text style={[styles.qualityLabel, { color: "#fff" }]}>{label}</Text>
-                            <Text style={[styles.qualityRes, { color: "rgba(255,255,255,0.8)" }]}>{res}</Text>
-                            <Text style={[styles.qualityCredits, { color: "rgba(255,255,255,0.9)" }]}>{cost}cr</Text>
+                            <Text style={styles.qualityLabelSelected}>
+                              {label} <Text style={styles.qualityResSelected}>({res})</Text>
+                            </Text>
+                            <Text style={styles.qualityCreditsSelected}>{cost}cr</Text>
                           </LinearGradient>
                         ) : (
                           <View style={styles.qualityCardInner}>
-                            <Text style={styles.qualityLabel}>{label}</Text>
-                            <Text style={styles.qualityRes}>{res}</Text>
+                            <Text style={styles.qualityLabel}>
+                              {label} <Text style={styles.qualityRes}>({res})</Text>
+                            </Text>
                             <Text style={styles.qualityCredits}>{cost}cr</Text>
                           </View>
                         )}
@@ -1196,44 +1329,224 @@ export default function AnimateScreen() {
             </View>
           )}
 
-          {/* Enhancement Options Section (Only for Enhance tool) */}
+          {/* 1. RESTORE DETAILS (When Restore tool is selected) */}
+          {selectedTool === "restore" && !restoredImage && (
+            <View style={styles.restoreDetailsCard}>
+              <View style={styles.restoreHeaderRow}>
+                <View style={styles.restoreIconCircle}>
+                  <Text style={{ fontSize: 22 }}>✨</Text>
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.restoreTitle}>AI Photo Restoration</Text>
+                  <Text style={styles.restoreSubtitle}>
+                    Automatically repairs scratches, tears, creases, and fading
+                  </Text>
+                </View>
+              </View>
+
+              <View style={styles.restoreFeaturesGrid}>
+                <View style={styles.restoreFeaturePill}>
+                  <Text style={styles.restoreFeatureEmoji}>🩹</Text>
+                  <Text style={styles.restoreFeatureText}>Scratch & Tear Repair</Text>
+                </View>
+                <View style={styles.restoreFeaturePill}>
+                  <Text style={styles.restoreFeatureEmoji}>👤</Text>
+                  <Text style={styles.restoreFeatureText}>Face Clarity Recovery</Text>
+                </View>
+                <View style={styles.restoreFeaturePill}>
+                  <Text style={styles.restoreFeatureEmoji}>🎨</Text>
+                  <Text style={styles.restoreFeatureText}>Color & Tone Revival</Text>
+                </View>
+              </View>
+            </View>
+          )}
+
+          {/* 2. ENHANCEMENT OPTIONS (When Enhance tool is selected) */}
           {selectedTool === "enhance" && !restoredImage && (
-            <View style={{ marginTop: 12 }}>
-              <Text style={{ fontSize: 15, fontFamily: getFontFamily("600"), color: "#6b7280", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 8 }}>Enhancement Options</Text>
-              <View style={{ gap: 8 }}>
+            <View style={styles.enhanceSection}>
+              <View style={styles.enhanceHeaderRow}>
+                <Text style={styles.enhanceSectionTitle}>Enhancement Options</Text>
+                <View style={styles.enhanceCostTag}>
+                  <Text style={styles.enhanceCostTagText}>
+                    {totalEnhanceCost} {totalEnhanceCost === 1 ? "credit" : "credits"}
+                  </Text>
+                </View>
+              </View>
+
+              <View style={styles.enhanceOptionsList}>
+                {/* 4K Upscale */}
                 <TouchableOpacity
-                  style={{ flexDirection: "row", alignItems: "center" }}
-                  onPress={() => setEnhanceOptions(prev => ({ ...prev, upscale: !prev.upscale }))}
+                  style={[
+                    styles.enhanceOptionCard,
+                    enhanceOptions.upscale && styles.enhanceOptionCardSelected,
+                  ]}
+                  onPress={() =>
+                    setEnhanceOptions((prev) => ({ ...prev, upscale: !prev.upscale }))
+                  }
+                  activeOpacity={0.75}
                 >
-                  <View style={{ width: 22, height: 22, borderRadius: 4, borderWidth: 2, borderColor: enhanceOptions.upscale ? "#28D4FA" : "#94A3B8", backgroundColor: enhanceOptions.upscale ? "#28D4FA" : "transparent", marginRight: 10, alignItems: "center", justifyContent: "center" }}>
-                    {enhanceOptions.upscale && <Text style={{ color: "#fff", fontSize: 16, fontFamily: getFontFamily("600") }}>✓</Text>}
+                  <View
+                    style={[
+                      styles.enhanceCheckbox,
+                      enhanceOptions.upscale && styles.enhanceCheckboxSelected,
+                    ]}
+                  >
+                    {enhanceOptions.upscale && (
+                      <Text style={styles.enhanceCheckboxCheck}>✓</Text>
+                    )}
                   </View>
-                  <Text style={{ fontSize: 16, color: "#1E293B", fontFamily: getFontFamily("400") }}>{`4K Upscale (${featureCosts?.enhance_upscale || 1} credit${(featureCosts?.enhance_upscale || 1) !== 1 ? 's' : ''})`}</Text>
+                  <View style={styles.enhanceOptionInfo}>
+                    <Text style={styles.enhanceOptionTitle}>
+                      4K Upscale{" "}
+                      <Text style={styles.enhanceOptionPrice}>
+                        ({featureCosts?.enhance_upscale || 1} credit)
+                      </Text>
+                    </Text>
+                    <Text style={styles.enhanceOptionDesc}>
+                      Ultra-sharp AI resolution upscaling for high-definition clarity
+                    </Text>
+                  </View>
                 </TouchableOpacity>
 
+                {/* Face Enhancement */}
                 <TouchableOpacity
-                  style={{ flexDirection: "row", alignItems: "center" }}
-                  onPress={() => setEnhanceOptions(prev => ({ ...prev, faceEnhance: !prev.faceEnhance }))}
+                  style={[
+                    styles.enhanceOptionCard,
+                    enhanceOptions.faceEnhance && styles.enhanceOptionCardSelected,
+                  ]}
+                  onPress={() =>
+                    setEnhanceOptions((prev) => ({
+                      ...prev,
+                      faceEnhance: !prev.faceEnhance,
+                    }))
+                  }
+                  activeOpacity={0.75}
                 >
-                  <View style={{ width: 22, height: 22, borderRadius: 4, borderWidth: 2, borderColor: enhanceOptions.faceEnhance ? "#28D4FA" : "#94A3B8", backgroundColor: enhanceOptions.faceEnhance ? "#28D4FA" : "transparent", marginRight: 10, alignItems: "center", justifyContent: "center" }}>
-                    {enhanceOptions.faceEnhance && <Text style={{ color: "#fff", fontSize: 16, fontFamily: getFontFamily("600") }}>✓</Text>}
+                  <View
+                    style={[
+                      styles.enhanceCheckbox,
+                      enhanceOptions.faceEnhance && styles.enhanceCheckboxSelected,
+                    ]}
+                  >
+                    {enhanceOptions.faceEnhance && (
+                      <Text style={styles.enhanceCheckboxCheck}>✓</Text>
+                    )}
                   </View>
-                  <Text style={{ fontSize: 16, color: "#1E293B", fontFamily: getFontFamily("400") }}>{`Face Enhancement (${featureCosts?.enhance_face || 1} credit${(featureCosts?.enhance_face || 1) !== 1 ? 's' : ''})`}</Text>
+                  <View style={styles.enhanceOptionInfo}>
+                    <Text style={styles.enhanceOptionTitle}>
+                      Face Enhancement{" "}
+                      <Text style={styles.enhanceOptionPrice}>
+                        ({featureCosts?.enhance_face || 1} credit)
+                      </Text>
+                    </Text>
+                    <Text style={styles.enhanceOptionDesc}>
+                      Deep facial reconstruction to restore clear expressions & details
+                    </Text>
+                  </View>
                 </TouchableOpacity>
 
+                {/* Colorize B&W */}
                 <TouchableOpacity
-                  style={{ flexDirection: "row", alignItems: "center" }}
-                  onPress={() => setEnhanceOptions(prev => ({ ...prev, colorize: !prev.colorize }))}
+                  style={[
+                    styles.enhanceOptionCard,
+                    enhanceOptions.colorize && styles.enhanceOptionCardSelected,
+                  ]}
+                  onPress={() =>
+                    setEnhanceOptions((prev) => ({
+                      ...prev,
+                      colorize: !prev.colorize,
+                    }))
+                  }
+                  activeOpacity={0.75}
                 >
-                  <View style={{ width: 22, height: 22, borderRadius: 4, borderWidth: 2, borderColor: enhanceOptions.colorize ? "#28D4FA" : "#94A3B8", backgroundColor: enhanceOptions.colorize ? "#28D4FA" : "transparent", marginRight: 10, alignItems: "center", justifyContent: "center" }}>
-                    {enhanceOptions.colorize && <Text style={{ color: "#fff", fontSize: 16, fontFamily: getFontFamily("600") }}>✓</Text>}
+                  <View
+                    style={[
+                      styles.enhanceCheckbox,
+                      enhanceOptions.colorize && styles.enhanceCheckboxSelected,
+                    ]}
+                  >
+                    {enhanceOptions.colorize && (
+                      <Text style={styles.enhanceCheckboxCheck}>✓</Text>
+                    )}
                   </View>
-                  <Text style={{ fontSize: 16, color: "#1E293B", fontFamily: getFontFamily("400") }}>{`Colorize B&W (${featureCosts?.enhance_colorize || 1} credit${(featureCosts?.enhance_colorize || 1) !== 1 ? 's' : ''})`}</Text>
+                  <View style={styles.enhanceOptionInfo}>
+                    <Text style={styles.enhanceOptionTitle}>
+                      Colorize B&W{" "}
+                      <Text style={styles.enhanceOptionPrice}>
+                        ({featureCosts?.enhance_colorize || 1} credit)
+                      </Text>
+                    </Text>
+                    <Text style={styles.enhanceOptionDesc}>
+                      Transform black and white vintage photos into vivid, natural colors
+                    </Text>
+                  </View>
                 </TouchableOpacity>
               </View>
             </View>
           )}
         </View>
+
+        {/* Action Button for Restore & Enhance */}
+        {(selectedTool === "restore" || selectedTool === "enhance") && !restoredImage && (
+          <View style={styles.generateSection}>
+            <TouchableOpacity
+              style={[
+                styles.generateButton,
+                isActionDisabled && !hasInsufficientCredits && { opacity: 0.6 }
+              ]}
+              onPress={handleAction}
+              disabled={isActionDisabled && !hasInsufficientCredits}
+              activeOpacity={0.85}
+            >
+              <LinearGradient
+                colors={
+                  hasInsufficientCredits
+                    ? ["#F59E0B", "#EF4444"]
+                    : ["#38BDF8", "#A855F7", "#D229FF"]
+                }
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                style={styles.generateButtonGradient}
+              >
+                {loading ? (
+                  <>
+                    <ActivityIndicator color="#fff" size="small" />
+                    <Text style={styles.generateText}>
+                      {selectedTool === "restore" ? "Restoring Photo..." : "Enhancing Photo..."}
+                    </Text>
+                  </>
+                ) : hasInsufficientCredits ? (
+                  <>
+                    <CreditIcon width={20} height={20} color="#FFFFFF" />
+                    <Text style={styles.generateText}>
+                      Get Credits to {selectedTool === "restore" ? "Restore" : "Enhance"}
+                    </Text>
+                  </>
+                ) : (
+                  <>
+                    <GenerateIcon width={20} height={20} color="#FFFFFF" />
+                    <Text style={styles.generateText}>
+                      {selectedTool === "restore" ? "Restore Photo" : "Enhance Photo"}
+                    </Text>
+                    <View style={styles.creditsBadge}>
+                      <GenerateCreditIcon color="#FFFFFF" width={12} height={12} />
+                      <Text style={styles.creditsBadgeText}>
+                        {requiredCredits} {requiredCredits === 1 ? "Credit" : "Credits"}
+                      </Text>
+                    </View>
+                  </>
+                )}
+              </LinearGradient>
+            </TouchableOpacity>
+
+            <View style={styles.creditsDisplay}>
+              <GenerateCreditIcon color="#38BDF8" height={14} width={14} />
+              <GradientText style={styles.creditsText}>
+                {`Current Credits: ${userCredits ?? 0}`}
+              </GradientText>
+            </View>
+          </View>
+        )}
 
         {/* Result Display */}
         {(restoredImage || animatedVideo) && (
@@ -1241,6 +1554,8 @@ export default function AnimateScreen() {
             <Text style={styles.resultTitle}>
               {animatedVideo
                 ? "Your Video is Ready!"
+                : selectedTool === "enhance"
+                ? "Your Enhanced Photo is Ready!"
                 : "Your Restored Photo is Ready!"}
             </Text>
             <View style={styles.resultContainer}>
@@ -1263,13 +1578,31 @@ export default function AnimateScreen() {
                     resizeMode={ResizeMode.CONTAIN}
                     isLooping
                     shouldPlay={true}
+                    onReadyForDisplay={() => setIsResultVideoLoading(false)}
                     onPlaybackStatusUpdate={(status: any) => {
                       if (status && "isPlaying" in status) {
                         setIsPreviewPlaying(status.isPlaying);
+                        if (status.isPlaying) {
+                          setIsResultVideoLoading(false);
+                        }
                       }
                     }}
+                    onError={() => setIsResultVideoLoading(false)}
                   />
+                  {isResultVideoLoading && (
+                    <View style={styles.resultVideoLoader} pointerEvents="none">
+                      <ActivityIndicator size="large" color="#38BDF8" />
+                      <Text style={styles.resultVideoLoaderText}>Loading video...</Text>
+                    </View>
+                  )}
                 </TouchableOpacity>
+              ) : restoredImage && uploadedImage ? (
+                <BeforeAfterSlider
+                  beforeImage={uploadedImage}
+                  afterImage={restoredImage}
+                  width={CONTENT_WIDTH}
+                  height={350}
+                />
               ) : (
                 <Image
                   source={{ uri: restoredImage! }}
@@ -1315,6 +1648,7 @@ export default function AnimateScreen() {
         <FullScreenVideoViewer
           visible={showFullScreenVideo}
           videoUri={animatedVideo}
+          posterUri={uploadedImage}
           onClose={() => {
             setShowFullScreenVideo(false);
             previewVideoRef.current?.playAsync().then(() => {
@@ -1352,7 +1686,7 @@ export default function AnimateScreen() {
               style={styles.templatesSection}
               onLayout={(e) => setTemplatesLayoutY(e.nativeEvent.layout.y)}
             >
-              {/* Header matching UI screenshot */}
+              {/* Header */}
               <View style={styles.templatesHeaderStack}>
                 <Text style={styles.templatesTitle}>Animation Templates</Text>
                 <Text style={styles.templatesSubtitle}>
@@ -1360,10 +1694,10 @@ export default function AnimateScreen() {
                 </Text>
               </View>
 
-              {/* 2-Tab Segmented Switcher Bar Slider */}
-              <View style={{ flexDirection: "row", backgroundColor: "#E2E8F0", borderRadius: 14, padding: 3, marginBottom: 16 }}>
+              {/* 2-Tab Segmented Switcher Bar */}
+              <View style={styles.templatesTabSwitcher}>
                 <TouchableOpacity
-                  style={{ flex: 1, paddingVertical: 10, alignItems: "center", borderRadius: 12, overflow: "hidden" }}
+                  style={styles.templateTabBtn}
                   onPress={() => {
                     setActiveTabMode("template");
                     if (selectedTemplate === null && animationTemplates.length > 0) {
@@ -1378,21 +1712,21 @@ export default function AnimateScreen() {
                       colors={["#38BDF8", "#A855F7", "#D229FF"]}
                       start={{ x: 0, y: 0 }}
                       end={{ x: 1, y: 0 }}
-                      style={{ ...StyleSheet.absoluteFillObject, justifyContent: "center", alignItems: "center" }}
+                      style={styles.templateTabBtnGradient}
                     >
-                      <Text style={{ color: "#FFFFFF", fontSize: 15, fontFamily: getFontFamily("600"), textTransform: "uppercase" }}>
+                      <Text style={styles.templateTabBtnTextActive}>
                         PICK A TEMPLATE
                       </Text>
                     </LinearGradient>
                   ) : (
-                    <Text style={{ color: "#475569", fontSize: 15, fontFamily: getFontFamily("600"), textTransform: "uppercase" }}>
+                    <Text style={styles.templateTabBtnTextInactive}>
                       PICK A TEMPLATE
                     </Text>
                   )}
                 </TouchableOpacity>
 
                 <TouchableOpacity
-                  style={{ flex: 1, paddingVertical: 10, alignItems: "center", borderRadius: 12, overflow: "hidden" }}
+                  style={styles.templateTabBtn}
                   onPress={() => {
                     setActiveTabMode("custom");
                     setSelectedTemplate(null);
@@ -1404,14 +1738,14 @@ export default function AnimateScreen() {
                       colors={["#38BDF8", "#A855F7", "#D229FF"]}
                       start={{ x: 0, y: 0 }}
                       end={{ x: 1, y: 0 }}
-                      style={{ ...StyleSheet.absoluteFillObject, justifyContent: "center", alignItems: "center" }}
+                      style={styles.templateTabBtnGradient}
                     >
-                      <Text style={{ color: "#FFFFFF", fontSize: 15, fontFamily: getFontFamily("600"), textTransform: "uppercase" }}>
+                      <Text style={styles.templateTabBtnTextActive}>
                         CUSTOM PROMPT ✨
                       </Text>
                     </LinearGradient>
                   ) : (
-                    <Text style={{ color: "#475569", fontSize: 15, fontFamily: getFontFamily("600"), textTransform: "uppercase" }}>
+                    <Text style={styles.templateTabBtnTextInactive}>
                       CUSTOM PROMPT ✨
                     </Text>
                   )}
@@ -1473,9 +1807,9 @@ export default function AnimateScreen() {
                     })}
                   </ScrollView>
 
-                  {/* 3-column Grid for Current Page */}
+                  {/* 3-column Grid Paged Horizontally (Swipeable Left & Right with snap) */}
                   <View
-                    style={styles.templatesGrid}
+                    style={styles.templatesHorizontalContainer}
                     pointerEvents={isActive && currentStep !== 3 ? "none" : "auto"}
                     onLayout={(e) => {
                       templatesGridYRef.current = e.nativeEvent.layout.y;
@@ -1483,55 +1817,159 @@ export default function AnimateScreen() {
                       updateGridVisibility();
                     }}
                   >
-                    {currentPageItems.map((item: any, idx: number) => {
-                      const templateId = item.slug || item.id;
-                      const isSelected = selectedTemplate === templateId;
-                      return (
-                        <View key={templateId || idx} style={styles.templateGridItem}>
-                          <TouchableOpacity
-                            style={[
-                              styles.templateCardGrid,
-                              isSelected && styles.templateCardSelectedGrid,
-                            ]}
-                            onPress={() => {
-                              setSelectedTemplate(templateId);
-                              if (item.prompt) {
-                                setCustomPrompt(item.prompt);
-                              }
-                              if (isActive && currentStep === 3) {
-                                mainScrollViewRef.current?.scrollToEnd({ animated: true });
-                                setTimeout(() => {
-                                  if (currentStep === 3) {
-                                    nextStep();
-                                  }
-                                }, 400);
-                              }
-                            }}
-                          >
-                            <View style={styles.templateImageContainerGrid}>
-                              <AnimatedTemplateThumb
-                                thumbnail={{ uri: formatImageUrl(item.thumbnailUrl || item.image) }}
-                                videoUrl={item.videoUrl ? formatImageUrl(item.videoUrl) : null}
-                                autoPlay={gridOnScreen}
-                                style={styles.templateImageGrid}
-                              />
-                            </View>
-                            {isSelected && (
-                              <View style={styles.selectedCheckBadge}>
-                                <Text style={styles.selectedCheckText}>✓</Text>
+                    <ScrollView
+                      ref={templatePagerRef}
+                      horizontal
+                      pagingEnabled={true}
+                      disableIntervalMomentum={true}
+                      nestedScrollEnabled={true}
+                      directionalLockEnabled={true}
+                      overScrollMode="never"
+                      showsHorizontalScrollIndicator={false}
+                      decelerationRate="fast"
+                      snapToInterval={CONTENT_WIDTH}
+                      snapToAlignment="start"
+                      onMomentumScrollEnd={(e) => {
+                        const pageIndex = Math.round(e.nativeEvent.contentOffset.x / CONTENT_WIDTH);
+                        const newPage = Math.min(totalPages, Math.max(1, pageIndex + 1));
+                        if (newPage !== currentPage) {
+                          setCurrentPage(newPage);
+                        }
+                      }}
+                      style={{ width: CONTENT_WIDTH }}
+                    >
+                      {templatePages.map((pageItems: any[], pageIdx: number) => {
+                        const isCurrentPage = pageIdx === currentPage - 1;
+                        const shouldAutoplay = isCurrentPage;
+                        const row1 = pageItems.slice(0, 3);
+                        const row2 = pageItems.slice(3, 6);
+                        return (
+                          <View key={pageIdx} style={{ width: CONTENT_WIDTH }}>
+                            <View style={styles.templatesGrid}>
+                              {/* Row 1 */}
+                              <View style={styles.templateRow}>
+                                {row1.map((item: any, idx: number) => {
+                                  const templateId = item.slug || item.id;
+                                  const isSelected = selectedTemplate === templateId;
+                                  return (
+                                    <View key={templateId || idx} style={styles.templateGridItem}>
+                                      <TouchableOpacity
+                                        style={[
+                                          styles.templateCardGrid,
+                                          isSelected && styles.templateCardSelectedGrid,
+                                        ]}
+                                        onPress={() => {
+                                          setSelectedTemplate(templateId);
+                                          if (item.prompt) {
+                                            setCustomPrompt(item.prompt);
+                                          }
+                                          if (isActive && currentStep === 3) {
+                                            mainScrollViewRef.current?.scrollToEnd({ animated: true });
+                                            setTimeout(() => {
+                                              if (currentStep === 3) {
+                                                nextStep();
+                                              }
+                                            }, 400);
+                                          }
+                                        }}
+                                        activeOpacity={0.8}
+                                      >
+                                        <View style={styles.templateImageContainerGrid}>
+                                          <AnimatedTemplateThumb
+                                            thumbnail={{ uri: formatImageUrl(item.thumbnailUrl || item.image) }}
+                                            videoUrl={item.videoUrl ? formatImageUrl(item.videoUrl) : null}
+                                            autoPlay={shouldAutoplay}
+                                            active={isSelected}
+                                            index={idx}
+                                            style={styles.templateImageGrid}
+                                          />
+                                        </View>
+                                        {isSelected && (
+                                          <View style={styles.selectedCheckBadge}>
+                                            <Text style={styles.selectedCheckText}>✓</Text>
+                                          </View>
+                                        )}
+                                      </TouchableOpacity>
+                                      <Text style={styles.templateNameGrid} numberOfLines={1}>
+                                        {item.name}
+                                      </Text>
+                                    </View>
+                                  );
+                                })}
+                                {row1.length < 3 &&
+                                  Array.from({ length: 3 - row1.length }).map((_, i) => (
+                                    <View key={`empty-r1-${i}`} style={styles.templateGridItemPlaceholder} />
+                                  ))}
                               </View>
-                            )}
-                          </TouchableOpacity>
-                          <Text style={styles.templateNameGrid} numberOfLines={1}>{item.name}</Text>
-                        </View>
-                      );
-                    })}
 
-                    {currentPageItems.length === 0 && (
-                      <View style={{ width: "100%", paddingVertical: 24, alignItems: "center" }}>
-                        <Text style={{ color: "#9ca3af", fontSize: 16 }}>No templates found</Text>
-                      </View>
-                    )}
+                              {/* Row 2 */}
+                              {row2.length > 0 && (
+                                <View style={styles.templateRow}>
+                                  {row2.map((item: any, idx: number) => {
+                                    const templateId = item.slug || item.id;
+                                    const isSelected = selectedTemplate === templateId;
+                                    return (
+                                      <View key={templateId || (idx + 3)} style={styles.templateGridItem}>
+                                        <TouchableOpacity
+                                          style={[
+                                            styles.templateCardGrid,
+                                            isSelected && styles.templateCardSelectedGrid,
+                                          ]}
+                                          onPress={() => {
+                                            setSelectedTemplate(templateId);
+                                            if (item.prompt) {
+                                              setCustomPrompt(item.prompt);
+                                            }
+                                            if (isActive && currentStep === 3) {
+                                              mainScrollViewRef.current?.scrollToEnd({ animated: true });
+                                              setTimeout(() => {
+                                                if (currentStep === 3) {
+                                                  nextStep();
+                                                }
+                                              }, 400);
+                                            }
+                                          }}
+                                          activeOpacity={0.8}
+                                        >
+                                          <View style={styles.templateImageContainerGrid}>
+                                            <AnimatedTemplateThumb
+                                              thumbnail={{ uri: formatImageUrl(item.thumbnailUrl || item.image) }}
+                                              videoUrl={item.videoUrl ? formatImageUrl(item.videoUrl) : null}
+                                              autoPlay={shouldAutoplay}
+                                              active={isSelected}
+                                              index={idx + 3}
+                                              style={styles.templateImageGrid}
+                                            />
+                                          </View>
+                                          {isSelected && (
+                                            <View style={styles.selectedCheckBadge}>
+                                              <Text style={styles.selectedCheckText}>✓</Text>
+                                            </View>
+                                          )}
+                                        </TouchableOpacity>
+                                        <Text style={styles.templateNameGrid} numberOfLines={1}>
+                                          {item.name}
+                                        </Text>
+                                      </View>
+                                    );
+                                  })}
+                                  {row2.length < 3 &&
+                                    Array.from({ length: 3 - row2.length }).map((_, i) => (
+                                      <View key={`empty-r2-${i}`} style={styles.templateGridItemPlaceholder} />
+                                    ))}
+                                </View>
+                              )}
+                            </View>
+                          </View>
+                        );
+                      })}
+
+                      {filteredTemplates.length === 0 && (
+                        <View style={{ width: CONTENT_WIDTH, paddingVertical: 28, alignItems: "center" }}>
+                          <Text style={{ color: "#94a3b8", fontSize: 16 }}>No templates found</Text>
+                        </View>
+                      )}
+                    </ScrollView>
                   </View>
 
                   {/* Pagination Controls */}
@@ -1539,8 +1977,13 @@ export default function AnimateScreen() {
                     <View style={styles.paginationBar} pointerEvents={isActive && currentStep !== 3 ? "none" : "auto"}>
                       <TouchableOpacity
                         style={[styles.pageButton, currentPage === 1 && styles.pageButtonDisabled]}
-                        onPress={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
+                        onPress={() => {
+                          const prevPage = Math.max(1, currentPage - 1);
+                          setCurrentPage(prevPage);
+                          templatePagerRef.current?.scrollTo({ x: (prevPage - 1) * CONTENT_WIDTH, animated: true });
+                        }}
                         disabled={currentPage === 1}
+                        activeOpacity={0.7}
                       >
                         <Text style={[styles.pageButtonText, currentPage === 1 && styles.pageButtonTextDisabled]}>
                           ‹ Previous
@@ -1553,8 +1996,13 @@ export default function AnimateScreen() {
 
                       <TouchableOpacity
                         style={[styles.pageButton, currentPage === totalPages && styles.pageButtonDisabled]}
-                        onPress={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
+                        onPress={() => {
+                          const nextPage = Math.min(totalPages, currentPage + 1);
+                          setCurrentPage(nextPage);
+                          templatePagerRef.current?.scrollTo({ x: (nextPage - 1) * CONTENT_WIDTH, animated: true });
+                        }}
                         disabled={currentPage === totalPages}
+                        activeOpacity={0.7}
                       >
                         <Text style={[styles.pageButtonText, currentPage === totalPages && styles.pageButtonTextDisabled]}>
                           Next ›
@@ -1562,28 +2010,28 @@ export default function AnimateScreen() {
                       </TouchableOpacity>
                     </View>
                   )}
+
+                  {/* Confirmation Banner */}
+                  <View style={styles.confirmationBanner} pointerEvents={isActive && currentStep !== 3 ? "none" : "auto"}>
+                    <View style={styles.confirmationLeft}>
+                      <View style={styles.confirmationCheckBg}>
+                        <Text style={styles.confirmationCheck}>✓</Text>
+                      </View>
+                      <View style={styles.confirmationTextContainer}>
+                        <Text style={styles.confirmationLabel}>Template Selected</Text>
+                        <Text style={styles.confirmationValue} numberOfLines={1}>
+                          {selectedTemplate === null
+                            ? "Custom Animation Prompt"
+                            : (animationTemplates.find(t => (t.slug || t.id) === selectedTemplate)?.name || "Selected Preset")}
+                        </Text>
+                      </View>
+                    </View>
+                    <View style={styles.confirmedPill}>
+                      <Text style={styles.confirmedPillText}>✓ Active</Text>
+                    </View>
+                  </View>
                 </>
               )}
-
-              {/* Confirmation Banner */}
-              <View style={styles.confirmationBanner} pointerEvents={isActive && currentStep !== 3 ? "none" : "auto"}>
-                <View style={styles.confirmationLeft}>
-                  <View style={styles.confirmationCheckBg}>
-                    <Text style={styles.confirmationCheck}>✓</Text>
-                  </View>
-                  <View style={styles.confirmationTextContainer}>
-                    <Text style={styles.confirmationLabel}>Template Selected</Text>
-                    <Text style={styles.confirmationValue} numberOfLines={1}>
-                      {activeTabMode === "custom" || selectedTemplate === null
-                        ? "Custom Animation Prompt"
-                        : (animationTemplates.find(t => (t.slug || t.id) === selectedTemplate)?.name || "Selected Preset")}
-                    </Text>
-                  </View>
-                </View>
-                <View style={styles.confirmedPill}>
-                  <Text style={styles.confirmedPillText}>✓ Active</Text>
-                </View>
-              </View>
 
               {/* TAB 2: CUSTOM PROMPT CONTENT */}
               {activeTabMode === "custom" && (
@@ -1630,12 +2078,20 @@ export default function AnimateScreen() {
                       onChangeText={setCustomPrompt}
                     />
                     <TouchableOpacity
-                      style={[styles.surpriseButtonInline, isSurpriseLoading && { opacity: 0.7 }]}
+                      style={[
+                        styles.surpriseButtonInline,
+                        (isSurpriseLoading || (userCredits !== null && userCredits < 1)) && { opacity: 0.5 },
+                      ]}
                       onPress={handleSurpriseMe}
-                      disabled={isSurpriseLoading}
+                      disabled={isSurpriseLoading || (userCredits !== null && userCredits < 1)}
+                      activeOpacity={0.8}
                     >
                       <LinearGradient
-                        colors={["#28D4FA", "#D229FF"]}
+                        colors={
+                          userCredits !== null && userCredits < 1
+                            ? ["#94A3B8", "#64748B"]
+                            : ["#28D4FA", "#D229FF"]
+                        }
                         start={{ x: 0, y: 0 }}
                         end={{ x: 1, y: 0 }}
                         style={styles.surpriseButtonGradientInline}
@@ -1645,7 +2101,11 @@ export default function AnimateScreen() {
                         ) : (
                           <>
                             <SurpriseMeIcon />
-                            <Text style={styles.surpriseTextInline}>Surprise Me (1 Cr)</Text>
+                            <Text style={styles.surpriseTextInline}>
+                              {userCredits !== null && userCredits < 1
+                                ? "Surprise Me (0 Cr)"
+                                : "Surprise Me (1 Cr)"}
+                            </Text>
                           </>
                         )}
                       </LinearGradient>
@@ -1654,37 +2114,65 @@ export default function AnimateScreen() {
                 </View>
               )}
 
-              {/* Generate Button for Animate / Restore / Enhance - final call-to-action */}
+              {/* Generate Button for Animate */}
               {!animatedVideo && !restoredImage && (
-                <TourStepWrapper step={4} tooltipPosition="top">
-                  <View style={[styles.generateSection, { marginTop: 16, marginHorizontal: 0 }]} pointerEvents={isActive && currentStep !== 4 ? "none" : "auto"}>
+                <TourStepWrapper
+                  step={4}
+                  tooltipPosition="top"
+                  userCredits={userCredits}
+                  requiredCredits={4}
+                  overrideTitle={hasInsufficientCredits ? "Get Credits to Animate" : "Ready to Generate!"}
+                  overrideDesc={
+                    hasInsufficientCredits
+                      ? "👇 You need at least 4 credits to generate a video. Tap below to get credits or skip the tour."
+                      : "👇 Click 'Generate' below to bring your photo to life with AI!"
+                  }
+                >
+                  <View style={[styles.generateSection, { marginTop: 16 }]} pointerEvents={isActive && currentStep !== 4 ? "none" : "auto"}>
                     <TouchableOpacity
-                      style={[styles.generateButton, { opacity: (!uploadedImage || loading || uploading || isSubmittingRef.current) ? 0.6 : 1 }]}
-                      onPress={handleAnimate}
-                      disabled={loading || uploading || isSubmittingRef.current || !uploadedImage}
+                      style={[
+                        styles.generateButton,
+                        isActionDisabled && !hasInsufficientCredits && { opacity: 0.6 }
+                      ]}
+                      onPress={handleAction}
+                      disabled={isActionDisabled && !hasInsufficientCredits}
+                      activeOpacity={0.85}
                     >
                       <LinearGradient
-                        colors={["#38BDF8", "#A855F7", "#D229FF"]}
+                        colors={
+                          hasInsufficientCredits
+                            ? ["#F59E0B", "#EF4444"]
+                            : ["#28D4FA", "#D229FF"]
+                        }
                         start={{ x: 0, y: 0 }}
                         end={{ x: 1, y: 0 }}
                         style={styles.generateButtonGradient}
                       >
                         {loading ? (
-                          <ActivityIndicator color="#fff" />
+                          <>
+                            <ActivityIndicator color="#fff" size="small" />
+                            <Text style={styles.generateText}>Generating Animation...</Text>
+                          </>
+                        ) : hasInsufficientCredits ? (
+                          <>
+                            <CreditIcon width={20} height={20} color="#FFFFFF" />
+                            <Text style={styles.generateText}>Get Credits to Animate</Text>
+                          </>
                         ) : (
                           <>
-                            <GenerateIcon />
+                            <GenerateIcon width={20} height={20} color="#FFFFFF" />
                             <Text style={styles.generateText}>Generate</Text>
                             <View style={styles.creditsBadge}>
-                              <GenerateCreditIcon />
+                              <GenerateCreditIcon color="#FFFFFF" width={12} height={12} />
                               <Text style={styles.creditsBadgeText}>
-                                {getCreditCost()} Credits
+                                {requiredCredits} Credits
                               </Text>
                             </View>
                           </>
                         )}
                       </LinearGradient>
                     </TouchableOpacity>
+
                     <View style={styles.creditsDisplay}>
                       <GenerateCreditIcon color={"#38BDF8"} height={14} width={14} />
                       <GradientText style={styles.creditsText}>
@@ -1814,6 +2302,64 @@ const styles = StyleSheet.create({
     marginBottom: 6,
     textTransform: "uppercase",
     letterSpacing: 0.5,
+  },
+  modelChipsRow: {
+    flexDirection: "row",
+    gap: 8,
+  },
+  modelChip: {
+    flex: 1,
+    borderRadius: 10,
+    overflow: "hidden",
+    borderWidth: 1.5,
+    borderColor: "#E2E8F0",
+    backgroundColor: "#FFFFFF",
+  },
+  modelChipSelected: {
+    borderColor: "#D229FF",
+    backgroundColor: "#FFFFFF",
+    shadowColor: "#D229FF",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.18,
+    shadowRadius: 5,
+    elevation: 3,
+  },
+  modelChipGradient: {
+    paddingVertical: 10,
+    paddingHorizontal: 4,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  modelChipInner: {
+    paddingVertical: 10,
+    paddingHorizontal: 4,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#FFFFFF",
+  },
+  modelChipName: {
+    fontSize: 12,
+    fontFamily: getFontFamily("600"),
+    color: "#334155",
+    textAlign: "center",
+  },
+  modelChipNameSelected: {
+    fontSize: 12,
+    fontFamily: getFontFamily("700"),
+    color: "#FFFFFF",
+    textAlign: "center",
+  },
+  modelChipCost: {
+    fontSize: 11,
+    fontFamily: getFontFamily("500"),
+    color: "#94A3B8",
+    marginTop: 2,
+  },
+  modelChipCostSelected: {
+    fontSize: 11,
+    fontFamily: getFontFamily("700"),
+    color: "#FFFFFF",
+    marginTop: 2,
   },
   aspectRatioRow: {
     flexDirection: "row",
@@ -2004,28 +2550,60 @@ const styles = StyleSheet.create({
     width: "100%",
     height: 200,
     position: "relative",
+    backgroundColor: "rgba(15, 23, 42, 0.05)",
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "rgba(168, 85, 247, 0.25)",
+    overflow: "hidden",
+    alignItems: "center",
+    justifyContent: "center",
   },
   uploadedImage: {
     width: "100%",
     height: "100%",
-    borderRadius: 8,
+    borderRadius: 12,
   },
-  removeButton: {
+  uploadedActionButtons: {
     position: "absolute",
     top: 8,
     right: 8,
-    backgroundColor: "rgba(0,0,0,0.6)",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    zIndex: 10,
+  },
+  recropButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "rgba(15, 23, 42, 0.8)",
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "rgba(210, 41, 255, 0.4)",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 4,
+  },
+  recropButtonText: {
+    color: "#FFFFFF",
+    fontSize: 12,
+    fontFamily: getFontFamily("600"),
+  },
+  removeButton: {
+    backgroundColor: "rgba(15, 23, 42, 0.75)",
     width: 28,
     height: 28,
     borderRadius: 14,
     alignItems: "center",
     justifyContent: "center",
-  },
-  removeButtonText: {
-    color: "#fff",
-    fontSize: 20,
-    fontFamily: getFontFamily("600"),
-    marginTop: -2,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 4,
   },
   customSection: {
     paddingHorizontal: 16,
@@ -2096,6 +2674,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     gap: 8,
     paddingVertical: 16,
+    paddingHorizontal: 16,
   },
   generateText: {
     fontSize: 18,
@@ -2152,6 +2731,19 @@ const styles = StyleSheet.create({
   resultVideoContainer: {
     width: "100%",
     height: "100%",
+    position: "relative",
+  },
+  resultVideoLoader: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(0,0,0,0.6)",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+  },
+  resultVideoLoaderText: {
+    color: "#FFFFFF",
+    fontSize: 14,
+    fontFamily: getFontFamily("500"),
   },
   resultVideo: {
     width: "100%",
@@ -2242,39 +2834,58 @@ const styles = StyleSheet.create({
   },
   qualityCardSelected: {
     borderColor: "transparent",
-    shadowColor: "#000",
+    shadowColor: "#D229FF",
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.12,
+    shadowOpacity: 0.18,
     shadowRadius: 5,
     elevation: 3,
   },
   qualityCardGradient: {
-    paddingVertical: 10,
+    paddingVertical: 8,
     paddingHorizontal: 6,
     alignItems: "center" as const,
+    justifyContent: "center" as const,
   },
   qualityCardInner: {
-    paddingVertical: 10,
+    paddingVertical: 8,
     paddingHorizontal: 6,
     alignItems: "center" as const,
-    backgroundColor: "#fff",
+    justifyContent: "center" as const,
+    backgroundColor: "#fafafa",
   },
   qualityLabel: {
-    fontSize: 15,
-    fontFamily: getFontFamily("600"),
-    color: "#1f2937",
-    marginBottom: 1,
-  },
-  qualityRes: {
-    fontSize: 12,
-    fontFamily: getFontFamily("500"),
-    color: "#9ca3af",
-    marginBottom: 2,
-  },
-  qualityCredits: {
     fontSize: 13,
     fontFamily: getFontFamily("600"),
-    color: "#6b7280",
+    color: "#374151",
+    textAlign: "center" as const,
+  },
+  qualityLabelSelected: {
+    fontSize: 13,
+    fontFamily: getFontFamily("600"),
+    color: "#fff",
+    textAlign: "center" as const,
+  },
+  qualityRes: {
+    fontSize: 11,
+    fontFamily: getFontFamily("500"),
+    color: "#9ca3af",
+  },
+  qualityResSelected: {
+    fontSize: 11,
+    fontFamily: getFontFamily("500"),
+    color: "rgba(255,255,255,0.85)",
+  },
+  qualityCredits: {
+    fontSize: 12,
+    fontFamily: getFontFamily("600"),
+    color: "#9ca3af",
+    marginTop: 2,
+  },
+  qualityCreditsSelected: {
+    fontSize: 12,
+    fontFamily: getFontFamily("600"),
+    color: "rgba(255,255,255,0.9)",
+    marginTop: 2,
   },
   modelChipsRow: {
     flexDirection: "row" as const,
@@ -2334,16 +2945,203 @@ const styles = StyleSheet.create({
     color: "rgba(255,255,255,0.85)",
     marginTop: 2,
   },
-  templatesGrid: {
+  restoreDetailsCard: {
+    marginTop: 14,
+    padding: 14,
+    backgroundColor: "#FAF5FF",
+    borderRadius: 14,
+    borderWidth: 1.5,
+    borderColor: "#E9D5FF",
+  },
+  restoreHeaderRow: {
     flexDirection: "row",
-    flexWrap: "wrap",
+    alignItems: "center",
     gap: 12,
+    marginBottom: 12,
+  },
+  restoreIconCircle: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: "#F3E8FF",
+    borderWidth: 1,
+    borderColor: "#D8B4FE",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  restoreTitle: {
+    fontSize: 16,
+    fontFamily: getFontFamily("700"),
+    color: "#1E293B",
+    marginBottom: 2,
+  },
+  restoreSubtitle: {
+    fontSize: 13,
+    fontFamily: getFontFamily("400"),
+    color: "#64748B",
+    lineHeight: 18,
+  },
+  restoreFeaturesGrid: {
+    gap: 8,
+  },
+  restoreFeaturePill: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#FFFFFF",
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+    gap: 8,
+  },
+  restoreFeatureEmoji: {
+    fontSize: 16,
+  },
+  restoreFeatureText: {
+    fontSize: 13,
+    fontFamily: getFontFamily("500"),
+    color: "#334155",
+  },
+  enhanceSection: {
+    marginTop: 14,
+  },
+  enhanceHeaderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 10,
+  },
+  enhanceSectionTitle: {
+    fontSize: 14,
+    fontFamily: getFontFamily("600"),
+    color: "#64748B",
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+  },
+  enhanceCostTag: {
+    backgroundColor: "#F3E8FF",
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#D8B4FE",
+  },
+  enhanceCostTagText: {
+    fontSize: 12,
+    fontFamily: getFontFamily("600"),
+    color: "#6B21A8",
+  },
+  enhanceOptionsList: {
+    gap: 10,
+  },
+  enhanceOptionCard: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    backgroundColor: "#F8FAFC",
+    borderWidth: 1.5,
+    borderColor: "#E2E8F0",
+    borderRadius: 12,
+    padding: 12,
+    gap: 12,
+  },
+  enhanceOptionCardSelected: {
+    backgroundColor: "#FAF5FF",
+    borderColor: "#D229FF",
+    shadowColor: "#D229FF",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.12,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  enhanceCheckbox: {
+    width: 22,
+    height: 22,
+    borderRadius: 6,
+    borderWidth: 2,
+    borderColor: "#94A3B8",
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 1,
+  },
+  enhanceCheckboxSelected: {
+    borderColor: "#D229FF",
+    backgroundColor: "#D229FF",
+  },
+  enhanceCheckboxCheck: {
+    color: "#FFFFFF",
+    fontSize: 13,
+    fontFamily: getFontFamily("700"),
+  },
+  enhanceOptionInfo: {
+    flex: 1,
+  },
+  enhanceOptionTitle: {
+    fontSize: 15,
+    fontFamily: getFontFamily("600"),
+    color: "#0F172A",
+    marginBottom: 2,
+  },
+  enhanceOptionPrice: {
+    fontSize: 13,
+    fontFamily: getFontFamily("600"),
+    color: "#9333EA",
+  },
+  enhanceOptionDesc: {
+    fontSize: 12,
+    fontFamily: getFontFamily("400"),
+    color: "#64748B",
+    lineHeight: 17,
+  },
+  templatesTabSwitcher: {
+    flexDirection: "row",
+    backgroundColor: "#E2E8F0",
+    borderRadius: 14,
+    padding: 3,
+    marginBottom: 16,
+  },
+  templateTabBtn: {
+    flex: 1,
+    paddingVertical: 10,
+    alignItems: "center",
+    borderRadius: 12,
+    overflow: "hidden",
+  },
+  templateTabBtnGradient: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  templateTabBtnTextActive: {
+    color: "#FFFFFF",
+    fontSize: 14,
+    fontFamily: getFontFamily("600"),
+    textTransform: "uppercase",
+  },
+  templateTabBtnTextInactive: {
+    color: "#475569",
+    fontSize: 14,
+    fontFamily: getFontFamily("600"),
+    textTransform: "uppercase",
+  },
+  templatesHorizontalContainer: {
+    marginBottom: 4,
+  },
+  templatesGrid: {
     marginTop: 8,
+    gap: 12,
+  },
+  templateRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
   },
   templateGridItem: {
-    width: "30%",
+    width: "31%",
     alignItems: "center",
-    marginBottom: 4,
+  },
+  templateGridItemPlaceholder: {
+    width: "31%",
   },
   templateCardGrid: {
     width: "100%",
@@ -2366,17 +3164,97 @@ const styles = StyleSheet.create({
     width: "100%",
     height: "100%",
   },
-  customTemplateContainerGrid: {
-    backgroundColor: "#F3E8FF",
-    justifyContent: "center",
-    alignItems: "center",
-  },
   templateNameGrid: {
     fontSize: 13,
     fontFamily: getFontFamily("600"),
     color: "#374151",
     textAlign: "center",
     width: "100%",
+  },
+  paginationBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginTop: 10,
+    marginBottom: 10,
+    paddingHorizontal: 4,
+  },
+  pageButton: {
+    backgroundColor: "#FAF5FF",
+    borderWidth: 1,
+    borderColor: "#E9D5FF",
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 8,
+  },
+  pageButtonDisabled: {
+    backgroundColor: "#F3F4F6",
+    borderColor: "#E5E7EB",
+  },
+  pageButtonText: {
+    fontSize: 15,
+    fontFamily: getFontFamily("600"),
+    color: "#D229FF",
+  },
+  pageButtonTextDisabled: {
+    color: "#9CA3AF",
+    fontFamily: getFontFamily("400"),
+  },
+  pageIndicatorText: {
+    fontSize: 15,
+    fontFamily: getFontFamily("600"),
+    color: "#4B5563",
+  },
+  actionButtonContainer: {
+    paddingHorizontal: 16,
+    marginTop: 8,
+    marginBottom: 20,
+  },
+  actionButton: {
+    borderRadius: 14,
+    overflow: "hidden",
+    elevation: 4,
+    shadowColor: "#D229FF",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+  },
+  actionButtonGradient: {
+    paddingVertical: 16,
+    paddingHorizontal: 16,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  actionBtnRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 10,
+  },
+  actionLoadingRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 10,
+  },
+  actionButtonText: {
+    fontSize: 17,
+    fontFamily: getFontFamily("600"),
+    color: "#FFFFFF",
+  },
+  actionCreditsBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: "rgba(255,255,255,0.22)",
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 10,
+  },
+  actionCreditsBadgeText: {
+    fontSize: 13,
+    fontFamily: getFontFamily("600"),
+    color: "#FFFFFF",
   },
   selectedCheckBadge: {
     position: "absolute",
@@ -2579,39 +3457,5 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: "#fff",
     fontFamily: getFontFamily("600"),
-  },
-  paginationBar: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginTop: 14,
-    marginBottom: 10,
-    paddingHorizontal: 4,
-  },
-  pageButton: {
-    backgroundColor: "#FAF5FF",
-    borderWidth: 1,
-    borderColor: "#E9D5FF",
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 8,
-  },
-  pageButtonDisabled: {
-    backgroundColor: "#F3F4F6",
-    borderColor: "#E5E7EB",
-  },
-  pageButtonText: {
-    fontSize: 15,
-    fontFamily: getFontFamily("600"),
-    color: "#D229FF",
-  },
-  pageButtonTextDisabled: {
-    color: "#9CA3AF",
-    fontFamily: getFontFamily("400"),
-  },
-  pageIndicatorText: {
-    fontSize: 15,
-    fontFamily: getFontFamily("600"),
-    color: "#4B5563",
   },
 });

@@ -127,7 +127,7 @@ export default function PrivacyLegalScreen() {
               <Text style={styles.contentSubtitle}>Credits & Refunds</Text>
               <Text style={styles.contentText}>
                 • Credits are non-transferable{"\n"}• Unused credits can be
-                refunded within 30 days of purchase{"\n"}• Credits used for
+                refunded within 7 days of purchase{"\n"}• Credits used for
                 processing are non-refundable{"\n"}• Credits do not expire
               </Text>
             </View>

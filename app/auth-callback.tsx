@@ -2,36 +2,36 @@ import { useEffect, useState } from "react";
 import { View, ActivityIndicator, Text } from "react-native";
 import { useAuth } from "@/contexts/AuthContext";
 import { router } from "expo-router";
+import { getFontFamily } from "@/constants/Fonts";
 
 export default function AuthCallback() {
   const { isSignedIn, isLoaded } = useAuth();
   const [hasRedirected, setHasRedirected] = useState(false);
 
   useEffect(() => {
-    if (!isLoaded) return;
+    if (!isLoaded || hasRedirected) return;
     
-    // Small delay to ensure session is fully established
-    const timer = setTimeout(() => {
-      if (hasRedirected) return;
-      
+    if (isSignedIn) {
       setHasRedirected(true);
-      
-      if (isSignedIn) {
-        // The quick tour decides for itself whether to show (only once per
-        // account, right after registration/first login) — see TourContext.
-        router.replace("/(tabs)");
-      } else {
+      router.replace("/(tabs)");
+      return;
+    }
+
+    // If not signed in immediately, wait for OAuth session exchange
+    const fallbackTimer = setTimeout(() => {
+      if (!hasRedirected) {
+        setHasRedirected(true);
         router.replace("/(auth)");
       }
-    }, 500);
+    }, 4000);
 
-    return () => clearTimeout(timer);
+    return () => clearTimeout(fallbackTimer);
   }, [isSignedIn, isLoaded, hasRedirected]);
 
   return (
-    <View style={{ flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "#000" }}>
-      <ActivityIndicator size="large" color="#03ade2" />
-      <Text style={{ color: "#fff", marginTop: 20, fontSize: 16 }}>
+    <View style={{ flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "#0B0F19" }}>
+      <ActivityIndicator size="large" color="#28D4FA" />
+      <Text style={{ color: "#fff", marginTop: 20, fontSize: 17, fontFamily: getFontFamily("500") }}>
         Completing sign in...
       </Text>
     </View>

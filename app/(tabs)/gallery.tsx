@@ -3,7 +3,6 @@ import {
   View,
   Text,
   TouchableOpacity,
-  Image,
   Dimensions,
   TextInput,
   FlatList,
@@ -12,11 +11,14 @@ import {
   RefreshControl,
   Platform,
 } from "react-native";
+import { Image as ExpoImage } from "expo-image";
 import { LinearGradient } from "expo-linear-gradient";
 import { BlurView } from "expo-blur";
+import { useFocusEffect } from "expo-router";
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { Video, ResizeMode } from "expo-av";
 import { GradientText } from "@/components/ui/GradientText";
+import { Ionicons } from "@expo/vector-icons";
 import ScreenWrapper from "@/components/ui/ScreenWrapper";
 import FullScreenVideoViewer from "@/components/ui/FullScreenVideoViewer";
 import SearchIcon from "@/components/images/SearchIcon";
@@ -59,7 +61,7 @@ export default function GalleryScreen() {
   const [selectedVideo, setSelectedVideo] = useState<GalleryItem | null>(null);
   const [userCredits, setUserCredits] = useState<number | null>(null);
 
-  const fetchGallery = useCallback(async () => {
+  const fetchGallery = useCallback(async (isInitial = false) => {
     if (!user) {
       setLoading(false);
       return;
@@ -74,17 +76,19 @@ export default function GalleryScreen() {
     }
 
     try {
+      if (isInitial) {
+        setLoading(true);
+      }
       const token = await getToken();
       const result = await api.getGallery(userEmail, token);
       setGalleryItems(result.result || []);
     } catch (error) {
       console.error("Error fetching gallery:", error);
-      Alert.alert("Error", "Failed to load gallery. Please try again.");
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [user]); // Removed getToken from dependencies
+  }, [user]);
 
   const fetchUserCredits = useCallback(async () => {
     if (!user) return;
@@ -96,14 +100,17 @@ export default function GalleryScreen() {
       console.error("Error fetching credits:", error);
       setUserCredits(0);
     }
-  }, [user]); // Removed getToken from dependencies
+  }, [user]);
 
-  useEffect(() => {
-    if (user) {
-      fetchGallery();
-      fetchUserCredits();
-    }
-  }, [user, fetchGallery, fetchUserCredits]);
+  // Automatically refresh gallery and credits whenever user navigates/switches to Gallery tab
+  useFocusEffect(
+    useCallback(() => {
+      if (user) {
+        fetchGallery();
+        fetchUserCredits();
+      }
+    }, [user, fetchGallery, fetchUserCredits])
+  );
 
   // Use useMemo to prevent flickering - only recalculate when dependencies change
   const filteredItems = useMemo(() => {
@@ -209,6 +216,19 @@ export default function GalleryScreen() {
   const isVideo = (item: GalleryItem) =>
     item.roomType === "Old Photo Animation";
 
+  const getVideoPosterUrl = (item?: GalleryItem | null) => {
+    if (!item) return null;
+    if (item.orgImage && !item.orgImage.endsWith(".mp4") && !item.orgImage.endsWith(".mov")) {
+      return item.orgImage;
+    }
+    if (item.aiImage && item.aiImage.includes("/video/upload/")) {
+      return item.aiImage
+        .replace("/video/upload/", "/video/upload/so_0,f_jpg,q_auto:good,w_400/")
+        .replace(/\.(mp4|mov|webm|m4v)(\?.*)?$/i, ".jpg");
+    }
+    return item.orgImage || item.aiImage || null;
+  };
+
   const imageCount = galleryItems.filter((item) => !isVideo(item)).length;
   const videoCount = galleryItems.filter((item) => isVideo(item)).length;
   const totalCount = galleryItems.length;
@@ -265,26 +285,34 @@ export default function GalleryScreen() {
     await handleDownload(selectedVideo);
   };
 
-  const renderItem = ({ item }: { item: GalleryItem }) => (
-    <TouchableOpacity
-      style={styles.galleryItem}
-      onPress={() => isVideo(item) && handleVideoPress(item)}
-      activeOpacity={isVideo(item) ? 0.8 : 1}
-    >
-      {isVideo(item) ? (
-        <Video
-          source={{ uri: item.aiImage }}
+  const renderItem = ({ item }: { item: GalleryItem }) => {
+    const isVideoItem = isVideo(item);
+    const posterUrl = isVideoItem ? getVideoPosterUrl(item) : (item.aiImage || item.orgImage);
+
+    return (
+      <TouchableOpacity
+        style={styles.galleryItem}
+        onPress={() => isVideoItem && handleVideoPress(item)}
+        activeOpacity={isVideoItem ? 0.8 : 1}
+      >
+        <ExpoImage
+          source={posterUrl ? { uri: posterUrl } : undefined}
           style={styles.galleryImage}
-          resizeMode={ResizeMode.COVER}
-          shouldPlay={false}
-          useNativeControls={false}
+          contentFit="cover"
+          cachePolicy="memory-disk"
+          transition={150}
         />
-      ) : (
-        <Image
-          source={{ uri: item.aiImage }}
-          style={styles.galleryImage}
-          resizeMode="cover"
-        />
+      {isVideo(item) && (
+        <View style={styles.centerPlayButton} pointerEvents="none">
+          <LinearGradient
+            colors={["#38BDF8", "#D229FF"]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.playIconCircle}
+          >
+            <Ionicons name="play" size={22} color="#FFFFFF" style={{ marginLeft: 2 }} />
+          </LinearGradient>
+        </View>
       )}
       <View style={styles.itemOverlay}>
         <TouchableOpacity
@@ -294,11 +322,12 @@ export default function GalleryScreen() {
             handleDownload(item);
           }}
           disabled={downloadingId === item.id}
+          activeOpacity={0.8}
         >
           {downloadingId === item.id ? (
             <ActivityIndicator size="small" color="#fff" />
           ) : (
-            <Text style={styles.actionButtonText}>⬇</Text>
+            <Ionicons name="download-outline" size={18} color="#FFFFFF" />
           )}
         </TouchableOpacity>
         <TouchableOpacity
@@ -308,21 +337,24 @@ export default function GalleryScreen() {
             handleDelete(item);
           }}
           disabled={deletingId === item.id}
+          activeOpacity={0.8}
         >
           {deletingId === item.id ? (
             <ActivityIndicator size="small" color="#fff" />
           ) : (
-            <Text style={styles.actionButtonText}>🗑</Text>
+            <Ionicons name="trash-outline" size={17} color="#FFFFFF" />
           )}
         </TouchableOpacity>
       </View>
       {isVideo(item) && (
         <View style={styles.videoBadge}>
+          <Ionicons name="videocam" size={12} color="#FFFFFF" style={{ marginRight: 4 }} />
           <Text style={styles.videoBadgeText}>VIDEO</Text>
         </View>
       )}
-    </TouchableOpacity>
-  );
+      </TouchableOpacity>
+    );
+  };
 
   const renderHeader = useCallback(
     () => (
@@ -518,6 +550,7 @@ export default function GalleryScreen() {
       <FullScreenVideoViewer
         visible={selectedVideo !== null}
         videoUri={selectedVideo?.aiImage || null}
+        posterUri={selectedVideo ? getVideoPosterUrl(selectedVideo) : null}
         onClose={closeVideoModal}
         onDownload={handleDownloadFromModal}
         onDelete={handleDeleteFromModal}
@@ -721,14 +754,38 @@ const styles = StyleSheet.create({
     color: "#fff",
     fontSize: 17,
   },
+  centerPlayButton: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  playIconCircle: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 6,
+    elevation: 5,
+  },
+  playIconText: {
+    color: "#FFFFFF",
+    fontSize: 16,
+    marginLeft: 3,
+  },
   videoBadge: {
     position: "absolute",
     top: 8,
     left: 8,
     backgroundColor: "rgba(210, 41, 255, 0.9)",
-    paddingHorizontal: 8,
+    paddingHorizontal: 7,
     paddingVertical: 4,
-    borderRadius: 4,
+    borderRadius: 6,
+    flexDirection: "row",
+    alignItems: "center",
   },
   videoBadgeText: {
     color: "#fff",

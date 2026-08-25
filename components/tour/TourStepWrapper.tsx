@@ -3,6 +3,7 @@ import { View, StyleSheet, Text, TouchableOpacity, Animated, Easing } from "reac
 import { useTour } from "@/contexts/TourContext";
 import { getFontFamily } from "@/constants/Fonts";
 import { LinearGradient } from "expo-linear-gradient";
+import { router } from "expo-router";
 import TourArrowDownIcon from "@/components/images/TourArrowDownIcon";
 import TourArrowUpIcon from "@/components/images/TourArrowUpIcon";
 import PointerIcon from "@/components/images/PointerIcon";
@@ -17,6 +18,8 @@ interface TourStepWrapperProps {
   tooltipPosition?: "top" | "bottom" | "none";
   overrideTitle?: string;
   overrideDesc?: string;
+  userCredits?: number | null;
+  requiredCredits?: number;
 }
 
 const STEP_DATA: Record<number, { title: string; desc: string; icon?: React.ReactNode }> = {
@@ -26,17 +29,17 @@ const STEP_DATA: Record<number, { title: string; desc: string; icon?: React.Reac
   },
   2: {
     title: "Upload Your Photo",
-    desc: "👇 Click here to upload your photo!",
+    desc: "👆 Click above to upload your photo!",
     icon: <UploadIcon width={18} height={18} color="#475569" />,
   },
   3: {
     title: "Pick a Template",
-    desc: "👇 Click a template or tap 'Custom Prompt'",
+    desc: "👇 Click a template below or tap 'Custom Prompt'",
     icon: <SurpriseMeIcon width={18} height={18} color="#475569" />,
   },
   4: {
     title: "Generate AI Video",
-    desc: "👇 Click 'Generate' to bring your photo to life!",
+    desc: "👇 Click 'Generate' below to bring your photo to life!",
     icon: <GenerateIcon width={18} height={18} color="#475569" />,
   },
 };
@@ -48,6 +51,8 @@ const TourStepWrapper: React.FC<TourStepWrapperProps> = ({
   tooltipPosition = "bottom",
   overrideTitle,
   overrideDesc,
+  userCredits,
+  requiredCredits = 4,
 }) => {
   const { currentStep, isActive, nextStep, endTour } = useTour();
   const pulseAnim = useRef(new Animated.Value(0.3)).current;
@@ -121,6 +126,7 @@ const TourStepWrapper: React.FC<TourStepWrapperProps> = ({
 
   const stepTitle = overrideTitle || defaultInfo.title;
   const stepDesc = overrideDesc || defaultInfo.desc;
+  const hasEnoughCredits = userCredits !== undefined && userCredits !== null ? userCredits >= requiredCredits : true;
 
   const renderTooltip = () => (
     <Animated.View
@@ -185,6 +191,29 @@ const TourStepWrapper: React.FC<TourStepWrapperProps> = ({
             >
               <Text style={{ fontSize: 14, fontFamily: getFontFamily("600"), color: "#FFFFFF" }}>
                 Next: Templates →
+              </Text>
+            </LinearGradient>
+          </TouchableOpacity>
+        )}
+
+        {step === 4 && (
+          <TouchableOpacity
+            onPress={() => {
+              endTour();
+              if (!hasEnoughCredits) {
+                router.push("/(tabs)/credit");
+              }
+            }}
+            activeOpacity={0.8}
+          >
+            <LinearGradient
+              colors={["#28D4FA", "#D229FF"]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={{ paddingVertical: 6, paddingHorizontal: 14, borderRadius: 14 }}
+            >
+              <Text style={{ fontSize: 14, fontFamily: getFontFamily("600"), color: "#FFFFFF" }}>
+                {hasEnoughCredits ? "Got It! 🎉" : "Get Credits →"}
               </Text>
             </LinearGradient>
           </TouchableOpacity>

@@ -9,6 +9,7 @@ import {
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { useTour } from "@/contexts/TourContext";
+import { useUser } from "@clerk/clerk-expo";
 import { getFontFamily } from "@/constants/Fonts";
 import TourArrowDownIcon from "@/components/images/TourArrowDownIcon";
 import PointerIcon from "@/components/images/PointerIcon";
@@ -16,8 +17,9 @@ import SurpriseMeIcon from "@/components/images/SurpriseMeIcon";
 
 const TourOverlay = () => {
   const { currentStep, isActive, nextStep, endTour } = useTour();
+  const { user } = useUser();
 
-  if (!isActive) {
+  if (!isActive || !user) {
     return null;
   }
 

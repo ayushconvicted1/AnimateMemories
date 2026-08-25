@@ -2,7 +2,6 @@ import React, { useState, useEffect } from "react";
 import { View, Text, TouchableOpacity, StyleSheet } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import AnimateMemoriesLogo from "@/components/images/AnimateMemoriesLogo";
-import NotificationsIcon from "../images/NotificationsIcon";
 import MenuIcon from "../images/MenuIcon";
 import { useAuth } from "@/contexts/AuthContext";
 import { useAuth as useClerkAuth } from "@clerk/clerk-expo";
@@ -15,25 +14,32 @@ interface TabHeaderProps {
   creditsText?: string;
 }
 
+// Module-level cache so switching screens instantly retains the known balance with 0 loading flicker
+let globalLastKnownCredits: number | null = null;
+
 export default function TabHeader({ creditsText }: TabHeaderProps) {
   const { user } = useAuth();
   const { getToken } = useClerkAuth();
   const { openSidebar } = useSidebar();
   const { isActive } = require("@/contexts/TourContext").useTour();
-  const [fetchedCredits, setFetchedCredits] = useState<number | null>(null);
+  const [fetchedCredits, setFetchedCredits] = useState<number | null>(
+    globalLastKnownCredits
+  );
 
   useEffect(() => {
-    if (!creditsText && user) {
+    if (user) {
       let isMounted = true;
       async function loadCredits() {
         try {
           const token = await getToken();
           const res = await api.verifyUser(user, token);
           if (isMounted && res?.result?.credits !== undefined) {
-            setFetchedCredits(res.result.credits);
+            const count = res.result.credits;
+            globalLastKnownCredits = count;
+            setFetchedCredits(count);
           }
-        } catch (e) {
-          if (isMounted) setFetchedCredits(0);
+        } catch {
+          // Keep last known balance on error
         }
       }
       loadCredits();
@@ -41,40 +47,80 @@ export default function TabHeader({ creditsText }: TabHeaderProps) {
         isMounted = false;
       };
     }
-  }, [user, creditsText, getToken]);
+  }, [user, getToken]);
 
-  const displayCredits =
-    creditsText ||
-    (fetchedCredits !== null ? `${fetchedCredits} Credits` : "Loading...");
+  const parseCreditNumber = (val?: string | null): number | null => {
+    if (!val || typeof val !== "string" || val.toLowerCase().includes("loading")) {
+      return null;
+    }
+    const match = val.match(/\d+/);
+    return match ? parseInt(match[0], 10) : null;
+  };
+
+  const parsedPropCredits = parseCreditNumber(creditsText);
+  if (parsedPropCredits !== null) {
+    globalLastKnownCredits = parsedPropCredits;
+  }
+
+  const currentCreditCount =
+    parsedPropCredits !== null
+      ? parsedPropCredits
+      : fetchedCredits !== null
+      ? fetchedCredits
+      : globalLastKnownCredits;
+
+  const isLoading = currentCreditCount === null;
+  const isLowCredits =
+    !isLoading && currentCreditCount !== null && currentCreditCount <= 3;
+
+  // Signature brand gradient for credit view in the header
+  const pillGradientColors: readonly [string, string] = ["#38BDF8", "#D229FF"];
 
   return (
     <View style={styles.header} pointerEvents={isActive ? "none" : "auto"}>
-      <TouchableOpacity onPress={() => router.push("/(tabs)")} activeOpacity={0.8}>
+      {/* Brand Logo */}
+      <TouchableOpacity
+        onPress={() => router.push("/(tabs)")}
+        activeOpacity={0.8}
+      >
         <View style={styles.logoContainer}>
           <AnimateMemoriesLogo width={128} height={32} />
         </View>
       </TouchableOpacity>
+
       <View style={styles.headerRight}>
+        {/* Unified Smart Credit & Upgrade Pill */}
         <TouchableOpacity
           onPress={() => router.push("/(tabs)/credit")}
           activeOpacity={0.8}
+          style={styles.creditPillTouchable}
         >
           <LinearGradient
-            colors={["#38BDF8", "#00A3FF"]}
+            colors={pillGradientColors}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 0 }}
-            style={styles.creditsButton}
+            style={styles.smartCreditPill}
           >
-            <Text style={styles.creditsButtonText}>{displayCredits}</Text>
+            {isLoading ? (
+              <Text style={styles.creditCountText}>Loading...</Text>
+            ) : isLowCredits ? (
+              <View style={styles.lowCreditContent}>
+                <Text style={styles.creditCountText}>
+                  {currentCreditCount}{" "}
+                  {currentCreditCount === 1 ? "Credit" : "Credits"}
+                </Text>
+                <View style={styles.pillDivider} />
+                <Text style={styles.upgradeActionText}>+ Upgrade</Text>
+              </View>
+            ) : (
+              <Text style={styles.creditCountText}>
+                {currentCreditCount} Credits
+              </Text>
+            )}
           </LinearGradient>
         </TouchableOpacity>
-        <TouchableOpacity
-          style={styles.headerIconButton}
-          onPress={() => router.push("/(tabs)/notifications")}
-          activeOpacity={0.7}
-        >
-          <NotificationsIcon width={20} height={20} color="#0F172A" />
-        </TouchableOpacity>
+
+        {/* Menu Drawer Toggle */}
         <TouchableOpacity
           style={styles.headerIconButton}
           onPress={openSidebar}
@@ -105,20 +151,49 @@ const styles = StyleSheet.create({
   headerRight: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 12,
+    gap: 10,
   },
-  creditsButton: {
+  creditPillTouchable: {
+    borderRadius: 20,
+    overflow: "hidden",
+    shadowColor: "#D229FF",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  smartCreditPill: {
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 20,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
   },
-  creditsButtonText: {
-    fontSize: 14,
-    color: "#fff",
+  lowCreditContent: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  pillDivider: {
+    width: 1,
+    height: 12,
+    backgroundColor: "rgba(255, 255, 255, 0.45)",
+    borderRadius: 1,
+  },
+  creditCountText: {
+    fontSize: 13,
+    color: "#FFFFFF",
     fontFamily: getFontFamily("600"),
   },
+  upgradeActionText: {
+    fontSize: 12,
+    color: "#FFFFFF",
+    fontFamily: getFontFamily("700"),
+    textTransform: "uppercase",
+    letterSpacing: 0.3,
+  },
   headerIconButton: {
-    padding: 4,
+    padding: 6,
   },
 });
-

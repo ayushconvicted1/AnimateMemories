@@ -16,7 +16,7 @@ export function GradientIcon({
   name, 
   size = 28, 
   focused = false,
-  inactiveColor = '#979797'
+  inactiveColor = '#475569'
 }: GradientIconProps) {
   if (focused) {
     return (

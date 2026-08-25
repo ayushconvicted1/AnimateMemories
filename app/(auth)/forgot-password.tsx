@@ -14,6 +14,7 @@ import ChevronLeftIcon from "@/components/images/ChevronLeftIcon";
 import SearchGradient from "@/components/reusable/SearchGradient";
 import TopScrollComponent from "@/components/reusable/TopScrollComponent";
 import Svg, { Path } from "react-native-svg";
+import { getFontFamily } from "@/constants/Fonts";
 
 const EyeOffIcon = ({ size = 20, color = "#7A7A7A" }) => (
   <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
@@ -85,7 +86,6 @@ const ForgotPasswordScreen = () => {
 
       if (result.status === "complete") {
         await setActive({ session: result.createdSessionId });
-        if (router.canDismiss()) router.dismissAll();
         router.replace("/(tabs)");
       } else {
         Alert.alert("Error", "Password reset failed. Please try again.");
@@ -216,17 +216,19 @@ const styles = StyleSheet.create({
   },
   title: {
     color: "#fff",
-    fontSize: 27,
-    fontWeight: "600",
+    fontSize: 28,
+    fontFamily: getFontFamily("700"),
     textAlign: "center",
     marginBottom: 10,
   },
   subtitle: {
     color: "#A0A0A0",
-    fontSize: 17,
+    fontSize: 16,
+    fontFamily: getFontFamily("400"),
     textAlign: "center",
     marginBottom: 30,
     paddingHorizontal: 20,
+    lineHeight: 24,
   },
   btn: {
     paddingVertical: 14,
@@ -235,7 +237,7 @@ const styles = StyleSheet.create({
   },
   btnText: {
     color: "#fff",
-    fontWeight: "600",
+    fontFamily: getFontFamily("600"),
     fontSize: 18,
   },
 });

@@ -13,7 +13,7 @@ export default function PaymentCallback() {
   const params = useLocalSearchParams();
   const { user } = useAuth();
   const { getToken } = useClerkAuth();
-  const [status, setStatus] = useState<"loading" | "success" | "error">("loading");
+  const [status, setStatus] = useState<"loading" | "success" | "error" | "cancelled">("loading");
   const [message, setMessage] = useState("Processing payment...");
 
   useEffect(() => {
@@ -77,15 +77,14 @@ export default function PaymentCallback() {
           setStatus("error");
           setMessage("Unable to verify payment. Please check your account.");
         }
-      } else if (url?.includes("payment-cancelled")) {
+      } else if (url?.includes("payment-cancelled") || params.cancelled === "true") {
         // Payment was cancelled
-        setStatus("error");
-        setMessage("Payment was cancelled.");
+        setStatus("cancelled");
+        setMessage("Your transaction was cancelled. No charges were made to your account.");
         
-        // Redirect to credit screen after 2 seconds
         setTimeout(() => {
           router.replace("/(tabs)/credit");
-        }, 2000);
+        }, 2200);
       } else {
         // Unknown status, refresh credits anyway
         if (user) {
@@ -142,6 +141,27 @@ export default function PaymentCallback() {
           </>
         )}
 
+        {status === "cancelled" && (
+          <>
+            <Text style={styles.errorIcon}>ℹ️</Text>
+            <GradientText style={styles.title}>Transaction Cancelled</GradientText>
+            <Text style={styles.message}>{message}</Text>
+            <TouchableOpacity
+              onPress={() => router.replace("/(tabs)/credit")}
+              style={styles.button}
+            >
+              <LinearGradient
+                colors={["#28D4FA", "#D229FF"]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                style={styles.buttonGradient}
+              >
+                <Text style={styles.buttonText}>Return to Plans</Text>
+              </LinearGradient>
+            </TouchableOpacity>
+          </>
+        )}
+
         {status === "error" && (
           <>
             <Text style={styles.errorIcon}>❌</Text>
@@ -167,6 +187,8 @@ export default function PaymentCallback() {
   );
 }
 
+import { getFontFamily } from "@/constants/Fonts";
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -181,14 +203,14 @@ const styles = StyleSheet.create({
   },
   title: {
     fontSize: 24,
-    fontWeight: "600",
+    fontFamily: getFontFamily("600"),
     marginTop: 20,
     marginBottom: 12,
     textAlign: "center",
   },
   message: {
     fontSize: 16,
-    fontWeight: "400",
+    fontFamily: getFontFamily("400"),
     color: "#666",
     textAlign: "center",
     marginBottom: 30,
@@ -215,7 +237,7 @@ const styles = StyleSheet.create({
   },
   buttonText: {
     fontSize: 18,
-    fontWeight: "600",
+    fontFamily: getFontFamily("600"),
     color: "#fff",
   },
 });

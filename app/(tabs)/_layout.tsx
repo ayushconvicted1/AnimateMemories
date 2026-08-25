@@ -157,9 +157,9 @@ const CreateButton = ({ focused }: { focused: boolean }) => {
           </>
         )}
         <View style={styles.centerButton}>
-          {/* Inactive gradient (gray) */}
+          {/* Inactive gradient (dark gray) */}
           <AnimatedLinearGradient
-            colors={["#979797", "#979797"]}
+            colors={["#475569", "#475569"]}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 0 }}
             style={[StyleSheet.absoluteFill, inactiveGradientOpacity]}
@@ -201,7 +201,7 @@ export default function TabLayout() {
       <Tabs
         screenOptions={{
           tabBarActiveTintColor: "#282828",
-          tabBarInactiveTintColor: "#979797",
+          tabBarInactiveTintColor: "#475569",
           headerShown: false,
           tabBarButton: HapticTab,
           tabBarBackground: TabBarBackground,

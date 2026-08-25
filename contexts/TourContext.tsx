@@ -36,13 +36,22 @@ export const TourProvider: React.FC<{ children: React.ReactNode }> = ({
     Record<number, TourStepMeasurements>
   >({});
 
+  // Reset tour state if user is unauthenticated or logs out
+  useEffect(() => {
+    if (!user) {
+      setIsActive(false);
+      setCurrentStep(0);
+    }
+  }, [user]);
+
   const startTour = async () => {
     // The tour guide only shows once per account — on the first registration
-    // or first login. After it's skipped or completed, both a Clerk metadata
-    // flag and a device-level AsyncStorage flag prevent it from coming back.
+    // or first login. It must never run when unauthenticated.
+    if (!user) return;
     if (user?.unsafeMetadata?.onboardingCompleted) return;
     try {
-      const completed = await AsyncStorage.getItem(TOUR_COMPLETED_KEY);
+      const userKey = `@tour_completed_${user.id}`;
+      const completed = await AsyncStorage.getItem(userKey);
       if (completed === "true") return;
     } catch (error) {
       console.log("Failed to read tour completion (non-critical):", error);
@@ -69,11 +78,14 @@ export const TourProvider: React.FC<{ children: React.ReactNode }> = ({
   const endTour = () => {
     setIsActive(false);
     // Persist immediately (per-account via Clerk metadata, per-device via
-    // AsyncStorage) so the tour doesn't reappear on the next open.
-    void markOnboardingComplete(user);
-    void AsyncStorage.setItem(TOUR_COMPLETED_KEY, "true").catch((error) =>
-      console.log("Failed to save tour completion (non-critical):", error)
-    );
+    // user-scoped AsyncStorage) so the tour doesn't reappear on the next open.
+    if (user) {
+      void markOnboardingComplete(user);
+      const userKey = `@tour_completed_${user.id}`;
+      void AsyncStorage.setItem(userKey, "true").catch((error) =>
+        console.log("Failed to save tour completion (non-critical):", error)
+      );
+    }
   };
 
   const registerStep = React.useCallback((index: number, measurements: TourStepMeasurements) => {

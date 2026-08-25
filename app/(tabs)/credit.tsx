@@ -29,7 +29,7 @@ import { useFocusEffect } from "expo-router";
 import * as WebBrowser from "expo-web-browser";
 import { iapService } from "@/services/iap-service";
 import { IAP_PRODUCTS, IAP_SUBSCRIPTION_PRODUCTS } from "@/constants/iap-config";
-import Slider from '@react-native-community/slider';
+import CustomSlider from '@/components/ui/CustomSlider';
 
 const WEBSITE_BASE = "https://animatememories.com";
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -105,15 +105,20 @@ export default function CreditScreen() {
   const [customAmount, setCustomAmount] = useState<number>(100);
 
   const getOneTimePrice = (credits: number) => {
-    if (credits === 30) return 5.99;
-    if (credits === 100) return 19.99;
-    if (credits === 200) return 34.99;
+    const starterCredits = dynamicPricing['starter']?.credits ?? 30;
+    const popularCredits = dynamicPricing['popular']?.credits ?? 100;
+    const proCredits = dynamicPricing['pro']?.credits ?? 200;
+
+    if (credits === starterCredits) return dynamicPricing['starter']?.amount ?? 5.99;
+    if (credits === popularCredits) return dynamicPricing['popular']?.amount ?? 19.99;
+    if (credits === proCredits) return dynamicPricing['pro']?.amount ?? 34.99;
+
     const rate = credits >= 200 ? 0.175 : 0.20;
     return Number((credits * rate).toFixed(2));
   };
 
   const [selectedSubPack, setSelectedSubPack] = useState<'basic' | 'standard' | 'premium'>('standard');
-  const [userCredits, setUserCredits] = useState<number>(0);
+  const [userCredits, setUserCredits] = useState<number | null>(null);
   const [userPlan, setUserPlan] = useState<{ packId: string; credits: number; amount: number; createdAt: string; } | null>(null);
   const [isProcessingIAP, setIsProcessingIAP] = useState(false);
   const [dynamicPricing, setDynamicPricing] = useState<any>({});
@@ -186,13 +191,16 @@ export default function CreditScreen() {
   });
 
   const fetchUserCredits = useCallback(async () => {
-    if (!user) return;
+    if (!user) return null;
     try {
       const token = await getToken();
       const result = await api.verifyUser(user, token);
-      setUserCredits(result.result?.credits || 0);
+      const credits = result.result?.credits ?? 0;
+      setUserCredits(credits);
+      return credits;
     } catch (error) {
       console.error("Error fetching credits:", error);
+      return null;
     }
   }, [user, getToken]);
 
@@ -252,38 +260,63 @@ export default function CreditScreen() {
     }
   }, [user]);
 
+  const baseSubPack = SUBSCRIPTION_DETAILS[selectedSubPack];
+  const currentSubPack = {
+    ...baseSubPack,
+    price: dynamicPricing[baseSubPack.id]?.amount ?? baseSubPack.price,
+    credits: dynamicPricing[baseSubPack.id]?.credits ?? baseSubPack.credits,
+  };
+
+  const currentPack = billingType === 'one-time' 
+    ? {
+        name: 'Custom Pack',
+        credits: customAmount,
+        price: getOneTimePrice(customAmount),
+        originalPrice: (customAmount * 0.40).toFixed(2),
+        subtitle: 'Custom credits pack'
+      } 
+    : currentSubPack;
+
   const handlePurchasePress = async () => {
     if (!user) {
-      Alert.alert("Error", "Please sign in to purchase credits");
+      Alert.alert("Sign In Required", "Please sign in to purchase credits");
       return;
     }
 
-    let purchaseCredits = 0;
-    let purchasePrice = 0;
+    const isSubscription = billingType === 'subscription';
+    
     let purchaseId = '';
+    let purchasePrice = 0;
+    let purchaseCredits = 0;
     let productId = '';
 
-    if (billingType === 'one-time') {
+    if (isSubscription) {
+      const baseSubPack = SUBSCRIPTION_DETAILS[selectedSubPack];
+      purchaseId = baseSubPack.id;
+      purchasePrice = dynamicPricing[baseSubPack.id]?.amount ?? baseSubPack.price;
+      purchaseCredits = dynamicPricing[baseSubPack.id]?.credits ?? baseSubPack.credits;
+      productId = baseSubPack.productId;
+    } else {
       purchaseCredits = customAmount;
       purchasePrice = getOneTimePrice(customAmount);
-      
-      const nearestPack = 
-        customAmount <= 50 ? PACK_DETAILS.starter : 
-        customAmount <= 150 ? PACK_DETAILS.popular : 
-        PACK_DETAILS.pro;
-        
-      purchaseId = nearestPack.id;
-      
-      const iapProduct = IAP_PRODUCTS.find(p => p.id === purchaseId);
-      productId = iapProduct ? iapProduct.productId : nearestPack.productId;
-    } else {
-      const basePack = SUBSCRIPTION_DETAILS[selectedSubPack];
-      purchaseCredits = dynamicPricing[basePack.id]?.credits ?? basePack.credits;
-      purchasePrice = dynamicPricing[basePack.id]?.amount ?? basePack.price;
-      purchaseId = basePack.id;
-      
-      const iapProduct = IAP_SUBSCRIPTION_PRODUCTS.find(p => p.id === purchaseId);
-      productId = iapProduct ? iapProduct.productId : basePack.productId;
+
+      const starterCredits = dynamicPricing['starter']?.credits ?? 30;
+      const popularCredits = dynamicPricing['popular']?.credits ?? 100;
+      const proCredits = dynamicPricing['pro']?.credits ?? 200;
+
+      if (customAmount === starterCredits) {
+        purchaseId = 'starter';
+        productId = PACK_DETAILS.starter.productId;
+      } else if (customAmount === popularCredits) {
+        purchaseId = 'popular';
+        productId = PACK_DETAILS.popular.productId;
+      } else if (customAmount === proCredits) {
+        purchaseId = 'pro';
+        productId = PACK_DETAILS.pro.productId;
+      } else {
+        purchaseId = 'custom';
+        productId = 'com.hexerve.AnimateMemories.pack.custom';
+      }
     }
 
     if (Platform.OS === 'ios') {
@@ -308,11 +341,31 @@ export default function CreditScreen() {
           );
           fetchUserCredits();
           fetchUserPlan();
-        } else if (result.error !== 'Purchase cancelled') {
+        } else if (
+          result.error === "Purchase cancelled" ||
+          result.error?.toLowerCase().includes("cancel")
+        ) {
+          Alert.alert(
+            "Transaction Cancelled",
+            "Your transaction was cancelled. No charges were made to your account.",
+            [{ text: "OK", style: "default" }]
+          );
+        } else {
           Alert.alert("Purchase Failed", result.error || "An unknown error occurred");
         }
       } catch (error: any) {
-        Alert.alert("Error", error.message || "Failed to process purchase");
+        if (
+          error.message === "Purchase cancelled" ||
+          error.message?.toLowerCase().includes("cancel")
+        ) {
+          Alert.alert(
+            "Transaction Cancelled",
+            "Your transaction was cancelled. No charges were made to your account.",
+            [{ text: "OK", style: "default" }]
+          );
+        } else {
+          Alert.alert("Error", error.message || "Failed to process purchase");
+        }
       } finally {
         setIsProcessingIAP(false);
       }
@@ -356,10 +409,32 @@ export default function CreditScreen() {
         }
 
         if (checkoutData?.url) {
-          await WebBrowser.openBrowserAsync(checkoutData.url);
+          const initialCredits = userCredits;
+          const browserResult = await WebBrowser.openAuthSessionAsync(
+            checkoutData.url,
+            "animatememories://"
+          );
+
           // Refresh user stats after returning from payment page
-          fetchUserCredits();
-          fetchUserPlan();
+          const latestCredits = await fetchUserCredits();
+          await fetchUserPlan();
+
+          if (
+            browserResult.type === "cancel" ||
+            browserResult.type === "dismiss" ||
+            (browserResult.type === "success" &&
+              (browserResult.url?.includes("cancelled") ||
+                browserResult.url?.includes("payment-cancelled")))
+          ) {
+            // Verify if credits remained the same (no successful payment occurred)
+            if (latestCredits === null || latestCredits <= (initialCredits || 0)) {
+              Alert.alert(
+                "Transaction Cancelled",
+                "Your transaction was cancelled. No charges were made to your account.",
+                [{ text: "OK", style: "default" }]
+              );
+            }
+          }
         } else {
           Alert.alert(
             "Payment Error",
@@ -405,23 +480,6 @@ export default function CreditScreen() {
       setIsProcessingIAP(false);
     }
   };
-
-  const baseSubPack = SUBSCRIPTION_DETAILS[selectedSubPack];
-  const currentSubPack = {
-    ...baseSubPack,
-    price: dynamicPricing[baseSubPack.id]?.amount ?? baseSubPack.price,
-    credits: dynamicPricing[baseSubPack.id]?.credits ?? baseSubPack.credits,
-  };
-
-  const currentPack = billingType === 'one-time' 
-    ? {
-        name: 'Custom Pack',
-        credits: customAmount,
-        price: getOneTimePrice(customAmount),
-        originalPrice: (customAmount * 0.40).toFixed(2),
-        subtitle: 'Custom credits pack'
-      } 
-    : currentSubPack;
 
   return (
     <ScreenWrapper
@@ -499,10 +557,16 @@ export default function CreditScreen() {
                 if (selectedSubPack === 'basic') updateIndicator('basic', true);
               }}
             >
-              <Text style={[
-                styles.packTabText,
-                selectedSubPack === 'basic' && styles.packTabTextSelected
-              ]}>Basic</Text>
+              <Text
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                style={[
+                  styles.packTabText,
+                  selectedSubPack === 'basic' && styles.packTabTextSelected
+                ]}
+              >
+                Basic
+              </Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={styles.packTab}
@@ -513,10 +577,16 @@ export default function CreditScreen() {
                 if (selectedSubPack === 'standard') updateIndicator('standard', true);
               }}
             >
-              <Text style={[
-                styles.packTabText,
-                selectedSubPack === 'standard' && styles.packTabTextSelected
-              ]}>Standard</Text>
+              <Text
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                style={[
+                  styles.packTabText,
+                  selectedSubPack === 'standard' && styles.packTabTextSelected
+                ]}
+              >
+                Standard
+              </Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={styles.packTab}
@@ -527,26 +597,33 @@ export default function CreditScreen() {
                 if (selectedSubPack === 'premium') updateIndicator('premium', true);
               }}
             >
-              <Text style={[
-                styles.packTabText,
-                selectedSubPack === 'premium' && styles.packTabTextSelected
-              ]}>Premium</Text>
+              <Text
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                style={[
+                  styles.packTabText,
+                  selectedSubPack === 'premium' && styles.packTabTextSelected
+                ]}
+              >
+                Premium
+              </Text>
             </TouchableOpacity>
           </View>
         </View>
       ) : (
         <View style={styles.sliderContainer}>
           <Text style={styles.sliderLabel}>{customAmount} Credits</Text>
-          <Slider
-            style={{ width: '100%', height: 40 }}
-            minimumValue={10}
-            maximumValue={1000}
+          <CustomSlider
+            min={10}
+            max={1000}
             step={10}
             value={customAmount}
             onValueChange={(val) => setCustomAmount(val)}
-            minimumTrackTintColor="#D229FF"
-            maximumTrackTintColor="#F3F4F6"
-            thumbTintColor="#28D4FA"
+            trackHeight={8}
+            activeGradientColors={["#38BDF8", "#D229FF"]}
+            inactiveTrackColor="#CBD5E1"
+            thumbColor="#D229FF"
+            thumbSize={24}
           />
           <View style={styles.sliderPresets}>
             <TouchableOpacity 
@@ -832,17 +909,17 @@ const styles = StyleSheet.create({
     flex: 1,
     borderRadius: 8,
     minHeight: 40,
-    paddingVertical: 10,
-    paddingHorizontal: 10,
+    paddingVertical: 8,
+    paddingHorizontal: 4,
     alignItems: 'center',
     justifyContent: 'center',
     zIndex: 2,
   },
   packTabText: {
-    fontSize: 17,
+    fontSize: 15,
     color: '#979797',
     textAlign: 'center',
-    fontFamily: getFontFamily('300'),
+    fontFamily: getFontFamily('400'),
   },
   packTabTextSelected: {
     color: '#fff',

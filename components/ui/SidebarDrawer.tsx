@@ -13,6 +13,7 @@ import {
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import AnimateMemoriesLogo from "@/components/images/AnimateMemoriesLogo";
 import HomeIcon from "@/components/images/HomeIcon";
 import GalleryIcon from "@/components/images/GalleryIcon";
@@ -21,7 +22,6 @@ import NotificationsIcon from "@/components/images/NotificationsIcon";
 import PaymentsIcon from "@/components/images/PaymentsIcon";
 import HelpIcon from "@/components/images/HelpIcon";
 import PrivacyIcon from "@/components/images/PrivacyIcon";
-import BlogIcon from "@/components/images/BlogIcon";
 import AnimateMemoriesTabsLogo from "@/components/images/AnimateMemoriesTabsLogo";
 import YouIcon from "@/components/images/YouIcon";
 import { useAuth } from "@/contexts/AuthContext";
@@ -38,6 +38,7 @@ interface SidebarDrawerProps {
 }
 
 export default function SidebarDrawer({ visible, onClose }: SidebarDrawerProps) {
+  const insets = useSafeAreaInsets();
   const { user, signOut } = useAuth();
   const { getToken } = useClerkAuth();
   const [credits, setCredits] = useState<number | null>(null);
@@ -102,7 +103,7 @@ export default function SidebarDrawer({ visible, onClose }: SidebarDrawerProps) 
     {
       id: "animate",
       label: "Animate Photos",
-      icon: <AnimateMemoriesTabsLogo width={20} height={20} />,
+      icon: <AnimateMemoriesTabsLogo width={20} height={20} color="#0F172A" />,
       path: "/(tabs)/animate",
       badge: "AI Magic",
     },
@@ -111,12 +112,6 @@ export default function SidebarDrawer({ visible, onClose }: SidebarDrawerProps) 
       label: "My Gallery",
       icon: <GalleryIcon width={20} height={20} color="#0F172A" />,
       path: "/(tabs)/gallery",
-    },
-    {
-      id: "blogs",
-      label: "Blogs",
-      icon: <BlogIcon width={20} height={20} color="#0F172A" />,
-      path: "/blogs",
     },
     {
       id: "credit",
@@ -168,7 +163,15 @@ export default function SidebarDrawer({ visible, onClose }: SidebarDrawerProps) 
         <Pressable style={styles.backdrop} onPress={onClose} />
 
         {/* Sidebar Drawer Panel */}
-        <View style={styles.drawerContainer}>
+        <View
+          style={[
+            styles.drawerContainer,
+            {
+              paddingTop: Math.max(insets.top + 10, Platform.OS === "ios" ? 52 : 36),
+              paddingBottom: Math.max(insets.bottom + 12, 24),
+            },
+          ]}
+        >
           {/* Sidebar Top Header */}
           <View style={styles.drawerHeader}>
             <AnimateMemoriesLogo width={118} height={28} />

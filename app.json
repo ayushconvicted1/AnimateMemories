@@ -2,7 +2,7 @@
   "expo": {
     "name": "AnimateMemories",
     "slug": "AnimateMemories",
-    "version": "1.1.0",
+    "version": "1.1.1",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "animatememories",
@@ -19,20 +19,21 @@
     },
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#ffffff",
-        "foregroundImage": "./assets/images/icon.png"
+        "backgroundColor": "#8B70FD",
+        "foregroundImage": "./assets/images/adaptive-icon.png"
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
       "package": "com.hexerve.AnimateMemories",
-      "versionCode": 3,
+      "versionCode": 4,
       "statusBar": {
         "barStyle": "dark-content",
         "backgroundColor": "#ffffff"
       },
       "permissions": [
         "android.permission.RECORD_AUDIO",
-        "android.permission.MODIFY_AUDIO_SETTINGS"
+        "android.permission.MODIFY_AUDIO_SETTINGS",
+        "android.permission.POST_NOTIFICATIONS"
       ]
     },
     "web": {

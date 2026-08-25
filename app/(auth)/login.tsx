@@ -14,11 +14,13 @@ import {
   TouchableOpacity,
   View,
   Platform,
+  ActivityIndicator,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Svg, { Path } from "react-native-svg";
 import * as WebBrowser from "expo-web-browser";
 import { OAUTH_REDIRECT_URL } from "@/constants/OAuth";
+import { getFontFamily } from "@/constants/Fonts";
 
 // Eye icons
 const EyeOffIcon = ({ size = 20, color = "#7A7A7A" }) => (
@@ -76,7 +78,6 @@ const LoginScreen = () => {
 
       if (signInAttempt.status === "complete") {
         await setActive({ session: signInAttempt.createdSessionId });
-        if (router.canDismiss()) router.dismissAll();
         router.replace("/(tabs)");
       } else {
         Alert.alert(
@@ -94,7 +95,6 @@ const LoginScreen = () => {
         errorMessage.toLowerCase().includes("session already exists") ||
         errorMessage.toLowerCase().includes("active session")
       ) {
-        if (router.canDismiss()) router.dismissAll();
         router.replace("/(tabs)");
         return;
       }
@@ -130,8 +130,6 @@ const LoginScreen = () => {
 
       if (createdSessionId) {
         await setActive({ session: createdSessionId });
-        if (router.canDismiss()) router.dismissAll();
-        // The quick tour shows automatically on first open (TourContext).
         router.replace("/(tabs)");
       } else {
         // User cancelled or error occurred
@@ -149,7 +147,6 @@ const LoginScreen = () => {
         errorMessage.toLowerCase().includes("session already exists") ||
         errorMessage.toLowerCase().includes("active session")
       ) {
-        if (router.canDismiss()) router.dismissAll();
         router.replace("/(tabs)");
         return;
       }
@@ -186,8 +183,6 @@ const LoginScreen = () => {
 
       if (createdSessionId) {
         await setActive({ session: createdSessionId });
-        if (router.canDismiss()) router.dismissAll();
-        // The quick tour shows automatically on first open (TourContext).
         router.replace("/(tabs)");
       } else {
         // User cancelled or error occurred
@@ -205,7 +200,6 @@ const LoginScreen = () => {
         errorMessage.toLowerCase().includes("session already exists") ||
         errorMessage.toLowerCase().includes("active session")
       ) {
-        if (router.canDismiss()) router.dismissAll();
         router.replace("/(tabs)");
         return;
       }
@@ -286,7 +280,7 @@ const LoginScreen = () => {
         style={{ alignSelf: "flex-end", marginTop: 15, marginRight: 5 }}
         onPress={() => router.push("/(auth)/forgot-password")}
       >
-        <Text style={{ color: "#28D4FA", fontSize: 16, fontWeight: "600" }}>Forgot Password?</Text>
+        <Text style={styles.forgotPasswordText}>Forgot Password?</Text>
       </TouchableOpacity>
 
       {/* Login button */}
@@ -317,6 +311,13 @@ const LoginScreen = () => {
           <Text style={styles.signupLinkText}>Sign Up</Text>
         </Text>
       </TouchableOpacity>
+
+      {isLoading && (
+        <View style={styles.loadingOverlay}>
+          <ActivityIndicator size="large" color="#28D4FA" />
+          <Text style={styles.loadingText}>Signing you in...</Text>
+        </View>
+      )}
     </TopScrollComponent>
   );
 };
@@ -342,8 +343,8 @@ const styles = StyleSheet.create({
   },
   title: {
     color: "#fff",
-    fontSize: 27,
-    fontWeight: "600",
+    fontSize: 28,
+    fontFamily: getFontFamily("700"),
     textAlign: "center",
     marginBottom: 20,
   },
@@ -363,14 +364,21 @@ const styles = StyleSheet.create({
   },
   socialText: {
     color: "#000",
-    fontSize: 20,
+    fontSize: 18,
+    fontFamily: getFontFamily("500"),
     marginLeft: 10,
   },
   divider: {
     color: "#fff",
     fontSize: 16,
+    fontFamily: getFontFamily("500"),
     textAlign: "center",
     marginVertical: 15,
+  },
+  forgotPasswordText: {
+    color: "#28D4FA",
+    fontSize: 15,
+    fontFamily: getFontFamily("600"),
   },
   loginBtn: {
     paddingVertical: 14,
@@ -379,7 +387,7 @@ const styles = StyleSheet.create({
   },
   loginText: {
     color: "#fff",
-    fontWeight: "600",
+    fontFamily: getFontFamily("600"),
     fontSize: 18,
   },
   signupLink: {
@@ -389,10 +397,24 @@ const styles = StyleSheet.create({
   signupText: {
     color: "#fff",
     fontSize: 16,
+    fontFamily: getFontFamily("400"),
   },
   signupLinkText: {
     color: "#28D4FA",
-    fontWeight: "600",
+    fontFamily: getFontFamily("600"),
     textDecorationLine: "underline",
+  },
+  loadingOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(11, 15, 25, 0.88)",
+    justifyContent: "center",
+    alignItems: "center",
+    zIndex: 9999,
+  },
+  loadingText: {
+    color: "#fff",
+    marginTop: 16,
+    fontSize: 16,
+    fontFamily: getFontFamily("500"),
   },
 });

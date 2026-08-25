@@ -82,7 +82,7 @@ export default function RootLayout() {
   useEffect(() => {
     // Set status bar background color for Android
     if (Platform.OS === "android") {
-      SystemUI.setBackgroundColorAsync("#ffffff").catch(console.error);
+      SystemUI.setBackgroundColorAsync("#ffffff").catch(() => {});
     }
 
     // Handle deep links when app is already open
@@ -103,6 +103,17 @@ export default function RootLayout() {
     };
   }, []);
 
+  const safeDismissBrowser = () => {
+    try {
+      const res = WebBrowser.dismissBrowser();
+      if (res && typeof (res as any).catch === "function") {
+        (res as any).catch(() => {});
+      }
+    } catch (e) {
+      // Browser might already be closed, ignore
+    }
+  };
+
   const handleDeepLink = (url: string) => {
     console.log("Deep link received:", url);
 
@@ -120,10 +131,8 @@ export default function RootLayout() {
       if (isAuthCallback) {
         console.log("Navigating to auth callback");
 
-        // Close browser if open
-        WebBrowser.dismissBrowser().catch(() => {
-          // Browser might already be closed, ignore error
-        });
+        // Close browser safely if open
+        safeDismissBrowser();
 
         // Navigate to auth callback screen
         requestAnimationFrame(() => {
@@ -155,9 +164,7 @@ export default function RootLayout() {
         );
 
         // Close browser immediately
-        WebBrowser.dismissBrowser().catch(() => {
-          // Browser might already be closed, ignore error
-        });
+        safeDismissBrowser();
 
         // Navigate - use both requestAnimationFrame and setTimeout as fallback
         requestAnimationFrame(() => {
@@ -175,9 +182,7 @@ export default function RootLayout() {
         console.log("Navigating to payment cancelled callback");
 
         // Close browser immediately
-        WebBrowser.dismissBrowser().catch(() => {
-          // Browser might already be closed, ignore error
-        });
+        safeDismissBrowser();
 
         // Navigate - use both requestAnimationFrame and setTimeout as fallback
         requestAnimationFrame(() => {

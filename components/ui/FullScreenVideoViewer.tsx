@@ -1,4 +1,4 @@
-import React, { useRef, useEffect } from "react";
+import React, { useRef, useEffect, useState } from "react";
 import {
   StyleSheet,
   View,
@@ -12,16 +12,19 @@ import {
 } from "react-native";
 import SavedToast from "./SavedToast";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { Video, ResizeMode, AVPlaybackStatus } from "expo-av";
+import { Video, ResizeMode, AVPlaybackStatus, Audio } from "expo-av";
+import { Image as ExpoImage } from "expo-image";
 import { LinearGradient } from "expo-linear-gradient";
 import { StatusBar } from "expo-status-bar";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { Ionicons } from "@expo/vector-icons";
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
 
 interface FullScreenVideoViewerProps {
   visible: boolean;
   videoUri: string | null;
+  posterUri?: string | null;
   onClose: () => void;
   onDownload: () => void;
   onDelete?: () => void;
@@ -37,6 +40,7 @@ interface FullScreenVideoViewerProps {
 export default function FullScreenVideoViewer({
   visible,
   videoUri,
+  posterUri,
   onClose,
   onDownload,
   onDelete,
@@ -50,28 +54,56 @@ export default function FullScreenVideoViewer({
 }: FullScreenVideoViewerProps) {
   const videoRef = useRef<Video>(null);
   const insets = useSafeAreaInsets();
+  const [isVideoLoading, setIsVideoLoading] = useState(true);
+  const [isBuffering, setIsBuffering] = useState(false);
+  const [videoError, setVideoError] = useState<string | null>(null);
 
-  // Pause preview video when fullscreen opens and ensure only one video plays
+  const bufferTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const loadTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Configure Audio mode for video playback
+  useEffect(() => {
+    Audio.setAudioModeAsync({
+      allowsRecordingIOS: false,
+      playsInSilentModeIOS: true,
+      shouldDuckAndroid: true,
+      playThroughEarpieceAndroid: false,
+      staysActiveInBackground: false,
+    }).catch(() => {});
+  }, []);
+
+  // Reset loading state when video changes or opens
   useEffect(() => {
     if (visible) {
-      // Call the pause callback immediately
+      setIsVideoLoading(true);
+      setIsBuffering(false);
+      setVideoError(null);
       if (onPreviewVideoPause) {
         onPreviewVideoPause();
       }
-      // Small delay to ensure preview is paused before starting fullscreen
-      const timer = setTimeout(() => {
-        if (videoRef.current) {
-          videoRef.current.playAsync().catch(console.error);
-        }
-      }, 100);
-      return () => clearTimeout(timer);
+
+      // Safety timeout: ensure loading overlay doesn't get stuck if onReadyForDisplay is skipped by Android
+      if (loadTimeoutRef.current) clearTimeout(loadTimeoutRef.current);
+      loadTimeoutRef.current = setTimeout(() => {
+        setIsVideoLoading(false);
+      }, 3000);
     } else {
-      // Pause fullscreen video when closing
+      if (bufferTimerRef.current) {
+        clearTimeout(bufferTimerRef.current);
+      }
+      if (loadTimeoutRef.current) {
+        clearTimeout(loadTimeoutRef.current);
+      }
       if (videoRef.current) {
-        videoRef.current.pauseAsync().catch(console.error);
+        videoRef.current.pauseAsync().catch(() => {});
+        videoRef.current.unloadAsync().catch(() => {});
       }
     }
-  }, [visible, onPreviewVideoPause]);
+
+    return () => {
+      if (loadTimeoutRef.current) clearTimeout(loadTimeoutRef.current);
+    };
+  }, [visible, videoUri, onPreviewVideoPause]);
 
   // Handle app state changes to prevent video glitches
   useEffect(() => {
@@ -79,12 +111,10 @@ export default function FullScreenVideoViewer({
 
     const subscription = AppState.addEventListener("change", (nextAppState) => {
       if (nextAppState === "background" || nextAppState === "inactive") {
-        // Pause video when app goes to background
-        videoRef.current?.pauseAsync().catch(console.error);
+        videoRef.current?.pauseAsync().catch(() => {});
       } else if (nextAppState === "active") {
-        // Resume video when app comes to foreground (if modal is still visible)
         if (visible && videoRef.current) {
-          videoRef.current.playAsync().catch(console.error);
+          videoRef.current.playAsync().catch(() => {});
         }
       }
     });
@@ -94,13 +124,56 @@ export default function FullScreenVideoViewer({
     };
   }, [visible]);
 
-  // Clean up video when modal closes
-  useEffect(() => {
-    if (!visible && videoRef.current) {
-      videoRef.current.pauseAsync().catch(console.error);
-      videoRef.current.unloadAsync().catch(console.error);
+  const handleStatusUpdate = (status: AVPlaybackStatus) => {
+    if (!status.isLoaded) return;
+
+    if (
+      status.isPlaying ||
+      (status.positionMillis !== undefined && status.positionMillis > 0) ||
+      !status.isBuffering
+    ) {
+      setIsVideoLoading(false);
     }
-  }, [visible]);
+
+    if (status.isBuffering) {
+      // Debounce buffering indicator by 600ms to ignore micro-buffers
+      if (!bufferTimerRef.current && !isBuffering) {
+        bufferTimerRef.current = setTimeout(() => {
+          setIsBuffering(true);
+        }, 600);
+      }
+    } else {
+      if (bufferTimerRef.current) {
+        clearTimeout(bufferTimerRef.current);
+        bufferTimerRef.current = null;
+      }
+      if (isBuffering) {
+        setIsBuffering(false);
+      }
+    }
+  };
+
+  const handleRetry = () => {
+    setVideoError(null);
+    setIsVideoLoading(true);
+    setIsBuffering(false);
+    if (videoRef.current && videoUri) {
+      videoRef.current
+        .unloadAsync()
+        .then(() =>
+          videoRef.current?.loadAsync(
+            { uri: videoUri },
+            { shouldPlay: true, isLooping: true },
+            false
+          )
+        )
+        .catch((err) => {
+          console.error("Retry load error:", err);
+          setVideoError("Unable to play video. Tap below to retry.");
+          setIsVideoLoading(false);
+        });
+    }
+  };
 
   return (
     <Modal
@@ -113,38 +186,92 @@ export default function FullScreenVideoViewer({
       <StatusBar style="light" />
       <SafeAreaView style={styles.modalContainer} edges={["top", "bottom"]}>
         {/* Close Button */}
-        <TouchableOpacity 
-          style={[
-            styles.closeButton,
-            { top: insets.top + 10 }
-          ]} 
+        <TouchableOpacity
+          style={[styles.closeButton, { top: insets.top + 10 }]}
           onPress={onClose}
+          activeOpacity={0.8}
         >
-          <Text style={styles.closeButtonText}>✕</Text>
+          <Ionicons name="close" size={24} color="#FFFFFF" />
         </TouchableOpacity>
 
         {/* Video Player */}
         {videoUri && (
           <View style={styles.videoModalContent}>
             <View style={styles.videoWrapper}>
+              {/* Poster Image Underneath Video: Prevents black frame while loading */}
+              {posterUri ? (
+                <ExpoImage
+                  source={{ uri: posterUri }}
+                  style={styles.fullScreenVideo}
+                  contentFit="contain"
+                  cachePolicy="memory-disk"
+                />
+              ) : null}
+
               <Video
                 ref={videoRef}
                 source={{ uri: videoUri }}
-                style={styles.fullScreenVideo}
-                resizeMode={ResizeMode.COVER}
+                style={[
+                  styles.fullScreenVideo,
+                  StyleSheet.absoluteFill,
+                  { opacity: isVideoLoading && !posterUri ? 0 : 1 },
+                ]}
+                resizeMode={ResizeMode.CONTAIN}
                 shouldPlay={visible}
                 isLooping
                 useNativeControls
+                onLoad={() => {
+                  setIsVideoLoading(false);
+                  setIsBuffering(false);
+                }}
+                onReadyForDisplay={() => {
+                  setIsVideoLoading(false);
+                  setIsBuffering(false);
+                }}
+                onPlaybackStatusUpdate={handleStatusUpdate}
                 onError={(error) => {
                   console.error("Video error:", error);
+                  setIsVideoLoading(false);
+                  setIsBuffering(false);
+                  setVideoError("Unable to play video. Tap below to retry.");
                 }}
                 onLoadStart={() => {
-                  // Ensure video doesn't auto-play until modal is fully visible
-                  if (!visible && videoRef.current) {
-                    videoRef.current.pauseAsync().catch(console.error);
-                  }
+                  setIsVideoLoading(true);
+                  setVideoError(null);
                 }}
+                progressUpdateIntervalMillis={250}
               />
+
+              {/* Centered Video Loader or Error */}
+              {videoError ? (
+                <View style={styles.videoCenterLoader}>
+                  <View style={styles.videoLoaderBox}>
+                    <Ionicons name="alert-circle-outline" size={32} color="#F59E0B" />
+                    <Text style={[styles.videoLoaderText, { textAlign: "center", maxWidth: 220 }]}>
+                      {videoError}
+                    </Text>
+                    <TouchableOpacity
+                      style={styles.retryButton}
+                      onPress={handleRetry}
+                      activeOpacity={0.8}
+                    >
+                      <Ionicons name="reload" size={16} color="#FFFFFF" style={{ marginRight: 6 }} />
+                      <Text style={styles.retryButtonText}>Retry</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              ) : (
+                (isVideoLoading || isBuffering) && (
+                  <View style={styles.videoCenterLoader} pointerEvents="none">
+                    <View style={styles.videoLoaderBox}>
+                      <ActivityIndicator size="large" color="#38BDF8" />
+                      <Text style={styles.videoLoaderText}>
+                        {isBuffering ? "Buffering..." : "Loading video..."}
+                      </Text>
+                    </View>
+                  </View>
+                )
+              )}
             </View>
 
             {/* Action Buttons */}
@@ -153,6 +280,7 @@ export default function FullScreenVideoViewer({
                 style={[styles.modalButton, styles.downloadModalButton]}
                 onPress={onDownload}
                 disabled={isDownloading}
+                activeOpacity={0.85}
               >
                 <LinearGradient
                   colors={["#28D4FA", "#D229FF"]}
@@ -168,57 +296,39 @@ export default function FullScreenVideoViewer({
                           alignItems: "center",
                           justifyContent: "center",
                           gap: 8,
-                          flexShrink: 1,
                         }}
                       >
                         <ActivityIndicator size="small" color="#fff" />
-                        <Text
-                          style={styles.modalButtonText}
-                          numberOfLines={1}
-                          adjustsFontSizeToFit
-                          minimumFontScale={0.75}
-                        >
-                          Saving...
-                        </Text>
+                        <Text style={styles.modalButtonText}>Saving...</Text>
                       </View>
                     ) : (
-                      <Text
-                        style={styles.modalButtonText}
-                        numberOfLines={1}
-                        adjustsFontSizeToFit
-                        minimumFontScale={0.75}
-                      >
-                        Download
-                      </Text>
+                      <View style={styles.buttonInnerRow}>
+                        <Ionicons name="download-outline" size={20} color="#FFFFFF" style={{ marginRight: 6 }} />
+                        <Text style={styles.modalButtonText}>Download</Text>
+                      </View>
                     )}
                   </View>
                 </LinearGradient>
               </TouchableOpacity>
+
               {showDelete && onDelete ? (
                 <TouchableOpacity
                   style={[styles.modalButton, styles.deleteModalButton]}
                   onPress={onDelete}
                   disabled={isDeleting}
+                  activeOpacity={0.85}
                 >
                   <View style={styles.modalButtonContent}>
                     {isDeleting ? (
-                      <Text
-                        style={styles.modalButtonText}
-                        numberOfLines={1}
-                        adjustsFontSizeToFit
-                        minimumFontScale={0.75}
-                      >
-                        Deleting...
-                      </Text>
+                      <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                        <ActivityIndicator size="small" color="#fff" />
+                        <Text style={styles.modalButtonText}>Deleting...</Text>
+                      </View>
                     ) : (
-                      <Text
-                        style={styles.modalButtonText}
-                        numberOfLines={1}
-                        adjustsFontSizeToFit
-                        minimumFontScale={0.75}
-                      >
-                        Delete
-                      </Text>
+                      <View style={styles.buttonInnerRow}>
+                        <Ionicons name="trash-outline" size={19} color="#FFFFFF" style={{ marginRight: 6 }} />
+                        <Text style={styles.modalButtonText}>Delete</Text>
+                      </View>
                     )}
                   </View>
                 </TouchableOpacity>
@@ -226,9 +336,13 @@ export default function FullScreenVideoViewer({
                 <TouchableOpacity
                   style={[styles.modalButton, styles.closeModalButton]}
                   onPress={onClose}
+                  activeOpacity={0.85}
                 >
                   <View style={styles.modalButtonContent}>
-                    <Text style={styles.modalButtonText}>Close</Text>
+                    <View style={styles.buttonInnerRow}>
+                      <Ionicons name="close-circle-outline" size={20} color="#FFFFFF" style={{ marginRight: 6 }} />
+                      <Text style={styles.modalButtonText}>Close</Text>
+                    </View>
                   </View>
                 </TouchableOpacity>
               )}
@@ -236,8 +350,7 @@ export default function FullScreenVideoViewer({
           </View>
         )}
 
-        {/* Saved confirmation — rendered inside the modal so it is never
-            hidden behind it (Modals sit in a separate native layer). */}
+        {/* Saved confirmation */}
         <SavedToast
           title={toastTitle ?? null}
           path={toastPath ?? null}
@@ -264,16 +377,11 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
   },
-  closeButtonText: {
-    color: "#fff",
-    fontSize: 26,
-    fontWeight: "600",
-  },
   videoModalContent: {
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
-    paddingBottom: 130, // Extra space for video controls and action buttons
+    paddingBottom: 130,
   },
   videoWrapper: {
     width: SCREEN_WIDTH,
@@ -297,49 +405,85 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   modalButton: {
-    borderRadius: 8,
+    borderRadius: 12,
     flex: 1,
     minWidth: 0,
-    overflow: "hidden", // For gradient button
+    overflow: "hidden",
   },
   modalButtonGradient: {
     width: "100%",
     height: "100%",
-    paddingVertical: 12,
+    paddingVertical: 14,
     paddingHorizontal: 14,
     alignItems: "center",
     justifyContent: "center",
   },
-  downloadModalButton: {
-    // Uses base modalButton styles
-  },
+  downloadModalButton: {},
   closeModalButton: {
-    backgroundColor: "rgba(255, 255, 255, 0.2)",
+    backgroundColor: "rgba(255, 255, 255, 0.15)",
     borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.3)",
-    paddingVertical: 12,
+    borderColor: "rgba(255, 255, 255, 0.25)",
+    paddingVertical: 14,
     paddingHorizontal: 14,
     alignItems: "center",
     justifyContent: "center",
   },
   deleteModalButton: {
-    backgroundColor: "#DC3545",
-    paddingVertical: 12,
+    backgroundColor: "#DC2626",
+    paddingVertical: 14,
     paddingHorizontal: 14,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  buttonInnerRow: {
+    flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
   },
   modalButtonContent: {
     width: "100%",
-    height: "100%",
     alignItems: "center",
     justifyContent: "center",
   },
   modalButtonText: {
     color: "#fff",
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: "600",
     textAlign: "center",
   },
+  videoCenterLoader: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(0, 0, 0, 0.4)",
+    zIndex: 5,
+  },
+  videoLoaderBox: {
+    paddingHorizontal: 22,
+    paddingVertical: 16,
+    borderRadius: 16,
+    backgroundColor: "rgba(15, 23, 42, 0.88)",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+  },
+  videoLoaderText: {
+    color: "#FFFFFF",
+    fontSize: 14,
+    fontWeight: "500",
+  },
+  retryButton: {
+    marginTop: 8,
+    paddingHorizontal: 18,
+    paddingVertical: 8,
+    borderRadius: 10,
+    backgroundColor: "#D229FF",
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  retryButtonText: {
+    color: "#fff",
+    fontWeight: "600",
+    fontSize: 14,
+  },
 });
-

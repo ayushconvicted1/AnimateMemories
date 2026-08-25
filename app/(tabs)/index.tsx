@@ -27,7 +27,6 @@ import HomeArrow from "@/components/images/HomeArrow";
 import StarIcon from "@/components/images/StarIcon";
 import TemplateExplorerModal from "@/components/ui/TemplateExplorerModal";
 import AnimatedTemplateThumb from "@/components/ui/AnimatedTemplateThumb";
-import BlogCard from "@/components/ui/BlogCard";
 import ChevronLeftIcon from "@/components/images/ChevronLeftIcon";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
@@ -49,15 +48,17 @@ const formatImageUrl = (url?: string) => {
   return `${API_BASE_URL}${url.startsWith("/") ? "" : "/"}${url}`;
 };
 
-const CATEGORIES = [
+const DEFAULT_CATEGORIES = [
   "Trending",
   "Family",
   "Funny",
   "Birthday",
   "Wedding",
-  "Hug",
-  "Dance",
-  "Kiss",
+  "Tribute",
+  "Kids",
+  "Pets",
+  "Holiday",
+  "Graduation",
 ];
 
 const DEFAULT_TEMPLATES = [
@@ -116,6 +117,169 @@ const TemplateCard = memo(
 );
 TemplateCard.displayName = "TemplateCard";
 
+interface HomeTemplatesCarouselProps {
+  templates: any[];
+  onSelect: (id: string) => void;
+}
+
+const TEMPLATE_ITEM_PITCH = 128; // 116 card width + 12 right margin
+
+const HomeTemplatesCarousel = memo(
+  ({ templates, onSelect }: HomeTemplatesCarouselProps) => {
+    const listRef = useRef<FlatList>(null);
+    const scrollXRef = useRef(0);
+    const [canScrollLeft, setCanScrollLeft] = useState(false);
+    const [canScrollRight, setCanScrollRight] = useState(true);
+    const [activeIds, setActiveIds] = useState<Set<string>>(() => {
+      const initialSet = new Set<string>();
+      templates.slice(0, 4).forEach((t) => {
+        const id = t.slug || t.id;
+        if (id) initialSet.add(String(id));
+      });
+      return initialSet;
+    });
+    const isScrollingRef = useRef(false);
+
+    useEffect(() => {
+      const initialSet = new Set<string>();
+      templates.slice(0, 4).forEach((t) => {
+        const id = t.slug || t.id;
+        if (id) initialSet.add(String(id));
+      });
+      setActiveIds(initialSet);
+    }, [templates]);
+
+    const updateArrows = useCallback(
+      (offsetX: number) => {
+        setCanScrollLeft(offsetX > 10);
+        const maxScroll = Math.max(
+          0,
+          templates.length * TEMPLATE_ITEM_PITCH - (SCREEN_WIDTH - 32)
+        );
+        setCanScrollRight(offsetX < maxScroll - 10);
+      },
+      [templates.length]
+    );
+
+    const handleScrollLeft = useCallback(() => {
+      const nextOffset = Math.max(0, scrollXRef.current - TEMPLATE_ITEM_PITCH * 2);
+      listRef.current?.scrollToOffset({ offset: nextOffset, animated: true });
+      scrollXRef.current = nextOffset;
+      updateArrows(nextOffset);
+    }, [updateArrows]);
+
+    const handleScrollRight = useCallback(() => {
+      const nextOffset = scrollXRef.current + TEMPLATE_ITEM_PITCH * 2;
+      listRef.current?.scrollToOffset({ offset: nextOffset, animated: true });
+      scrollXRef.current = nextOffset;
+      updateArrows(nextOffset);
+    }, [updateArrows]);
+
+    const viewabilityConfig = useRef({
+      itemVisiblePercentThreshold: 50,
+    }).current;
+
+    const onViewableItemsChanged = useRef(
+      ({ viewableItems }: { viewableItems: any[] }) => {
+        if (viewableItems && viewableItems.length > 0) {
+          setActiveIds(
+            new Set(
+              viewableItems.map((v: any) =>
+                String(v.item?.slug || v.item?.id)
+              )
+            )
+          );
+        }
+      }
+    ).current;
+
+    const renderItem = useCallback(
+      ({ item }: { item: any }) => (
+        <TemplateCard
+          item={item}
+          onSelect={onSelect}
+          autoPlay={activeIds.has(String(item.slug || item.id))}
+        />
+      ),
+      [onSelect, activeIds]
+    );
+
+    const getItemLayout = useCallback(
+      (_: any, index: number) => ({
+        length: TEMPLATE_ITEM_PITCH,
+        offset: TEMPLATE_ITEM_PITCH * index,
+        index,
+      }),
+      []
+    );
+
+    return (
+      <View style={styles.templateListWrapper}>
+        <FlatList
+          ref={listRef}
+          horizontal
+          data={templates}
+          renderItem={renderItem}
+          keyExtractor={(item, index) => item.slug || item.id || `tpl-${index}`}
+          getItemLayout={getItemLayout}
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={{ paddingLeft: 16, paddingRight: 16 }}
+          initialNumToRender={4}
+          maxToRenderPerBatch={4}
+          windowSize={3}
+          nestedScrollEnabled={true}
+          overScrollMode="never"
+          removeClippedSubviews={Platform.OS === "android"}
+          viewabilityConfig={viewabilityConfig}
+          onViewableItemsChanged={onViewableItemsChanged}
+          onScrollBeginDrag={() => {
+            isScrollingRef.current = true;
+          }}
+          onScrollEndDrag={(e) => {
+            isScrollingRef.current = false;
+            scrollXRef.current = e.nativeEvent.contentOffset.x;
+            updateArrows(scrollXRef.current);
+          }}
+          onMomentumScrollEnd={(e) => {
+            isScrollingRef.current = false;
+            scrollXRef.current = e.nativeEvent.contentOffset.x;
+            updateArrows(scrollXRef.current);
+          }}
+        />
+
+        {/* Left Arrow Button */}
+        {canScrollLeft && (
+          <TouchableOpacity
+            style={[styles.templateArrowButton, styles.templateArrowLeft]}
+            onPress={handleScrollLeft}
+            activeOpacity={0.85}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            accessibilityLabel="Scroll templates left"
+          >
+            <ChevronLeftIcon size={18} color="#0F172A" />
+          </TouchableOpacity>
+        )}
+
+        {/* Right Arrow Button */}
+        {canScrollRight && templates.length > 2 && (
+          <TouchableOpacity
+            style={[styles.templateArrowButton, styles.templateArrowRight]}
+            onPress={handleScrollRight}
+            activeOpacity={0.85}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            accessibilityLabel="Scroll templates right"
+          >
+            <View style={{ transform: [{ rotate: "180deg" }] }}>
+              <ChevronLeftIcon size={18} color="#0F172A" />
+            </View>
+          </TouchableOpacity>
+        )}
+      </View>
+    );
+  }
+);
+HomeTemplatesCarousel.displayName = "HomeTemplatesCarousel";
+
 // Step demo videos are always mounted with a poster frame (never an empty
 // tile) and play only while their section is on screen. Playback is driven
 // both by the shouldPlay prop and an explicit playAsync()/pauseAsync() call,
@@ -160,59 +324,13 @@ export default function HomeScreen() {
   const { getToken } = useAuth();
   const { startTour, endTour, isActive, currentStep } = useTour();
   const [userCredits, setUserCredits] = useState<number | null>(null);
-  const [latestBlogs, setLatestBlogs] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [animationTemplates, setAnimationTemplates] = useState<any[]>(DEFAULT_TEMPLATES);
+  const [categoriesList, setCategoriesList] = useState<string[]>(DEFAULT_CATEGORIES);
   const [selectedCategory, setSelectedCategory] = useState("Trending");
   const [scrollOffset, setScrollOffset] = useState(0);
   const [isTemplateModalVisible, setTemplateModalVisible] = useState(false);
-  // Horizontal position of the template carousel (drives navigation arrows).
-  const [templateScrollX, setTemplateScrollX] = useState(0);
-  // Track active scrolling to pause template video decoders mid-scroll for maximum 60fps smoothness.
-  const [isScrolling, setIsScrolling] = useState(false);
-  const scrollEndTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-
-  const handleScrollBegin = useCallback(() => {
-    if (scrollEndTimeoutRef.current) {
-      clearTimeout(scrollEndTimeoutRef.current);
-    }
-    setIsScrolling(true);
-  }, []);
-
-  const handleScrollEnd = useCallback(() => {
-    if (scrollEndTimeoutRef.current) {
-      clearTimeout(scrollEndTimeoutRef.current);
-    }
-    scrollEndTimeoutRef.current = setTimeout(() => {
-      setIsScrolling(false);
-    }, 120);
-  }, []);
-
-  useEffect(() => {
-    return () => {
-      if (scrollEndTimeoutRef.current) {
-        clearTimeout(scrollEndTimeoutRef.current);
-      }
-    };
-  }, []);
-
-  // Template cards currently inside the viewport — only these autoplay their
-  // preview video, so off-screen cards never hold a native player.
-  const [visibleTemplateIds, setVisibleTemplateIds] = useState<Set<string>>(
-    () => new Set()
-  );
-  const viewabilityConfig = useRef({ itemVisiblePercentThreshold: 60 }).current;
-  const onViewableItemsChanged = useRef(
-    ({ viewableItems }: { viewableItems: any[] }) => {
-      setVisibleTemplateIds(
-        new Set(
-          viewableItems.map((v: any) =>
-            String(v.item?.slug || v.item?.id)
-          )
-        )
-      );
-    }
-  ).current;
+  const [isHeroVideoReady, setIsHeroVideoReady] = useState(false);
 
   const filteredTemplates = useMemo(() => {
     if (selectedCategory === "Trending") {
@@ -271,26 +389,26 @@ export default function HomeScreen() {
       }
     };
 
-    const fetchBlogs = async () => {
+    const fetchCategories = async () => {
       try {
-        const response = await api.getBlogs(3);
-        const blogs = response?.blogs || [];
-        if (blogs.length > 0) setLatestBlogs(blogs);
-      } catch (error) {
-        console.error("Failed to fetch blogs", error);
+        const res = await api.getTemplateCategories();
+        if (res?.result && Array.isArray(res.result) && res.result.length > 0) {
+          setCategoriesList(res.result.map((c: any) => c.name));
+        }
+      } catch (e) {
+        console.error("Failed to fetch template categories", e);
       }
     };
 
-    fetchBlogs();
     fetchTemplates();
+    fetchCategories();
 
     if (user) {
       fetchUserCredits();
+      startTour();
     } else {
       setLoading(false);
     }
-
-    startTour();
   }, [user]);
 
   const handleTryForFree = () => {
@@ -321,14 +439,23 @@ export default function HomeScreen() {
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
         allowsEditing: true,
-        quality: 0.8,
+        quality: 0.9,
       });
 
       if (result.canceled || !result.assets || !result.assets[0]) {
         return;
       }
 
-      const imageUri = result.assets[0].uri;
+      const asset = result.assets[0];
+      if (asset.fileSize && asset.fileSize > 20 * 1024 * 1024) {
+        Alert.alert(
+          "File Too Large",
+          "The selected image exceeds the maximum allowed size of 20MB. Please choose a smaller image."
+        );
+        return;
+      }
+
+      const imageUri = asset.uri;
       if (!imageUri) {
         Alert.alert("Error", "No image selected.");
         return;
@@ -358,58 +485,6 @@ export default function HomeScreen() {
     });
   }, []);
 
-  const renderTemplateItem = useCallback(
-    ({ item }: { item: any }) => (
-      <TemplateCard
-        item={item}
-        onSelect={handleTemplateSelect}
-        autoPlay={visibleTemplateIds.has(String(item.slug || item.id))}
-      />
-    ),
-    [handleTemplateSelect, visibleTemplateIds]
-  );
-
-  const templateKeyExtractor = useCallback(
-    (item: any, index: number) => item.slug || item.id || `tpl-${index}`,
-    []
-  );
-
-  // Geometry calculations for template horizontal carousel navigation arrows
-  const TEMPLATE_ITEM_PITCH = 128; // 116 card + 12 right margin
-  const templateContentWidth =
-    filteredTemplates.length * TEMPLATE_ITEM_PITCH + 32; // + 16px padding each side
-  const templateViewportWidth = SCREEN_WIDTH;
-  const templateHasOverflow = templateContentWidth > templateViewportWidth;
-  const templateProgress = templateHasOverflow
-    ? Math.min(
-        1,
-        Math.max(
-          0,
-          templateScrollX / (templateContentWidth - templateViewportWidth)
-        )
-      )
-    : 0;
-
-  const templateListRef = useRef<FlatList>(null);
-
-  const handleScrollLeft = useCallback(() => {
-    if (templateListRef.current) {
-      templateListRef.current.scrollToOffset({
-        offset: Math.max(0, templateScrollX - TEMPLATE_ITEM_PITCH * 2),
-        animated: true,
-      });
-    }
-  }, [templateScrollX, TEMPLATE_ITEM_PITCH]);
-
-  const handleScrollRight = useCallback(() => {
-    if (templateListRef.current) {
-      templateListRef.current.scrollToOffset({
-        offset: templateScrollX + TEMPLATE_ITEM_PITCH * 2,
-        animated: true,
-      });
-    }
-  }, [templateScrollX, TEMPLATE_ITEM_PITCH]);
-
   // Background Image Height based on 1080x1920 ratio scaled to screen width
   const bgHeight = (SCREEN_WIDTH * 1920) / 1080;
 
@@ -419,10 +494,6 @@ export default function HomeScreen() {
         backgroundColor="transparent"
         addBottomPadding={true}
         onScroll={handleScroll}
-        onScrollBeginDrag={handleScrollBegin}
-        onScrollEndDrag={handleScrollEnd}
-        onMomentumScrollBegin={handleScrollBegin}
-        onMomentumScrollEnd={handleScrollEnd}
         scrollEventThrottle={32}
         scrollEnabled={!(isActive && currentStep === 1) && !isTemplateModalVisible}
         creditsText={
@@ -446,7 +517,7 @@ export default function HomeScreen() {
             {/* Top Left Small Old Vintage Photo */}
             <View style={styles.smallPhotoCard}>
               <Image
-                source={require("@/assets/images/HomePhoto.jpeg")}
+                source={require("@/assets/images/herophoto.jpeg")}
                 style={styles.smallPhotoImage}
                 contentFit="cover"
               />
@@ -457,19 +528,24 @@ export default function HomeScreen() {
               <HomeArrow width={34} height={32} />
             </View>
 
-            {/* Main Hero Video from web */}
+            {/* Main Hero Video */}
             <View style={styles.mainHeroPhotoCard}>
+              <Image
+                source={require("@/assets/images/herovideo-first-frame.jpg")}
+                style={StyleSheet.absoluteFill}
+                contentFit="cover"
+                priority="high"
+                cachePolicy="memory-disk"
+              />
               <Video
                 source={require("@/assets/videos/HomeVideo.mp4")}
-                style={styles.mainHeroImage}
+                style={[styles.mainHeroImage, { opacity: isHeroVideoReady ? 1 : 0 }]}
                 resizeMode={ResizeMode.COVER}
                 isLooping
                 shouldPlay={isHeroVisible}
                 isMuted
                 useNativeControls={false}
-                usePoster={true}
-                posterSource={require("@/assets/images/HomePhoto.jpeg")}
-                posterStyle={{ resizeMode: "cover" }}
+                onReadyForDisplay={() => setIsHeroVideoReady(true)}
               />
             </View>
           </View>
@@ -514,7 +590,7 @@ export default function HomeScreen() {
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={styles.categoryContainer}
           >
-            {CATEGORIES.map((cat) => {
+            {categoriesList.map((cat) => {
               const isSelected = selectedCategory === cat;
               return (
                 <TouchableOpacity
@@ -543,57 +619,10 @@ export default function HomeScreen() {
           </ScrollView>
 
           {/* Template Cards Horizontal Scroll with Left/Right Navigation Arrows */}
-          <View style={styles.templateListWrapper}>
-            <FlatList
-              ref={templateListRef}
-              horizontal
-              data={filteredTemplates}
-              renderItem={renderTemplateItem}
-              keyExtractor={templateKeyExtractor}
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={{ paddingLeft: 16, paddingRight: 16 }}
-              initialNumToRender={4}
-              maxToRenderPerBatch={4}
-              windowSize={3}
-              removeClippedSubviews={Platform.OS === "android"}
-              viewabilityConfig={viewabilityConfig}
-              onViewableItemsChanged={onViewableItemsChanged}
-              onScrollBeginDrag={handleScrollBegin}
-              onScrollEndDrag={handleScrollEnd}
-              onMomentumScrollBegin={handleScrollBegin}
-              onMomentumScrollEnd={handleScrollEnd}
-              onScroll={(e) => setTemplateScrollX(e.nativeEvent.contentOffset.x)}
-              scrollEventThrottle={32}
-            />
-
-            {/* Left Arrow Button */}
-            {templateHasOverflow && templateScrollX > 10 && (
-              <TouchableOpacity
-                style={[styles.templateArrowButton, styles.templateArrowLeft]}
-                onPress={handleScrollLeft}
-                activeOpacity={0.85}
-                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                accessibilityLabel="Scroll templates left"
-              >
-                <ChevronLeftIcon size={18} color="#0F172A" />
-              </TouchableOpacity>
-            )}
-
-            {/* Right Arrow Button */}
-            {templateHasOverflow && templateProgress < 0.98 && (
-              <TouchableOpacity
-                style={[styles.templateArrowButton, styles.templateArrowRight]}
-                onPress={handleScrollRight}
-                activeOpacity={0.85}
-                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                accessibilityLabel="Scroll templates right"
-              >
-                <View style={{ transform: [{ rotate: "180deg" }] }}>
-                  <ChevronLeftIcon size={18} color="#0F172A" />
-                </View>
-              </TouchableOpacity>
-            )}
-          </View>
+          <HomeTemplatesCarousel
+            templates={filteredTemplates}
+            onSelect={handleTemplateSelect}
+          />
 
           {/* View All Link */}
           <TouchableOpacity
@@ -784,43 +813,6 @@ export default function HomeScreen() {
             </View>
           </ScrollView>
         </View>
-
-        {/* Latest Blogs feed */}
-        {latestBlogs.length > 0 && (
-          <View style={styles.blogsSection}>
-            <GradientText style={styles.sectionHeadingTitle}>
-              Latest Blogs
-            </GradientText>
-            <Text style={styles.sectionSubtitle}>
-              Tips, stories & updates on AI photo animation.
-            </Text>
-
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.blogsContainer}
-            >
-              {latestBlogs.map((blog) => (
-                <BlogCard key={blog.id} blog={blog} width={280} />
-              ))}
-            </ScrollView>
-
-            <TouchableOpacity
-              style={styles.blogsViewAllButton}
-              onPress={() => router.push("/blogs")}
-              activeOpacity={0.85}
-            >
-              <LinearGradient
-                colors={["#38BDF8", "#A855F7", "#D229FF"]}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={styles.blogsViewAllGradient}
-              >
-                <Text style={styles.blogsViewAllText}>View All Blogs</Text>
-              </LinearGradient>
-            </TouchableOpacity>
-          </View>
-        )}
 
         <TemplateExplorerModal 
           visible={isTemplateModalVisible} 
@@ -1252,29 +1244,5 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontFamily: getFontFamily("600"),
     color: "#7C3AED",
-  },
-  blogsSection: {
-    width: CONTENT_WIDTH,
-    alignSelf: "center",
-    marginBottom: 32,
-  },
-  blogsContainer: {
-    paddingRight: 16,
-    gap: 14,
-  },
-  blogsViewAllButton: {
-    alignSelf: "center",
-    marginTop: 20,
-    borderRadius: 999,
-    overflow: "hidden",
-  },
-  blogsViewAllGradient: {
-    paddingHorizontal: 28,
-    paddingVertical: 13,
-  },
-  blogsViewAllText: {
-    fontSize: 16,
-    fontFamily: getFontFamily("600"),
-    color: "#FFFFFF",
   },
 });
