@@ -177,14 +177,41 @@ export class IAPService {
 
       console.log('IAP: Purchase successful, extracting receipt data...');
 
-      const receiptData = purchase.transactionReceipt || (purchase as any).receipt || (purchase as any).transactionId;
+      // 1. First check if purchase object contains transactionReceipt
+      let receiptData = purchase.transactionReceipt || (purchase as any).receipt;
 
-      if (!receiptData) {
-        throw new Error('No valid receipt data found in purchase response');
+      // 2. If missing on iOS, query local App Store receipt file via getReceiptIOS
+      if (!receiptData && Platform.OS === 'ios') {
+        try {
+          console.log('IAP: Fetching App Store receipt via getReceiptIOS...');
+          receiptData = await RNIap.getReceiptIOS({ forceRefresh: false });
+        } catch (receiptErr) {
+          console.warn('IAP: getReceiptIOS failed, trying with forceRefresh:', receiptErr);
+          try {
+            receiptData = await RNIap.getReceiptIOS({ forceRefresh: true });
+          } catch (forceErr) {
+            console.warn('IAP: forceRefresh getReceiptIOS also failed:', forceErr);
+          }
+        }
       }
 
-      console.log('IAP: Verifying receipt with backend...');
-      const verificationResult = await api.verifyIAPReceipt(receiptData, userEmail, token);
+      // 3. Fallback to transactionId if receipt is still empty
+      if (!receiptData) {
+        receiptData = purchase.transactionId || (purchase as any).transactionIdentifier || '';
+      }
+
+      const transactionId = purchase.transactionId || (purchase as any).transactionIdentifier;
+      const originalTransactionId = (purchase as any).originalTransactionIdentifierIOS || (purchase as any).originalTransactionId || transactionId;
+
+      console.log(`IAP: Verifying purchase with backend (productId: ${productId}, txId: ${transactionId})...`);
+      const verificationResult = await api.verifyIAPReceipt(
+        receiptData,
+        userEmail,
+        token,
+        productId,
+        transactionId,
+        originalTransactionId
+      );
 
       if (verificationResult.success) {
         // Finish transaction with Apple / Google
@@ -259,18 +286,27 @@ export class IAPService {
       }
 
       const latestPurchase = availablePurchases[availablePurchases.length - 1];
-      const receiptData = latestPurchase.transactionReceipt || (latestPurchase as any).receipt;
+      let receiptData = latestPurchase.transactionReceipt || (latestPurchase as any).receipt;
 
-      if (!receiptData) {
-        return {
-          success: true,
-          restoredCount: 0,
-          creditsAdded: 0,
-          message: 'No receipt found for previous purchases',
-        };
+      if (!receiptData && Platform.OS === 'ios') {
+        try {
+          receiptData = await RNIap.getReceiptIOS({ forceRefresh: false });
+        } catch (e) {
+          console.warn('IAP: getReceiptIOS failed during restore:', e);
+        }
       }
 
-      const restoreResult = await api.restoreIAPPurchases(receiptData, userEmail, token);
+      if (!receiptData) {
+        receiptData = latestPurchase.transactionId || '';
+      }
+
+      const clientTransactions = availablePurchases.map((p) => ({
+        productId: p.productId,
+        transactionId: p.transactionId || '',
+        originalTransactionId: (p as any).originalTransactionIdentifierIOS || (p as any).originalTransactionId || p.transactionId,
+      }));
+
+      const restoreResult = await api.restoreIAPPurchases(receiptData, userEmail, token, clientTransactions);
 
       // Finish all restored transactions
       for (const purchase of availablePurchases) {
@@ -305,23 +341,52 @@ export class IAPService {
   ): Promise<void> {
     if (Platform.OS !== 'ios' && Platform.OS !== 'android') return;
 
+    if (!this.isInitialized) {
+      const initialized = await this.initialize();
+      if (!initialized) return;
+    }
+
     try {
       const purchases = await RNIap.getAvailablePurchases();
       if (!purchases || purchases.length === 0) return;
 
       console.log(`IAP: Handling ${purchases.length} pending/available purchases`);
       for (const purchase of purchases) {
-        const receiptData = purchase.transactionReceipt || (purchase as any).receipt;
-        if (receiptData) {
+        let receiptData = purchase.transactionReceipt || (purchase as any).receipt;
+        if (!receiptData && Platform.OS === 'ios') {
           try {
-            await api.verifyIAPReceipt(receiptData, userEmail, token);
+            receiptData = await RNIap.getReceiptIOS({ forceRefresh: false });
+          } catch (e) {}
+        }
+        if (!receiptData) {
+          receiptData = purchase.transactionId || '';
+        }
+
+        if (receiptData && purchase.productId) {
+          try {
+            await api.verifyIAPReceipt(
+              receiptData,
+              userEmail,
+              token,
+              purchase.productId,
+              purchase.transactionId,
+              (purchase as any).originalTransactionIdentifierIOS || (purchase as any).originalTransactionId
+            );
             await RNIap.finishTransaction({ purchase, isConsumable: true });
           } catch (e) {
             console.warn('IAP: Error processing pending purchase:', e);
           }
         }
       }
-    } catch (error) {
+    } catch (error: any) {
+      const message = String(error?.message || error);
+      // SKErrorDomain error 2 = payment cancelled: a cancelled payment left
+      // in the StoreKit queue (common in sandbox testing). Nothing to
+      // deliver or finish, so don't treat it as a failure.
+      if (message.includes('error 2') || message.toLowerCase().includes('cancel')) {
+        console.log('IAP: Pending purchases skipped (payment was cancelled)');
+        return;
+      }
       console.error('IAP: Failed handling pending purchases:', error);
     }
   }

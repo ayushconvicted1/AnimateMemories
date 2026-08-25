@@ -1,4 +1,5 @@
 import { AuthProvider } from "@/contexts/AuthContext";
+import PendingPurchaseHandler from "@/components/ui/PendingPurchaseHandler";
 import { SidebarProvider } from "@/contexts/SidebarContext";
 import { Stack } from "expo-router";
 import { TourProvider } from "@/contexts/TourContext";
@@ -208,6 +209,7 @@ export default function RootLayout() {
 
   return (
     <AuthProvider>
+      <PendingPurchaseHandler />
       <SidebarProvider>
         <TourProvider>
           <StatusBar
