@@ -95,6 +95,14 @@ const SUBSCRIPTION_DETAILS = {
     productId: 'com.hexerve.AnimateMemories.sub.premium'
   }
 };
+
+// Both the subscription tabs and the iOS one-time pack tabs render three
+// equal-width tabs, so each pack/sub maps to the same tab index (0, 1, 2).
+const PACK_INDEX_MAP: Record<string, number> = {
+  starter: 0, popular: 1, pro: 2,
+  basic: 0, standard: 1, premium: 2,
+};
+
 export default function CreditScreen() {
   const { user } = useAuthContext();
   const { getToken } = useAuth();
@@ -146,25 +154,18 @@ export default function CreditScreen() {
   const translateX = useSharedValue(0);
   const tabWidth = useSharedValue(0);
   
-  const tabLayouts = useRef<{
-    starter: { x: number; width: number } | null;
-    popular: { x: number; width: number } | null;
-    pro: { x: number; width: number } | null;
-    basic: { x: number; width: number } | null;
-    standard: { x: number; width: number } | null;
-    premium: { x: number; width: number } | null;
-  }>({
-    starter: null,
-    popular: null,
-    pro: null,
-    basic: null,
-    standard: null,
-    premium: null,
-  });
+  // Shared by both the subscription and iOS one-time tab groups. Both groups
+  // render three equal-width tabs, so keying by index keeps the indicator
+  // working when switching billing type (React reconciles the identical tab
+  // tree in place, so per-tab onLayout does not re-fire).
+  const tabLayouts = useRef<Array<{ x: number; width: number } | null>>([
+    null,
+    null,
+    null,
+  ]);
 
-  const updateIndicator = (pack: string, immediate = false) => {
-    // @ts-ignore
-    const layout = tabLayouts.current[pack];
+  const updateIndicator = (index: number, immediate = false) => {
+    const layout = tabLayouts.current[index];
     if (layout && layout.width > 0) {
       if (immediate) {
         tabWidth.value = layout.width;
@@ -178,7 +179,8 @@ export default function CreditScreen() {
 
   useEffect(() => {
     const timer = setTimeout(() => {
-      updateIndicator(billingType === 'one-time' ? selectedPack : selectedSubPack);
+      const pack = billingType === 'one-time' ? selectedPack : selectedSubPack;
+      updateIndicator(PACK_INDEX_MAP[pack] ?? 0);
     }, 0);
     return () => clearTimeout(timer);
   }, [selectedPack, selectedSubPack, billingType]);
@@ -573,8 +575,8 @@ export default function CreditScreen() {
               onPress={() => setSelectedSubPack('basic')}
               onLayout={(event) => {
                 const { width, x } = event.nativeEvent.layout;
-                tabLayouts.current.basic = { x, width };
-                if (selectedSubPack === 'basic') updateIndicator('basic', true);
+                tabLayouts.current[0] = { x, width };
+                if (selectedSubPack === 'basic') updateIndicator(0, true);
               }}
             >
               <Text
@@ -593,8 +595,8 @@ export default function CreditScreen() {
               onPress={() => setSelectedSubPack('standard')}
               onLayout={(event) => {
                 const { width, x } = event.nativeEvent.layout;
-                tabLayouts.current.standard = { x, width };
-                if (selectedSubPack === 'standard') updateIndicator('standard', true);
+                tabLayouts.current[1] = { x, width };
+                if (selectedSubPack === 'standard') updateIndicator(1, true);
               }}
             >
               <Text
@@ -613,8 +615,8 @@ export default function CreditScreen() {
               onPress={() => setSelectedSubPack('premium')}
               onLayout={(event) => {
                 const { width, x } = event.nativeEvent.layout;
-                tabLayouts.current.premium = { x, width };
-                if (selectedSubPack === 'premium') updateIndicator('premium', true);
+                tabLayouts.current[2] = { x, width };
+                if (selectedSubPack === 'premium') updateIndicator(2, true);
               }}
             >
               <Text
@@ -648,8 +650,8 @@ export default function CreditScreen() {
               onPress={() => setSelectedPack('starter')}
               onLayout={(event) => {
                 const { width, x } = event.nativeEvent.layout;
-                tabLayouts.current.starter = { x, width };
-                if (selectedPack === 'starter') updateIndicator('starter', true);
+                tabLayouts.current[0] = { x, width };
+                if (selectedPack === 'starter') updateIndicator(0, true);
               }}
             >
               <Text
@@ -668,8 +670,8 @@ export default function CreditScreen() {
               onPress={() => setSelectedPack('popular')}
               onLayout={(event) => {
                 const { width, x } = event.nativeEvent.layout;
-                tabLayouts.current.popular = { x, width };
-                if (selectedPack === 'popular') updateIndicator('popular', true);
+                tabLayouts.current[1] = { x, width };
+                if (selectedPack === 'popular') updateIndicator(1, true);
               }}
             >
               <Text
@@ -688,8 +690,8 @@ export default function CreditScreen() {
               onPress={() => setSelectedPack('pro')}
               onLayout={(event) => {
                 const { width, x } = event.nativeEvent.layout;
-                tabLayouts.current.pro = { x, width };
-                if (selectedPack === 'pro') updateIndicator('pro', true);
+                tabLayouts.current[2] = { x, width };
+                if (selectedPack === 'pro') updateIndicator(2, true);
               }}
             >
               <Text
