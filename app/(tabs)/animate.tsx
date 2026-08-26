@@ -1714,12 +1714,20 @@ export default function AnimateScreen() {
                       end={{ x: 1, y: 0 }}
                       style={styles.templateTabBtnGradient}
                     >
-                      <Text style={styles.templateTabBtnTextActive}>
+                      <Text
+                        numberOfLines={1}
+                        adjustsFontSizeToFit
+                        style={styles.templateTabBtnTextActive}
+                      >
                         PICK A TEMPLATE
                       </Text>
                     </LinearGradient>
                   ) : (
-                    <Text style={styles.templateTabBtnTextInactive}>
+                    <Text
+                      numberOfLines={1}
+                      adjustsFontSizeToFit
+                      style={styles.templateTabBtnTextInactive}
+                    >
                       PICK A TEMPLATE
                     </Text>
                   )}
@@ -1740,12 +1748,20 @@ export default function AnimateScreen() {
                       end={{ x: 1, y: 0 }}
                       style={styles.templateTabBtnGradient}
                     >
-                      <Text style={styles.templateTabBtnTextActive}>
+                      <Text
+                        numberOfLines={1}
+                        adjustsFontSizeToFit
+                        style={styles.templateTabBtnTextActive}
+                      >
                         CUSTOM PROMPT ✨
                       </Text>
                     </LinearGradient>
                   ) : (
-                    <Text style={styles.templateTabBtnTextInactive}>
+                    <Text
+                      numberOfLines={1}
+                      adjustsFontSizeToFit
+                      style={styles.templateTabBtnTextInactive}
+                    >
                       CUSTOM PROMPT ✨
                     </Text>
                   )}
