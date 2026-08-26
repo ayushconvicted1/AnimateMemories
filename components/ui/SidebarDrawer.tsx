@@ -249,7 +249,13 @@ export default function SidebarDrawer({ visible, onClose }: SidebarDrawerProps) 
               >
                 <View style={styles.menuItemLeft}>
                   <View style={styles.menuIconBox}>{item.icon}</View>
-                  <Text style={styles.menuItemLabel}>{item.label}</Text>
+                  <Text
+                    style={styles.menuItemLabel}
+                    numberOfLines={1}
+                    ellipsizeMode="tail"
+                  >
+                    {item.label}
+                  </Text>
                 </View>
                 {item.badge && (
                   <View style={styles.badgeBox}>
@@ -423,15 +429,19 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 14,
+    flex: 1,
+    minWidth: 0,
   },
   menuIconBox: {
     width: 28,
     alignItems: "center",
+    flexShrink: 0,
   },
   menuItemLabel: {
     fontSize: 17,
     fontFamily: getFontFamily("500"),
     color: "#1E293B",
+    flexShrink: 1,
   },
   badgeBox: {
     backgroundColor: "#F0F9FF",
@@ -440,6 +450,8 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     borderWidth: 1,
     borderColor: "#BAE6FD",
+    flexShrink: 0,
+    marginLeft: 8,
   },
   badgeText: {
     fontSize: 12,

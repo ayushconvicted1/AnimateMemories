@@ -3371,11 +3371,11 @@ const styles = StyleSheet.create({
     borderColor: "#E9D5FF",
     borderRadius: 8,
     padding: 12,
-    paddingBottom: 40,
+    paddingBottom: 52,
     fontSize: 15,
     color: "#111827",
     textAlignVertical: "top",
-    minHeight: 90,
+    minHeight: 104,
     fontFamily: getFontFamily("400"),
   },
   surpriseButtonInline: {
