@@ -27,6 +27,18 @@ import * as SplashScreen from "expo-splash-screen";
 // Keep the splash screen visible while we fetch resources
 SplashScreen.preventAutoHideAsync();
 
+// Cap iOS Dynamic Type scaling globally on every <Text> and <TextInput>.
+// Set at module scope so it's applied before the very first render (the
+// effect below only runs after mount, which would miss the first frame).
+(RNText as any).defaultProps = {
+  ...((RNText as any).defaultProps || {}),
+  maxFontSizeMultiplier: 1.2,
+};
+(RNTextInput as any).defaultProps = {
+  ...((RNTextInput as any).defaultProps || {}),
+  maxFontSizeMultiplier: 1.2,
+};
+
 export default function RootLayout() {
   const [fontsLoaded, fontError] = useFonts({
     Outfit_100Thin,
