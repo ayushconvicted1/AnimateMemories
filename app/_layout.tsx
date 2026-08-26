@@ -213,7 +213,7 @@ export default function RootLayout() {
       <SidebarProvider>
         <TourProvider>
           <StatusBar
-            style={Platform.OS === "android" ? "dark" : "auto"}
+            style="dark"
             backgroundColor={Platform.OS === "android" ? "#ffffff" : undefined}
           />
           <Stack
