@@ -45,10 +45,19 @@ function GlassTabBar(props: BottomTabBarProps) {
   const visibleRoutes = props.state.routes.filter((route) => {
     return VISIBLE_TABS.includes(route.name);
   });
-  const visibleIndex = Math.max(
-    0,
-    visibleRoutes.findIndex((route) => route.key === focusedKey)
+
+  // If the focused route is a hidden tab (e.g. payments/notifications/help),
+  // there is no matching visible tab. Fall back to the last visible tab so the
+  // bar renders without an out-of-range index (which would crash BottomTabBar),
+  // and keep that same tab highlighted for the glass pill.
+  const focusedVisibleIndex = visibleRoutes.findIndex(
+    (route) => route.key === focusedKey
   );
+  const safeIndex =
+    focusedVisibleIndex >= 0
+      ? focusedVisibleIndex
+      : Math.min(props.state.index, visibleRoutes.length - 1);
+  const visibleIndex = safeIndex;
 
   // Align the glass background to the same rect as the bar by reusing the
   // shared tabBarStyle, minus shadow/zIndex so we don't double-render them.
@@ -75,6 +84,7 @@ function GlassTabBar(props: BottomTabBarProps) {
     state: {
       ...props.state,
       routes: visibleRoutes,
+      index: safeIndex,
     },
   };
 
@@ -195,7 +205,7 @@ const CreateButton = ({ focused }: { focused: boolean }) => {
         <View style={styles.centerButton}>
           {/* Inactive gradient (gray) */}
           <AnimatedLinearGradient
-            colors={["#979797", "#979797"]}
+            colors={["#475569", "#475569"]}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 0 }}
             style={[StyleSheet.absoluteFill, inactiveGradientOpacity]}
@@ -285,7 +295,7 @@ export default function TabLayout() {
         tabBar={GlassTabBar}
         screenOptions={{
           tabBarActiveTintColor: "#282828",
-          tabBarInactiveTintColor: "#979797",
+          tabBarInactiveTintColor: "#475569",
           headerShown: false,
           tabBarStyle,
           tabBarLabelStyle: {
