@@ -60,6 +60,12 @@ export default function RootLayout() {
             style: { fontFamily: "Outfit_400Regular" },
           };
         }
+        // Cap iOS Dynamic Type scaling so large text sizes don't break
+        // fixed-size layouts (misaligned tabs/buttons).
+        (RNText as any).defaultProps = {
+          ...(RNText as any).defaultProps,
+          maxFontSizeMultiplier: 1.2,
+        };
 
         if ((RNTextInput as any).defaultProps) {
           (RNTextInput as any).defaultProps.style = [
@@ -71,6 +77,10 @@ export default function RootLayout() {
             style: { fontFamily: "Outfit_400Regular" },
           };
         }
+        (RNTextInput as any).defaultProps = {
+          ...(RNTextInput as any).defaultProps,
+          maxFontSizeMultiplier: 1.2,
+        };
       } catch (e) {
         console.warn("Global font setup error:", e);
       }
