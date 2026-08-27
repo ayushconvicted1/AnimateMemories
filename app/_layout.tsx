@@ -27,16 +27,19 @@ import * as SplashScreen from "expo-splash-screen";
 // Keep the splash screen visible while we fetch resources
 SplashScreen.preventAutoHideAsync();
 
-// Cap iOS Dynamic Type scaling globally on every <Text> and <TextInput>.
-// Set at module scope so it's applied before the very first render (the
-// effect below only runs after mount, which would miss the first frame).
+// Disable iOS Dynamic Type scaling globally on every <Text> and <TextInput>
+// so text always renders at its designed size. Set at module scope so it's
+// applied before the very first render (the effect below only runs after
+// mount, which would miss the first frame).
 (RNText as any).defaultProps = {
   ...((RNText as any).defaultProps || {}),
-  maxFontSizeMultiplier: 1.2,
+  allowFontScaling: false,
+  maxFontSizeMultiplier: 1,
 };
 (RNTextInput as any).defaultProps = {
   ...((RNTextInput as any).defaultProps || {}),
-  maxFontSizeMultiplier: 1.2,
+  allowFontScaling: false,
+  maxFontSizeMultiplier: 1,
 };
 
 export default function RootLayout() {
@@ -72,11 +75,11 @@ export default function RootLayout() {
             style: { fontFamily: "Outfit_400Regular" },
           };
         }
-        // Cap iOS Dynamic Type scaling so large text sizes don't break
-        // fixed-size layouts (misaligned tabs/buttons).
+        // Disable iOS Dynamic Type scaling (keep text at designed size).
         (RNText as any).defaultProps = {
           ...(RNText as any).defaultProps,
-          maxFontSizeMultiplier: 1.2,
+          allowFontScaling: false,
+          maxFontSizeMultiplier: 1,
         };
 
         if ((RNTextInput as any).defaultProps) {
@@ -91,7 +94,8 @@ export default function RootLayout() {
         }
         (RNTextInput as any).defaultProps = {
           ...(RNTextInput as any).defaultProps,
-          maxFontSizeMultiplier: 1.2,
+          allowFontScaling: false,
+          maxFontSizeMultiplier: 1,
         };
       } catch (e) {
         console.warn("Global font setup error:", e);
