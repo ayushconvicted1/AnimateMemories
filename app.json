@@ -11,9 +11,16 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.hexerve.AnimateMemories",
+      "googleServicesFile": "./GoogleService-Info.plist",
       "infoPlist": {
         "NSPhotoLibraryUsageDescription": "We need access to your photo library to upload and animate your photos.",
-        "NSPhotoLibraryAddUsageDescription": "We need access to save your animated videos to your photo library."
+        "NSPhotoLibraryAddUsageDescription": "We need access to save your animated videos to your photo library.",
+        "NSUserTrackingUsageDescription": "We use tracking to personalize your experience and to measure the ads that bring you the animations you love.",
+        "FacebookAppID": "1093894679824761",
+        "FacebookDisplayName": "AnimateMemories",
+        "FacebookClientToken": "bab4efd647ec14508d5070e35c0f9599",
+        "FacebookAutoLogAppEventsEnabled": true,
+        "FacebookAdvertiserIDCollectionEnabled": true
       },
       "appleTeamId": "N6M4Z5254R"
     },
@@ -22,6 +29,7 @@
         "backgroundColor": "#8B70FD",
         "foregroundImage": "./assets/images/adaptive-icon.png"
       },
+      "googleServicesFile": "./google-services.json",
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
       "package": "com.hexerve.AnimateMemories",
@@ -33,7 +41,8 @@
       "permissions": [
         "android.permission.RECORD_AUDIO",
         "android.permission.MODIFY_AUDIO_SETTINGS",
-        "android.permission.POST_NOTIFICATIONS"
+        "android.permission.POST_NOTIFICATIONS",
+        "com.google.android.gms.permission.AD_ID"
       ]
     },
     "web": {
@@ -57,7 +66,29 @@
       "expo-secure-store",
       "expo-apple-authentication",
       "expo-av",
-      "react-native-iap"
+      "react-native-iap",
+      [
+        "@react-native-firebase/app",
+        {
+          "androidGoogleServicesFile": "./google-services.json",
+          "iosGoogleServicesFile": "./GoogleService-Info.plist"
+        }
+      ],
+      "@react-native-firebase/crashlytics",
+      [
+        "expo-tracking-transparency",
+        {
+          "userTrackingPermission": "We use tracking to personalize your experience and to measure the ads that bring you the animations you love."
+        }
+      ],
+      [
+        "./plugins/withFacebookAppEvents",
+        {
+          "facebookAppId": "1093894679824761",
+          "facebookClientToken": "bab4efd647ec14508d5070e35c0f9599",
+          "facebookDisplayName": "AnimateMemories"
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,

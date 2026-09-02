@@ -28,6 +28,7 @@ import { api } from "@/services/api";
 import { useFocusEffect } from "expo-router";
 import * as WebBrowser from "expo-web-browser";
 import { iapService } from "@/services/iap-service";
+import { trackPurchase, trackInitiatedCheckout } from "@/services/tracking";
 import { IAP_PRODUCTS, IAP_SUBSCRIPTION_PRODUCTS } from "@/constants/iap-config";
 import CustomSlider from '@/components/ui/CustomSlider';
 
@@ -339,6 +340,12 @@ export default function CreditScreen() {
             "Payment Successful! 🎉",
             "Your credits have been added to your account."
           );
+          trackPurchase({
+            amount: Number(purchasePrice) || 0,
+            currency: "USD",
+            productId,
+            credits: purchaseCredits,
+          });
           fetchUserCredits();
           fetchUserPlan();
         } else if (
@@ -410,6 +417,12 @@ export default function CreditScreen() {
 
         if (checkoutData?.url) {
           const initialCredits = userCredits;
+          trackInitiatedCheckout({
+            value: Number(purchasePrice) || 0,
+            currency: "USD",
+            productId,
+            credits: purchaseCredits,
+          });
           const browserResult = await WebBrowser.openAuthSessionAsync(
             checkoutData.url,
             "animatememories://"
@@ -419,7 +432,18 @@ export default function CreditScreen() {
           const latestCredits = await fetchUserCredits();
           await fetchUserPlan();
 
-          if (
+          if (latestCredits !== null && latestCredits > (initialCredits || 0)) {
+            trackPurchase({
+              amount: Number(purchasePrice) || 0,
+              currency: "USD",
+              productId: productId || purchaseId,
+              credits: purchaseCredits,
+            });
+            Alert.alert(
+              "Payment Successful! 🎉",
+              "Your credits have been added to your account."
+            );
+          } else if (
             browserResult.type === "cancel" ||
             browserResult.type === "dismiss" ||
             (browserResult.type === "success" &&

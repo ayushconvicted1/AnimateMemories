@@ -62,9 +62,9 @@ const DEFAULT_CATEGORIES = [
 ];
 
 const DEFAULT_TEMPLATES = [
-  { id: "warm-hug", name: "Warm Hug", image: require("@/assets/images/Home1.webp"), isStar: false, category: "Couples" },
+  { id: "family-photo-pose", name: "Family Smile", image: require("@/assets/images/Home1.webp"), isStar: false, category: "Family" },
   { id: "fighting-pose", name: "Fighting Pose", image: require("@/assets/images/Home2.webp"), isStar: true, category: "Funny" },
-  { id: "head-lean", name: "Head Lean", image: require("@/assets/images/Home3.webp"), isStar: true, category: "Couples" },
+  { id: "head-lean", name: "Head Lean", image: require("@/assets/images/Home3.webp"), isStar: true, category: "Tribute" },
   { id: "classic-wedding", name: "Classic Wedding", image: require("@/assets/images/ClassicWedding.jpg"), isStar: true, category: "Wedding" },
   { id: "family-memories", name: "Family Memories", image: require("@/assets/images/FamilyPhoto.jpg"), isStar: false, category: "Family" },
   { id: "vintage-portrait", name: "Vintage Portrait", image: require("@/assets/images/VintagePortrait.jpg"), isStar: true, category: "Trending" },

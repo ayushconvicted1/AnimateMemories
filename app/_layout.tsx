@@ -1,8 +1,8 @@
-import { AuthProvider } from "@/contexts/AuthContext";
+import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { SidebarProvider } from "@/contexts/SidebarContext";
-import { Stack } from "expo-router";
+import { Stack, usePathname } from "expo-router";
 import { TourProvider } from "@/contexts/TourContext";
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import * as Linking from "expo-linking";
 import { router } from "expo-router";
 import * as WebBrowser from "expo-web-browser";
@@ -22,6 +22,13 @@ import {
   Outfit_900Black,
 } from "@expo-google-fonts/outfit";
 import * as SplashScreen from "expo-splash-screen";
+import {
+  initTracking,
+  requestTrackingPermissionAndInit,
+  setUser,
+  clearUser,
+  trackScreen,
+} from "@/services/tracking";
 
 // Keep the splash screen visible while we fetch resources
 SplashScreen.preventAutoHideAsync();
@@ -208,6 +215,8 @@ export default function RootLayout() {
 
   return (
     <AuthProvider>
+      <TrackingBridge />
+      <ScreenTracker />
       <SidebarProvider>
         <TourProvider>
           <StatusBar
@@ -223,4 +232,57 @@ export default function RootLayout() {
       </SidebarProvider>
     </AuthProvider>
   );
+}
+
+/**
+ * Initializes Firebase + Meta once, requests App Tracking Transparency on iOS,
+ * and keeps the user identity in sync with Clerk (fires on sign-in/out).
+ * Rendered inside <AuthProvider> so it can read useAuth().
+ */
+function TrackingBridge() {
+  const { user, isSignedIn } = useAuth();
+
+  // One-time SDK init + tracking-permission request.
+  useEffect(() => {
+    (async () => {
+      await initTracking();
+      await requestTrackingPermissionAndInit();
+    })();
+  }, []);
+
+  // Sync the pseudonymous Clerk user id to GA4 + Meta on auth changes.
+  useEffect(() => {
+    if (!isSignedIn || !user) {
+      clearUser();
+      return;
+    }
+    const email =
+      user.primaryEmailAddress?.emailAddress ||
+      user.emailAddresses?.[0]?.emailAddress ||
+      null;
+    setUser({ id: user.id, email, signedIn: true });
+  }, [isSignedIn, user?.id]);
+
+  return null;
+}
+
+/**
+ * Sends a GA4 screen_view whenever the active expo-router route changes.
+ * Rendered inside <Stack> is not required; usePathname() works anywhere under the
+ * RouterProvider.
+ */
+function ScreenTracker() {
+  const pathname = usePathname();
+  const prevRef = useRef<string | null>(null);
+  const firstRef = useRef(true);
+
+  useEffect(() => {
+    if (firstRef.current || prevRef.current !== pathname) {
+      trackScreen(pathname || "root");
+      prevRef.current = pathname;
+      firstRef.current = false;
+    }
+  }, [pathname]);
+
+  return null;
 }

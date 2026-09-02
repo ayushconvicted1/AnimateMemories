@@ -61,7 +61,7 @@ const promptExamples = [
   "slowly turns head left and right, blinks softly, gentle smile",
   "natural breathing motion, subtle eye movement, peaceful expression",
   "gentle swaying dance movement, rhythmic head bob, joyful expression",
-  "two people hugging warmly, slight rocking motion, emotional embrace",
+  "family smiling warmly together, gentle head nods, cheerful expressions",
   "playful dancing with shoulder movements, happy facial expressions",
 ];
 
@@ -1129,7 +1129,7 @@ export default function AnimateScreen() {
               >
                 <TouchableOpacity
                   style={styles.uploadTouchArea}
-                  onPress={pickImage}
+                  onPress={() => pickImage()}
                   disabled={uploading}
                   activeOpacity={0.75}
                 >
@@ -2885,64 +2885,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontFamily: getFontFamily("600"),
     color: "rgba(255,255,255,0.9)",
-    marginTop: 2,
-  },
-  modelChipsRow: {
-    flexDirection: "row" as const,
-    gap: 8,
-  },
-  modelChip: {
-    flex: 1,
-    borderRadius: 10,
-    overflow: "hidden" as const,
-    borderWidth: 1.5,
-    borderColor: "#e5e7eb",
-  },
-  modelChipSelected: {
-    borderColor: "transparent",
-    shadowColor: "#D229FF",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.18,
-    shadowRadius: 5,
-    elevation: 3,
-  },
-  modelChipGradient: {
-    flex: 1,
-    paddingVertical: 8,
-    paddingHorizontal: 6,
-    alignItems: "center" as const,
-    justifyContent: "center" as const,
-  },
-  modelChipInner: {
-    flex: 1,
-    paddingVertical: 8,
-    paddingHorizontal: 6,
-    alignItems: "center" as const,
-    justifyContent: "center" as const,
-    backgroundColor: "#fafafa",
-  },
-  modelChipName: {
-    fontSize: 13,
-    fontFamily: getFontFamily("600"),
-    color: "#374151",
-    textAlign: "center" as const,
-  },
-  modelChipNameSelected: {
-    fontSize: 13,
-    fontFamily: getFontFamily("600"),
-    color: "#fff",
-    textAlign: "center" as const,
-  },
-  modelChipCost: {
-    fontSize: 12,
-    fontFamily: getFontFamily("600"),
-    color: "#9ca3af",
-    marginTop: 2,
-  },
-  modelChipCostSelected: {
-    fontSize: 12,
-    fontFamily: getFontFamily("600"),
-    color: "rgba(255,255,255,0.85)",
     marginTop: 2,
   },
   restoreDetailsCard: {

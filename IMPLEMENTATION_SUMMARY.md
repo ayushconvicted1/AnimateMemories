@@ -22,12 +22,16 @@ Created a complete tab-based navigation system:
 #### **Home Tab** (`/(tabs)/index.tsx`)
 - Welcome screen with user greeting
 - Quick action to create videos
-- Feature showcase (Kiss, Hug, Dance, Custom animations)
-- Clean, modern UI matching website theme
+- Feature showcase (Dance, Smile, Tribute, Custom animations)
+- Preset categories (Trending, Family, Kids, Pets, Wedding, Tribute, Holiday, Graduation, Birthday, Funny)
+- Image upload via gallery
+- Animation type selection (Dance, Smile, Tribute, Custom)
+- Upload area with drag-and-drop styling
+- Ready for API integration
 
 #### **Studio Tab** (`/(tabs)/studio.tsx`)
 - Image picker (camera + gallery) with permissions
-- Animation type selection (Kiss, Hug, Dance, Custom)
+- Animation type selection (Dance, Smile, Tribute, Custom)
 - Upload area with drag-and-drop styling
 - Ready for API integration
 
