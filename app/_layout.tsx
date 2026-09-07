@@ -8,6 +8,7 @@ import {
   setupNotificationListeners,
   requestNotificationPermission,
   getFCMToken,
+  registerTokenWithBackend,
 } from "@/services/notifications";
 import * as Linking from "expo-linking";
 import { router } from "expo-router";
@@ -272,8 +273,12 @@ function NotificationBridge() {
       const granted = await requestNotificationPermission();
       if (granted) {
         const token = await getFCMToken();
-        if (token && user?.id) {
-          console.log(`[FCM] Token ready for user ${user.id}:`, token);
+        const email =
+          user?.primaryEmailAddress?.emailAddress ||
+          user?.emailAddresses?.[0]?.emailAddress;
+        if (token && email) {
+          console.log(`[FCM] Token ready for user ${email}:`, token);
+          await registerTokenWithBackend(token, email);
         }
       }
     })();

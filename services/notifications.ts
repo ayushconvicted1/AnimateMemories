@@ -93,6 +93,33 @@ export async function getFCMToken(): Promise<string | null> {
 }
 
 /**
+ * Register FCM device token with the backend database
+ */
+export async function registerTokenWithBackend(
+  token: string,
+  userEmail: string
+): Promise<boolean> {
+  try {
+    const API_BASE_URL = "https://www.animatememories.com";
+    const res = await fetch(`${API_BASE_URL}/api/notifications/save-token`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        userEmail,
+        fcmToken: token,
+        platform: Platform.OS,
+      }),
+    });
+    const data = await res.json();
+    console.log("[FCM] Registered token with backend:", data);
+    return res.ok;
+  } catch (err) {
+    console.warn("[FCM] Failed to register token with backend:", err);
+    return false;
+  }
+}
+
+/**
  * Handle notification tap and route to appropriate screen
  */
 export function handleNotificationNavigation(
