@@ -1,9 +1,14 @@
-import { AuthProvider } from "@/contexts/AuthContext";
+import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import PendingPurchaseHandler from "@/components/ui/PendingPurchaseHandler";
 import { SidebarProvider } from "@/contexts/SidebarContext";
 import { Stack } from "expo-router";
 import { TourProvider } from "@/contexts/TourContext";
 import { useEffect } from "react";
+import {
+  setupNotificationListeners,
+  requestNotificationPermission,
+  getFCMToken,
+} from "@/services/notifications";
 import * as Linking from "expo-linking";
 import { router } from "expo-router";
 import * as WebBrowser from "expo-web-browser";
@@ -236,6 +241,7 @@ export default function RootLayout() {
   return (
     <AuthProvider>
       <PendingPurchaseHandler />
+      <NotificationBridge />
       <SidebarProvider>
         <TourProvider>
           <StatusBar
@@ -251,4 +257,33 @@ export default function RootLayout() {
       </SidebarProvider>
     </AuthProvider>
   );
+}
+
+/**
+ * Initializes FCM notifications, requests permissions, and attaches foreground,
+ * background, and cold-start tap handlers.
+ */
+function NotificationBridge() {
+  const { user } = useAuth();
+
+  useEffect(() => {
+    // 1. Request permission & retrieve token
+    (async () => {
+      const granted = await requestNotificationPermission();
+      if (granted) {
+        const token = await getFCMToken();
+        if (token && user?.id) {
+          console.log(`[FCM] Token ready for user ${user.id}:`, token);
+        }
+      }
+    })();
+
+    // 2. Attach notification listeners (foreground alerts, notification taps)
+    const cleanup = setupNotificationListeners();
+    return () => {
+      cleanup();
+    };
+  }, [user?.id]);
+
+  return null;
 }
