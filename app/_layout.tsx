@@ -29,6 +29,11 @@ import {
   clearUser,
   trackScreen,
 } from "@/services/tracking";
+import {
+  setupNotificationListeners,
+  requestNotificationPermission,
+  getFCMToken,
+} from "@/services/notifications";
 
 // Keep the splash screen visible while we fetch resources
 SplashScreen.preventAutoHideAsync();
@@ -217,6 +222,7 @@ export default function RootLayout() {
     <AuthProvider>
       <TrackingBridge />
       <ScreenTracker />
+      <NotificationBridge />
       <SidebarProvider>
         <TourProvider>
           <StatusBar
@@ -286,3 +292,33 @@ function ScreenTracker() {
 
   return null;
 }
+
+/**
+ * Initializes FCM notifications, requests permissions, and attaches foreground,
+ * background, and cold-start tap handlers.
+ */
+function NotificationBridge() {
+  const { user } = useAuth();
+
+  useEffect(() => {
+    // 1. Request permission & retrieve token
+    (async () => {
+      const granted = await requestNotificationPermission();
+      if (granted) {
+        const token = await getFCMToken();
+        if (token && user?.id) {
+          console.log(`[FCM] Token ready for user ${user.id}:`, token);
+        }
+      }
+    })();
+
+    // 2. Attach notification listeners (foreground alerts, notification taps)
+    const cleanup = setupNotificationListeners();
+    return () => {
+      cleanup();
+    };
+  }, [user?.id]);
+
+  return null;
+}
+
