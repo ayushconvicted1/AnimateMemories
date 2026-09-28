@@ -3,6 +3,10 @@ import { View, ActivityIndicator, Text } from "react-native";
 import { useAuth } from "@/contexts/AuthContext";
 import { router } from "expo-router";
 import { getFontFamily } from "@/constants/Fonts";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { PendingAction } from "@/contexts/AuthGateContext";
+
+const PENDING_ACTION_STORAGE_KEY = "@auth_pending_action";
 
 export default function AuthCallback() {
   const { isSignedIn, isLoaded } = useAuth();
@@ -10,10 +14,47 @@ export default function AuthCallback() {
 
   useEffect(() => {
     if (!isLoaded || hasRedirected) return;
-    
+
     if (isSignedIn) {
       setHasRedirected(true);
-      router.replace("/(tabs)");
+
+      (async () => {
+        try {
+          const stored = await AsyncStorage.getItem(PENDING_ACTION_STORAGE_KEY);
+          if (stored) {
+            await AsyncStorage.removeItem(PENDING_ACTION_STORAGE_KEY);
+            const action = JSON.parse(stored) as PendingAction;
+
+            if (action?.type === "template") {
+              router.replace({
+                pathname: "/(tabs)/animate",
+                params: { templateId: action.templateId },
+              });
+              return;
+            } else if (action?.type === "create") {
+              router.replace("/(tabs)/animate");
+              return;
+            } else if (action?.type === "upload") {
+              if (action.imageUri) {
+                router.replace({
+                  pathname: "/(tabs)/animate",
+                  params: { imageUri: encodeURIComponent(action.imageUri) },
+                });
+              } else {
+                router.replace("/(tabs)/animate");
+              }
+              return;
+            } else if (action?.type === "tab") {
+              router.replace(`/(tabs)/${action.tabName}` as any);
+              return;
+            }
+          }
+        } catch (e) {
+          console.log("[AuthCallback] Error restoring pending action:", e);
+        }
+
+        router.replace("/(tabs)");
+      })();
       return;
     }
 
@@ -21,7 +62,7 @@ export default function AuthCallback() {
     const fallbackTimer = setTimeout(() => {
       if (!hasRedirected) {
         setHasRedirected(true);
-        router.replace("/(auth)");
+        router.replace("/(tabs)");
       }
     }, 4000);
 

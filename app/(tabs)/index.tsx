@@ -17,10 +17,11 @@ import * as ImagePicker from "expo-image-picker";
 import { GradientText } from "@/components/ui/GradientText";
 import ScreenWrapper from "@/components/ui/ScreenWrapper";
 import { useAuth as useAuthContext } from "@/contexts/AuthContext";
+import { useAuthGate } from "@/contexts/AuthGateContext";
 import { useAuth } from "@clerk/clerk-expo";
 import { api } from "@/services/api";
 import { getFontFamily } from "@/constants/Fonts";
-import { useTour } from "@/contexts/TourContext";
+import { promptNotificationPermissionOnHome } from "@/services/notifications";
 import { Video, ResizeMode } from "expo-av";
 import TransformationGrid from "@/components/ui/TransformationGrid";
 import HomeArrow from "@/components/images/HomeArrow";
@@ -36,16 +37,26 @@ const CONTENT_WIDTH = SCREEN_WIDTH - 32;
 const API_BASE_URL =
   process.env.EXPO_PUBLIC_API_BASE_URL || "https://www.animatememories.com";
 
-const formatImageUrl = (url?: string) => {
+const formatImageUrl = (url?: string | null) => {
   if (!url) return "";
+  let formatted = String(url).trim();
   if (
-    url.startsWith("http://") ||
-    url.startsWith("https://") ||
-    url.startsWith("data:")
+    formatted.startsWith("http://") ||
+    formatted.startsWith("https://") ||
+    formatted.startsWith("data:")
   ) {
-    return url;
+    try {
+      return encodeURI(formatted);
+    } catch {
+      return formatted;
+    }
   }
-  return `${API_BASE_URL}${url.startsWith("/") ? "" : "/"}${url}`;
+  const full = `${API_BASE_URL}${formatted.startsWith("/") ? "" : "/"}${formatted}`;
+  try {
+    return encodeURI(full);
+  } catch {
+    return full;
+  }
 };
 
 const DEFAULT_CATEGORIES = [
@@ -62,12 +73,66 @@ const DEFAULT_CATEGORIES = [
 ];
 
 const DEFAULT_TEMPLATES = [
-  { id: "family-photo-pose", name: "Family Smile", image: require("@/assets/images/Home1.webp"), isStar: false, category: "Family" },
-  { id: "fighting-pose", name: "Fighting Pose", image: require("@/assets/images/Home2.webp"), isStar: true, category: "Funny" },
-  { id: "head-lean", name: "Head Lean", image: require("@/assets/images/Home3.webp"), isStar: true, category: "Tribute" },
-  { id: "classic-wedding", name: "Classic Wedding", image: require("@/assets/images/ClassicWedding.jpg"), isStar: true, category: "Wedding" },
-  { id: "family-memories", name: "Family Memories", image: require("@/assets/images/FamilyPhoto.jpg"), isStar: false, category: "Family" },
-  { id: "vintage-portrait", name: "Vintage Portrait", image: require("@/assets/images/VintagePortrait.jpg"), isStar: true, category: "Trending" },
+  {
+    id: "family-photo-pose",
+    slug: "family-photo-pose",
+    name: "Family Smile",
+    image: require("@/assets/images/Home1.webp"),
+    thumbnailUrl: "/templates/FamilyPhoto.jpeg",
+    videoUrl: "https://pub-b01a35ccbe054425bacd868be6412477.r2.dev/templates/family-photo-pose.mp4",
+    isStar: false,
+    category: "Family"
+  },
+  {
+    id: "fighting-pose",
+    slug: "fighting-pose",
+    name: "Fighting Pose",
+    image: require("@/assets/images/Home2.webp"),
+    thumbnailUrl: "/templates/Fighting POse.webp",
+    videoUrl: "https://pub-b01a35ccbe054425bacd868be6412477.r2.dev/templates/fighting-pose.mp4",
+    isStar: true,
+    category: "Funny"
+  },
+  {
+    id: "head-lean",
+    slug: "head-lean",
+    name: "Head Lean",
+    image: require("@/assets/images/Home3.webp"),
+    thumbnailUrl: "/templates/Head Lean.webp",
+    videoUrl: "https://pub-b01a35ccbe054425bacd868be6412477.r2.dev/templates/head-lean.mp4",
+    isStar: true,
+    category: "Tribute"
+  },
+  {
+    id: "classic-wedding",
+    slug: "classic-wedding",
+    name: "Classic Wedding",
+    image: require("@/assets/images/ClassicWedding.jpg"),
+    thumbnailUrl: "/templates/first-dance.webp",
+    videoUrl: "https://pub-b01a35ccbe054425bacd868be6412477.r2.dev/templates/first-dance.mp4",
+    isStar: true,
+    category: "Wedding"
+  },
+  {
+    id: "family-memories",
+    slug: "family-memories",
+    name: "Family Memories",
+    image: require("@/assets/images/FamilyPhoto.jpg"),
+    thumbnailUrl: "/templates/FamilyPhoto.jpeg",
+    videoUrl: "https://pub-b01a35ccbe054425bacd868be6412477.r2.dev/templates/family-photo-pose.mp4",
+    isStar: false,
+    category: "Family"
+  },
+  {
+    id: "vintage-portrait",
+    slug: "vintage-portrait",
+    name: "Vintage Portrait",
+    image: require("@/assets/images/VintagePortrait.jpg"),
+    thumbnailUrl: "/templates/Salute.jpeg",
+    videoUrl: "https://pub-b01a35ccbe054425bacd868be6412477.r2.dev/templates/salute.mp4",
+    isStar: true,
+    category: "Trending"
+  },
 ];
 
 const TemplateCard = memo(
@@ -75,19 +140,14 @@ const TemplateCard = memo(
     item,
     onSelect,
     autoPlay,
+    onPlaybackFinished,
   }: {
     item: any;
     onSelect: (id: string) => void;
     autoPlay?: boolean;
+    onPlaybackFinished?: () => void;
   }) => {
     const id = item.slug || item.id;
-    const uri = item.image
-      ? typeof item.image === "number" || typeof item.image === "object"
-        ? item.image
-        : { uri: formatImageUrl(item.thumbnailUrl || item.image) }
-      : item.thumbnailUrl
-      ? { uri: formatImageUrl(item.thumbnailUrl) }
-      : undefined;
 
     return (
       <TouchableOpacity
@@ -97,9 +157,11 @@ const TemplateCard = memo(
       >
         <View style={styles.templateImageContainer}>
           <AnimatedTemplateThumb
-            thumbnail={uri}
             videoUrl={item.videoUrl ? formatImageUrl(item.videoUrl) : null}
+            thumbnailUrl={item.thumbnailUrl ? formatImageUrl(item.thumbnailUrl) : null}
+            image={item.image || null}
             autoPlay={autoPlay}
+            onPlaybackFinished={onPlaybackFinished}
             style={styles.templateImage}
           />
           {(item.isStar || item.isFeatured || item.is_featured) && (
@@ -130,24 +192,56 @@ const HomeTemplatesCarousel = memo(
     const scrollXRef = useRef(0);
     const [canScrollLeft, setCanScrollLeft] = useState(false);
     const [canScrollRight, setCanScrollRight] = useState(true);
-    const [activeIds, setActiveIds] = useState<Set<string>>(() => {
-      const initialSet = new Set<string>();
-      templates.slice(0, 4).forEach((t) => {
-        const id = t.slug || t.id;
-        if (id) initialSet.add(String(id));
-      });
-      return initialSet;
+    const visibleIdsRef = useRef<string[]>([]);
+    const [activeVideoId, setActiveVideoId] = useState<string | null>(() => {
+      if (templates.length > 0) {
+        return String(templates[0].slug || templates[0].id);
+      }
+      return null;
     });
     const isScrollingRef = useRef(false);
 
     useEffect(() => {
-      const initialSet = new Set<string>();
-      templates.slice(0, 4).forEach((t) => {
-        const id = t.slug || t.id;
-        if (id) initialSet.add(String(id));
+      if (templates.length > 0 && !activeVideoId) {
+        const id = String(templates[0].slug || templates[0].id);
+        setActiveVideoId(id);
+        if (!visibleIdsRef.current.includes(id)) {
+          visibleIdsRef.current = [id];
+        }
+      }
+    }, [templates, activeVideoId]);
+
+    // Advance to next visible card in continuous round-robin loop
+    const advanceToNextVideo = useCallback(() => {
+      const visible = visibleIdsRef.current;
+      if (!visible || visible.length === 0) return;
+      if (visible.length === 1) {
+        // Only 1 item visible: toggle to trigger replay of this single card
+        setActiveVideoId(null);
+        setTimeout(() => {
+          setActiveVideoId(visible[0]);
+        }, 50);
+        return;
+      }
+      setActiveVideoId((prevId) => {
+        const currentIndex = visible.indexOf(prevId || "");
+        if (currentIndex === -1) {
+          return visible[0];
+        }
+        const nextIndex = (currentIndex + 1) % visible.length;
+        return visible[nextIndex];
       });
-      setActiveIds(initialSet);
-    }, [templates]);
+    }, []);
+
+    // Video plays in full and advances naturally via onPlaybackFinished.
+    // 15s safety watchdog: only intervenes if a video stream hangs or disconnects.
+    useEffect(() => {
+      if (visibleIdsRef.current.length <= 1) return;
+      const watchdog = setTimeout(() => {
+        advanceToNextVideo();
+      }, 15000);
+      return () => clearTimeout(watchdog);
+    }, [activeVideoId, advanceToNextVideo]);
 
     const updateArrows = useCallback(
       (offsetX: number) => {
@@ -182,26 +276,32 @@ const HomeTemplatesCarousel = memo(
     const onViewableItemsChanged = useRef(
       ({ viewableItems }: { viewableItems: any[] }) => {
         if (viewableItems && viewableItems.length > 0) {
-          setActiveIds(
-            new Set(
-              viewableItems.map((v: any) =>
-                String(v.item?.slug || v.item?.id)
-              )
-            )
-          );
+          const ids = viewableItems
+            .map((v: any) => String(v.item?.slug || v.item?.id))
+            .filter(Boolean);
+          visibleIdsRef.current = ids;
+          setActiveVideoId((prevId) => {
+            if (prevId && ids.includes(prevId)) return prevId;
+            return ids[0];
+          });
         }
       }
     ).current;
 
     const renderItem = useCallback(
-      ({ item }: { item: any }) => (
-        <TemplateCard
-          item={item}
-          onSelect={onSelect}
-          autoPlay={activeIds.has(String(item.slug || item.id))}
-        />
-      ),
-      [onSelect, activeIds]
+      ({ item }: { item: any }) => {
+        const id = String(item.slug || item.id);
+        const isCurrentActive = activeVideoId === id;
+        return (
+          <TemplateCard
+            item={item}
+            onSelect={onSelect}
+            autoPlay={isCurrentActive}
+            onPlaybackFinished={isCurrentActive ? advanceToNextVideo : undefined}
+          />
+        );
+      },
+      [onSelect, activeVideoId, advanceToNextVideo]
     );
 
     const getItemLayout = useCallback(
@@ -320,9 +420,9 @@ const StepVideo = memo(
 StepVideo.displayName = "StepVideo";
 
 export default function HomeScreen() {
-  const { user } = useAuthContext();
+  const { user, isSignedIn } = useAuthContext();
   const { getToken } = useAuth();
-  const { startTour, endTour, isActive, currentStep } = useTour();
+  const { requireAuth } = useAuthGate();
   const [userCredits, setUserCredits] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [animationTemplates, setAnimationTemplates] = useState<any[]>(DEFAULT_TEMPLATES);
@@ -331,14 +431,23 @@ export default function HomeScreen() {
   const [scrollOffset, setScrollOffset] = useState(0);
   const [isTemplateModalVisible, setTemplateModalVisible] = useState(false);
   const [isHeroVideoReady, setIsHeroVideoReady] = useState(false);
+  const heroVideoRef = useRef<Video>(null);
 
   const filteredTemplates = useMemo(() => {
     if (selectedCategory === "Trending") {
-      return animationTemplates.slice(0, 8);
+      // Show templates that have "Viral" or "Trending" in their categories
+      const trending = animationTemplates.filter((t) => {
+        const catStr = (t.category || t.categoryId || "").toLowerCase();
+        const cats = catStr.split(/[\s,]+/).filter(Boolean);
+        return cats.includes("viral") || cats.includes("trending");
+      });
+      return (trending.length > 0 ? trending : animationTemplates).slice(0, 8);
     }
     const filtered = animationTemplates.filter((t) => {
       const catStr = (t.category || t.categoryId || "").toLowerCase();
-      return catStr === selectedCategory.toLowerCase();
+      // Split comma-separated categories (e.g., "Viral, Birthday")
+      const cats = catStr.split(/[\s,]+/).filter(Boolean);
+      return cats.includes(selectedCategory.toLowerCase());
     });
     // Fallback to all if category has no templates, capped to 8
     return (filtered.length > 0 ? filtered : animationTemplates).slice(0, 8);
@@ -349,12 +458,20 @@ export default function HomeScreen() {
     setScrollOffset(y);
   }, []);
 
-  const isHeroVisible = scrollOffset < 600;
-  const isTransformationsVisible = scrollOffset > 300 && scrollOffset < 2400;
-  // Play the step demo videos only while the user is in this section of the
-  // page, so they don't stack on top of the hero/transformation videos that
-  // are already decoding (the 256MB Android heap OOMs otherwise).
-  const isStepsVisible = scrollOffset > 200 && scrollOffset < 2600;
+  // Hero video only plays while in view at the top of the screen
+  const isHeroVisible = scrollOffset < 450;
+  // Step demo videos play only when scrolled to the "How to" section
+  const isStepsVisible = scrollOffset > 600 && scrollOffset < 2000;
+  // Transformation grid video plays when scrolled to that section
+  const isTransformationsVisible = scrollOffset > 1000 && scrollOffset < 2800;
+
+  useEffect(() => {
+    if (isHeroVisible && heroVideoRef.current) {
+      heroVideoRef.current.playAsync().catch(() => {});
+    } else if (!isHeroVisible && heroVideoRef.current) {
+      heroVideoRef.current.pauseAsync().catch(() => {});
+    }
+  }, [isHeroVisible]);
 
   useEffect(() => {
     const fetchUserCredits = async () => {
@@ -405,14 +522,33 @@ export default function HomeScreen() {
 
     if (user) {
       fetchUserCredits();
-      startTour();
     } else {
       setLoading(false);
     }
   }, [user]);
 
+  // Prompt notification permission on Home screen after login/signup
+  useEffect(() => {
+    if (!user) return;
+
+    const timer = setTimeout(() => {
+      const email =
+        user.primaryEmailAddress?.emailAddress ||
+        user.emailAddresses?.[0]?.emailAddress ||
+        null;
+      promptNotificationPermissionOnHome(email).catch((err) => {
+        console.warn("[HomeScreen] Notification prompt error:", err);
+      });
+    }, 1200);
+
+    return () => clearTimeout(timer);
+  }, [user?.id]);
+
   const handleTryForFree = () => {
-    endTour();
+    if (!isSignedIn) {
+      requireAuth({ type: "create" });
+      return;
+    }
     router.push("/(tabs)/animate");
   };
 
@@ -432,6 +568,11 @@ export default function HomeScreen() {
   };
 
   const handleUploadImage = async () => {
+    if (!isSignedIn) {
+      requireAuth({ type: "upload" });
+      return;
+    }
+
     try {
       const hasPermission = await requestImagePermission();
       if (!hasPermission) return;
@@ -477,29 +618,35 @@ export default function HomeScreen() {
   };
 
   const handleTemplateSelect = useCallback((templateId: string) => {
+    if (!isSignedIn) {
+      setTemplateModalVisible(false);
+      requireAuth({ type: "template", templateId });
+      return;
+    }
+
     router.push({
       pathname: "/(tabs)/animate",
       params: {
         templateId: templateId,
       },
     });
-  }, []);
+  }, [isSignedIn, requireAuth]);
 
   // Background Image Height based on 1080x1920 ratio scaled to screen width
   const bgHeight = (SCREEN_WIDTH * 1920) / 1080;
 
   return (
-    <View style={styles.outerContainer} pointerEvents={isActive && currentStep === 1 ? "none" : "auto"}>
+    <View style={styles.outerContainer}>
       <ScreenWrapper
         backgroundColor="transparent"
         addBottomPadding={true}
         onScroll={handleScroll}
         scrollEventThrottle={32}
-        scrollEnabled={!(isActive && currentStep === 1) && !isTemplateModalVisible}
+        scrollEnabled={!isTemplateModalVisible}
         creditsText={
-          userCredits !== null
-            ? `${userCredits} Credits`
-            : "Loading..."
+          user
+            ? (userCredits !== null ? `${userCredits} Credits` : "Loading...")
+            : undefined
         }
       >
         {/* Background Image inside ScrollView so it scrolls with the screen */}
@@ -538,6 +685,7 @@ export default function HomeScreen() {
                 cachePolicy="memory-disk"
               />
               <Video
+                ref={heroVideoRef}
                 source={require("@/assets/videos/HomeVideo.mp4")}
                 style={[styles.mainHeroImage, { opacity: isHeroVideoReady ? 1 : 0 }]}
                 resizeMode={ResizeMode.COVER}
@@ -546,6 +694,12 @@ export default function HomeScreen() {
                 isMuted
                 useNativeControls={false}
                 onReadyForDisplay={() => setIsHeroVideoReady(true)}
+                onPlaybackStatusUpdate={(status: any) => {
+                  if (status?.isLoaded && (status.isPlaying || (status.positionMillis ?? 0) > 0)) {
+                    setIsHeroVideoReady(true);
+                  }
+                }}
+                onError={(err) => console.log("Hero video playback error:", err)}
               />
             </View>
           </View>

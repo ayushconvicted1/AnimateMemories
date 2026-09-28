@@ -58,6 +58,7 @@ export default function FullScreenVideoViewer({
   const [isBuffering, setIsBuffering] = useState(false);
   const [videoError, setVideoError] = useState<string | null>(null);
 
+  const hasLoadedOnceRef = useRef(false);
   const bufferTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const loadTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -75,6 +76,7 @@ export default function FullScreenVideoViewer({
   // Reset loading state when video changes or opens
   useEffect(() => {
     if (visible) {
+      hasLoadedOnceRef.current = false;
       setIsVideoLoading(true);
       setIsBuffering(false);
       setVideoError(null);
@@ -88,11 +90,14 @@ export default function FullScreenVideoViewer({
         setIsVideoLoading(false);
       }, 3000);
     } else {
+      hasLoadedOnceRef.current = false;
       if (bufferTimerRef.current) {
         clearTimeout(bufferTimerRef.current);
+        bufferTimerRef.current = null;
       }
       if (loadTimeoutRef.current) {
         clearTimeout(loadTimeoutRef.current);
+        loadTimeoutRef.current = null;
       }
       if (videoRef.current) {
         videoRef.current.pauseAsync().catch(() => {});
@@ -133,14 +138,40 @@ export default function FullScreenVideoViewer({
       !status.isBuffering
     ) {
       setIsVideoLoading(false);
+      hasLoadedOnceRef.current = true;
     }
 
-    if (status.isBuffering) {
-      // Debounce buffering indicator by 600ms to ignore micro-buffers
+    // When the video is actively playing frames, it is NOT buffering
+    if (status.isPlaying) {
+      if (bufferTimerRef.current) {
+        clearTimeout(bufferTimerRef.current);
+        bufferTimerRef.current = null;
+      }
+      if (isBuffering) {
+        setIsBuffering(false);
+      }
+      return;
+    }
+
+    // A loop transition or seek back to 0 is a normal replay, not a network stall
+    const isLoopRestart =
+      status.didJustFinish ||
+      (status.positionMillis !== undefined && status.positionMillis <= 150);
+
+    // Only detect genuine network stalls where playback halted unexpectedly
+    const isGenuinelyBuffering =
+      status.isBuffering &&
+      !status.isPlaying &&
+      status.shouldPlay &&
+      !isLoopRestart;
+
+    if (isGenuinelyBuffering) {
+      // Debounce buffering indicator by 1500ms to ignore micro-buffers or fast loop transitions
       if (!bufferTimerRef.current && !isBuffering) {
         bufferTimerRef.current = setTimeout(() => {
+          bufferTimerRef.current = null;
           setIsBuffering(true);
-        }, 600);
+        }, 1500);
       }
     } else {
       if (bufferTimerRef.current) {
@@ -210,7 +241,7 @@ export default function FullScreenVideoViewer({
 
               <Video
                 ref={videoRef}
-                source={{ uri: videoUri }}
+                source={{ uri: videoUri ? encodeURI(videoUri) : "" }}
                 style={[
                   styles.fullScreenVideo,
                   StyleSheet.absoluteFill,
@@ -223,10 +254,17 @@ export default function FullScreenVideoViewer({
                 onLoad={() => {
                   setIsVideoLoading(false);
                   setIsBuffering(false);
+                  if (visible) {
+                    videoRef.current?.playAsync().catch(() => {});
+                  }
                 }}
                 onReadyForDisplay={() => {
                   setIsVideoLoading(false);
                   setIsBuffering(false);
+                  hasLoadedOnceRef.current = true;
+                  if (visible) {
+                    videoRef.current?.playAsync().catch(() => {});
+                  }
                 }}
                 onPlaybackStatusUpdate={handleStatusUpdate}
                 onError={(error) => {
@@ -236,7 +274,9 @@ export default function FullScreenVideoViewer({
                   setVideoError("Unable to play video. Tap below to retry.");
                 }}
                 onLoadStart={() => {
-                  setIsVideoLoading(true);
+                  if (!hasLoadedOnceRef.current) {
+                    setIsVideoLoading(true);
+                  }
                   setVideoError(null);
                 }}
                 progressUpdateIntervalMillis={250}
@@ -261,7 +301,7 @@ export default function FullScreenVideoViewer({
                   </View>
                 </View>
               ) : (
-                (isVideoLoading || isBuffering) && (
+                ((!hasLoadedOnceRef.current && isVideoLoading) || isBuffering) && (
                   <View style={styles.videoCenterLoader} pointerEvents="none">
                     <View style={styles.videoLoaderBox}>
                       <ActivityIndicator size="large" color="#38BDF8" />

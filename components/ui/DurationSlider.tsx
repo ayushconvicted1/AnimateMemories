@@ -32,10 +32,36 @@ export default function DurationSlider({
     onValueChange(newVal);
   };
 
-  const isCustomValues = allowedValues && allowedValues.length > 0;
+  const isCustomValues = !!(allowedValues && allowedValues.length > 0);
+  const isSingleFixed = (!isCustomValues && min === max) || (isCustomValues && allowedValues?.length === 1);
 
-  // When only 2 options exist (e.g. [5, 10] for Kling v2.1), render a space-saving radio button
-  if (isCustomValues && allowedValues?.length === 2) {
+  // When only 1 fixed option exists (e.g. 5s fixed model), render a clean fixed duration badge
+  if (isSingleFixed) {
+    const fixedVal = isCustomValues ? allowedValues![0] : min;
+    return (
+      <View style={styles.container}>
+        <View style={styles.headerRow}>
+          <Text style={styles.title}>Duration</Text>
+          <LinearGradient
+            colors={["#28D4FA", "#D229FF"]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+            style={styles.valueBadge}
+          >
+            <Text style={styles.valueBadgeText}>{fixedVal} Seconds (Fixed)</Text>
+          </LinearGradient>
+        </View>
+        <View style={styles.fixedContainer}>
+          <Text style={styles.fixedSubtext}>
+            This model generates fixed {fixedVal}-second videos
+          </Text>
+        </View>
+      </View>
+    );
+  }
+
+  // When discrete options exist (e.g. [5, 10]), render space-saving selectable buttons
+  if (isCustomValues && allowedValues && allowedValues.length > 1) {
     return (
       <View style={styles.container}>
         <View style={styles.headerRow}>
@@ -50,7 +76,7 @@ export default function DurationSlider({
           </LinearGradient>
         </View>
 
-        {/* Radio Type Button for 2 Entries */}
+        {/* Option buttons for discrete values */}
         <View style={styles.radioContainer}>
           {allowedValues.map((val) => {
             const isSelected = displayValue === val;
@@ -285,5 +311,19 @@ const styles = StyleSheet.create({
   tickTextActive: {
     color: "#D229FF",
     fontFamily: getFontFamily("700"),
+  },
+  fixedContainer: {
+    backgroundColor: "#F8FAFC",
+    borderRadius: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+    alignItems: "center",
+  },
+  fixedSubtext: {
+    fontSize: 13,
+    fontFamily: getFontFamily("500"),
+    color: "#64748B",
   },
 });

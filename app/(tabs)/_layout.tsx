@@ -22,9 +22,9 @@ import GalleryIcon from "@/components/images/GalleryIcon";
 import CreditIcon from "@/components/images/CreditIcon";
 import YouIcon from "@/components/images/YouIcon";
 import { getFontFamily } from "@/constants/Fonts";
-import TourStepWrapper from "@/components/tour/TourStepWrapper";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useTour } from "@/contexts/TourContext";
+import { useAuth } from "@/contexts/AuthContext";
+import { useAuthGate } from "@/contexts/AuthGateContext";
 
 const AnimatedLinearGradient = Animated.createAnimatedComponent(LinearGradient);
 
@@ -73,21 +73,9 @@ const AnimatedIconWrapper = ({
 };
 
 const CreateButton = ({ focused }: { focused: boolean }) => {
-  const { isActive, currentStep } = useTour();
-  const isTourStep1 = isActive && currentStep === 1;
   const scale = useSharedValue(1);
-  const glow = useSharedValue(1);
-  const gradientProgress = useSharedValue(focused || isTourStep1 ? 1 : 0);
+  const gradientProgress = useSharedValue(focused ? 1 : 0);
   const prevFocusedRef = useRef<boolean | null>(null);
-
-  // Pulse animation for tour
-  useEffect(() => {
-    if (isTourStep1) {
-      glow.value = withRepeat(withTiming(1.2, { duration: 1000 }), -1, true);
-    } else {
-      glow.value = 1;
-    }
-  }, [isTourStep1]);
 
   // Bouncy animation when tab becomes focused
   useEffect(() => {
@@ -117,22 +105,17 @@ const CreateButton = ({ focused }: { focused: boolean }) => {
 
   // Animate gradient when focused state changes
   useEffect(() => {
-    gradientProgress.value = withTiming(focused || isTourStep1 ? 1 : 0, {
+    gradientProgress.value = withTiming(focused ? 1 : 0, {
       duration: 300,
       easing: Easing.inOut(Easing.ease),
     });
-  }, [focused, isTourStep1]);
+  }, [focused]);
 
   const animatedStyle = useAnimatedStyle(() => {
     return {
       transform: [{ scale: scale.value }],
     };
   });
-
-  const glowStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: glow.value }],
-    opacity: isTourStep1 ? 0.5 : 0,
-  }));
 
   // Animate gradient colors using opacity overlay approach
   const inactiveGradientOpacity = useAnimatedStyle(() => {
@@ -150,12 +133,6 @@ const CreateButton = ({ focused }: { focused: boolean }) => {
   return (
     <View style={styles.centerButtonContainer}>
       <Animated.View style={[styles.centerButtonWrapper, animatedStyle]}>
-        {isTourStep1 && (
-          <>
-            <View style={styles.spotlightBackdrop} pointerEvents="none" />
-            <Animated.View style={[styles.centerButtonGlow, glowStyle]} />
-          </>
-        )}
         <View style={styles.centerButton}>
           {/* Inactive gradient (dark gray) */}
           <AnimatedLinearGradient
@@ -182,18 +159,8 @@ const CreateButton = ({ focused }: { focused: boolean }) => {
 };
 
 export default function TabLayout() {
-  const createTourBlockerListener = () => ({
-    tabPress: (e: any) => {
-      try {
-        const { isActive } = require("@/contexts/TourContext").useTour();
-        if (isActive) {
-          e.preventDefault();
-        }
-      } catch (err) {}
-    },
-  });
-
-  const { isActive, currentStep } = useTour();
+  const { isSignedIn } = useAuth();
+  const { requireAuth } = useAuthGate();
   const insets = useSafeAreaInsets();
 
   return (
@@ -235,7 +202,6 @@ export default function TabLayout() {
       >
       <Tabs.Screen
         name="index"
-        listeners={createTourBlockerListener}
         options={{
           title: "Home",
           tabBarIcon: ({ color, focused }) => (
@@ -249,7 +215,14 @@ export default function TabLayout() {
       />
       <Tabs.Screen
         name="gallery"
-        listeners={createTourBlockerListener}
+        listeners={() => ({
+          tabPress: (e: any) => {
+            if (!isSignedIn) {
+              e.preventDefault();
+              requireAuth({ type: "tab", tabName: "gallery" });
+            }
+          },
+        })}
         options={{
           title: "Gallery",
           tabBarIcon: ({ color, focused }) => (
@@ -280,15 +253,10 @@ export default function TabLayout() {
         name="animate"
         listeners={() => ({
           tabPress: (e: any) => {
-            // Advancing from Step 1 (Create tab) to Step 2
-            try {
-              const { isActive, currentStep, nextStep } = require("@/contexts/TourContext").useTour();
-              if (isActive && currentStep === 1) {
-                nextStep();
-              } else if (isActive) {
-                e.preventDefault();
-              }
-            } catch (err) {}
+            if (!isSignedIn) {
+              e.preventDefault();
+              requireAuth({ type: "create" });
+            }
           },
         })}
         options={{
@@ -297,7 +265,6 @@ export default function TabLayout() {
           tabBarButton: (props) => (
              <PlatformPressable
                {...props}
-               disabled={isActive && currentStep > 1}
                onPressIn={(ev) => {
                  if (process.env.EXPO_OS === 'ios') {
                    require('expo-haptics').impactAsync(
@@ -312,7 +279,14 @@ export default function TabLayout() {
       />
       <Tabs.Screen
         name="credit"
-        listeners={createTourBlockerListener}
+        listeners={() => ({
+          tabPress: (e: any) => {
+            if (!isSignedIn) {
+              e.preventDefault();
+              requireAuth({ type: "tab", tabName: "credit" });
+            }
+          },
+        })}
         options={{
           title: "Credit",
           tabBarIcon: ({ color, focused }) => (
@@ -326,7 +300,14 @@ export default function TabLayout() {
       />
       <Tabs.Screen
         name="you"
-        listeners={createTourBlockerListener}
+        listeners={() => ({
+          tabPress: (e: any) => {
+            if (!isSignedIn) {
+              e.preventDefault();
+              requireAuth({ type: "tab", tabName: "you" });
+            }
+          },
+        })}
         options={{
           title: "You",
           tabBarIcon: ({ color, focused }) => (

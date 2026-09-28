@@ -246,7 +246,7 @@ export const api = {
     duration: number = 5,
     token?: string | null,
     quality: string = "720p",
-    modelId: string = "kling-v2-1",
+    modelId: string = "seedance-1-5-pro",
     aspectRatio: string = "vertical"
   ) => {
     return apiRequest("/api/old-photo-animation", {
@@ -272,7 +272,7 @@ export const api = {
     duration: number = 5,
     token?: string | null,
     quality: string = "720p",
-    modelId: string = "kling-v2-1",
+    modelId: string = "seedance-1-5-pro",
     aspectRatio: string = "vertical"
   ) => {
     return apiRequest("/api/old-photo-animation/start", {
@@ -316,7 +316,7 @@ export const api = {
     duration: number = 5,
     token?: string | null,
     quality: string = "720p",
-    modelId: string = "kling-v2-1",
+    modelId: string = "seedance-1-5-pro",
     aspectRatio: string = "vertical"
   ) => {
     return api.animatePhoto(
@@ -504,6 +504,13 @@ export const api = {
   // Fetch video presets (animation templates)
   getVideoPresets: async () => {
     return apiRequest("/api/admin/video-presets?activeOnly=true", {
+      method: "GET",
+    });
+  },
+
+  // Fetch top 3 active video models
+  getVideoModels: async () => {
+    return apiRequest("/api/video-models", {
       method: "GET",
     });
   },

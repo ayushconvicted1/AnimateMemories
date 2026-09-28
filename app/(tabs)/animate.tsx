@@ -37,7 +37,7 @@ import { useAuth as useAuthContext } from "@/contexts/AuthContext";
 import { useAuth } from "@clerk/clerk-expo";
 import { api } from "@/services/api";
 import { downloadToDevice } from "@/lib/download";
-import { useLocalSearchParams, router } from "expo-router";
+import { useLocalSearchParams, router, Redirect } from "expo-router";
 import { useTour } from "@/contexts/TourContext";
 import TourStepWrapper from "@/components/tour/TourStepWrapper";
 import { getFontFamily } from "@/constants/Fonts";
@@ -49,12 +49,22 @@ const CONTENT_WIDTH = SCREEN_WIDTH - 32;
 const API_BASE_URL =
   process.env.EXPO_PUBLIC_API_BASE_URL || "https://www.animatememories.com";
 
-const formatImageUrl = (url?: string) => {
+const formatImageUrl = (url?: string | null) => {
   if (!url) return "";
-  if (url.startsWith("http://") || url.startsWith("https://") || url.startsWith("data:")) {
-    return url;
+  let formatted = String(url).trim();
+  if (formatted.startsWith("http://") || formatted.startsWith("https://") || formatted.startsWith("data:")) {
+    try {
+      return encodeURI(formatted);
+    } catch {
+      return formatted;
+    }
   }
-  return `${API_BASE_URL}${url.startsWith("/") ? "" : "/"}${url}`;
+  const full = `${API_BASE_URL}${formatted.startsWith("/") ? "" : "/"}${formatted}`;
+  try {
+    return encodeURI(full);
+  } catch {
+    return full;
+  }
 };
 
 const promptExamples = [
@@ -65,54 +75,73 @@ const promptExamples = [
   "playful dancing with shoulder movements, happy facial expressions",
 ];
 
-const VIDEO_MODELS = [
+interface VideoModelConfig {
+  id: string;
+  name: string;
+  badge: string;
+  desc: string;
+  minDuration: number;
+  maxDuration: number;
+  durationStep?: number;
+  supportedResolutions: ("480p" | "720p" | "1080p")[];
+  costPerSecond: number;
+  creditsPerSecond: Partial<Record<"480p" | "720p" | "1080p", number>>;
+  allowedDurations?: number[];
+}
+
+const VIDEO_MODELS: VideoModelConfig[] = [
   {
-    id: "kling-v2-1",
-    name: "⚡ Kling v2.1",
+    id: "seedance-1-5-pro",
+    name: "✨ Seedance 1.5 Pro",
     badge: "Default",
-    desc: "Fast, realistic motion & face preservation",
+    desc: "Realistic facial expressions, lifelike motion & memory preservation",
     minDuration: 4,
     maxDuration: 10,
-    allowedDurations: [5, 10],
+    durationStep: 1,
     supportedResolutions: ["720p", "1080p"],
-    costPerSecond: 0.05,
+    costPerSecond: 0.026,
+    creditsPerSecond: { "720p": 0.8, "1080p": 1.6 },
+  },
+  {
+    id: "seedance-1-pro-fast",
+    name: "⚡ Seedance 1 Pro Fast",
+    badge: "Fast",
+    desc: "Fast generation with smooth, natural motion",
+    minDuration: 4,
+    maxDuration: 10,
+    durationStep: 1,
+    supportedResolutions: ["720p", "1080p"],
+    costPerSecond: 0.025,
     creditsPerSecond: { "720p": 0.8, "1080p": 1.6 },
   },
   {
     id: "seedance-2-fast",
     name: "🚀 Seedance 2.0 Fast",
-    badge: "Quick",
-    desc: "High detail & smooth motion",
+    badge: "Ultra",
+    desc: "Next-gen detail & multimodal synthesis",
     minDuration: 4,
     maxDuration: 10,
+    durationStep: 1,
     supportedResolutions: ["720p"],
-    costPerSecond: 0.08,
-    creditsPerSecond: { "720p": 1.0 },
-  },
-  {
-    id: "seedance-2",
-    name: "✨ Seedance 2.0 Premium",
-    badge: "Pro",
-    desc: "Ultra-cinematic motion quality",
-    minDuration: 4,
-    maxDuration: 10,
-    supportedResolutions: ["720p", "1080p"],
     costPerSecond: 0.15,
-    creditsPerSecond: { "720p": 1.6, "1080p": 2.6 },
+    creditsPerSecond: { "720p": 2.0 },
   },
 ];
 
-function calculateCreditCost(modelId: string, quality: string, duration: number, featureCosts?: any) {
-  const model = VIDEO_MODELS.find((m) => m.id === modelId);
+function calculateCreditCost(modelId: string, quality: string, duration: number, featureCosts?: any, modelsList?: VideoModelConfig[]) {
+  // Gracefully remap discontinued kling-v2-1 to seedance-1-5-pro
+  const models = modelsList || VIDEO_MODELS;
+  const effectiveModelId = (!modelId || modelId === "kling-v2-1") ? (models[0]?.id || "seedance-1-5-pro") : modelId;
+  const model = models.find((m) => m.id === effectiveModelId) || models[0] || VIDEO_MODELS[0];
   const dur = Number(duration) || 5;
 
   if (featureCosts) {
-    const key = `model_${modelId.replace(/-/g, "_")}_${quality}`;
+    const key = `model_${effectiveModelId.replace(/-/g, "_")}_${quality}`;
     if (featureCosts[key] !== undefined && featureCosts[key] !== null) {
       const val = Number(featureCosts[key]);
       return Math.ceil(val * dur);
     }
-    const directModelKey = `model_${modelId.replace(/-/g, "_")}`;
+    const directModelKey = `model_${effectiveModelId.replace(/-/g, "_")}`;
     if (featureCosts[directModelKey] !== undefined && featureCosts[directModelKey] !== null) {
       const val = Number(featureCosts[directModelKey]);
       return Math.ceil(val * (dur / 5));
@@ -135,12 +164,17 @@ function calculateCreditCost(modelId: string, quality: string, duration: number,
 }
 
 export default function AnimateScreen() {
-  const { user } = useAuthContext();
+  const { user, isSignedIn, isLoaded } = useAuthContext();
   const { getToken } = useAuth();
   const { currentStep, isActive, nextStep, endTour } = useTour();
   const params = useLocalSearchParams();
   const mainScrollViewRef = useRef<ScrollView>(null);
   const [templatesLayoutY, setTemplatesLayoutY] = useState(0);
+
+  // If user accesses AnimateScreen while unauthenticated, redirect to Home
+  if (isLoaded && !isSignedIn) {
+    return <Redirect href="/(tabs)" />;
+  }
 
   // Default to animate tool and jump scare template
   const [selectedTool, setSelectedTool] = useState<
@@ -218,7 +252,7 @@ export default function AnimateScreen() {
   const [uploadHighlighted, setUploadHighlighted] = useState<boolean>(false);
   const [surpriseSubject, setSurpriseSubject] = useState<string>("");
   const [selectedTemplate, setSelectedTemplate] = useState<string | null>(
-    "jump-scare"
+    (params.templateId as string) || "jump-scare"
   );
   const [activeTabMode, setActiveTabMode] = useState<"template" | "custom">("template");
   const [enhanceOptions, setEnhanceOptions] = useState({
@@ -240,12 +274,14 @@ export default function AnimateScreen() {
   const previewVideoRef = useRef<Video>(null);
   const [featureCosts, setFeatureCosts] = useState<any>(null);
   const [selectedQuality, setSelectedQuality] = useState<"480p" | "720p" | "1080p">("720p");
-  const [selectedModel, setSelectedModel] = useState<string>("kling-v2-1");
+  const [selectedModel, setSelectedModel] = useState<string>("seedance-1-5-pro");
+  const [videoModels, setVideoModels] = useState<VideoModelConfig[]>(VIDEO_MODELS);
   const [selectedDuration, setSelectedDuration] = useState<number>(5);
   const [selectedAspectRatio, setSelectedAspectRatio] = useState<"vertical" | "horizontal" | "square">("vertical");
+  const [templateRecipientName, setTemplateRecipientName] = useState("");
 
   const [categories, setCategories] = useState<any[]>([]);
-  const [selectedCategory, setSelectedCategory] = useState<string>("all");
+  const [selectedCategory, setSelectedCategory] = useState<string>("viral");
   const [searchQuery, setSearchQuery] = useState("");
   const [animationTemplates, setAnimationTemplates] = useState<any[]>([]);
   const [isPagerScrolling, setIsPagerScrolling] = useState(false);
@@ -283,8 +319,17 @@ export default function AnimateScreen() {
 
     const tCat = (template.category || "").toString().toLowerCase();
     const tCatId = (template.categoryId || "").toString().toLowerCase();
+    // Split comma-separated categories (e.g., "Viral, Birthday")
+    const cats = tCat.split(/[\s,]+/).filter(Boolean);
+    const catIds = tCatId.split(/[\s,]+/).filter(Boolean);
 
-    if (tCat === selLower || tCatId === selLower) return true;
+    // Match viral/trending interchangeably (same as web)
+    if (selLower === "viral" || selLower === "trending") {
+      return cats.includes("viral") || cats.includes("trending") ||
+             catIds.includes("viral") || catIds.includes("trending");
+    }
+
+    if (cats.includes(selLower) || catIds.includes(selLower)) return true;
 
     const catObj = categories.find(
       (c) => (c.slug || c.name || c.id || "").toString().toLowerCase() === selLower
@@ -294,7 +339,8 @@ export default function AnimateScreen() {
       const slug = (catObj.slug || "").toString().toLowerCase();
       const name = (catObj.name || "").toString().toLowerCase();
       const id = (catObj.id || "").toString().toLowerCase();
-      return tCat === slug || tCat === name || tCatId === id || tCatId === slug;
+      return cats.includes(slug) || cats.includes(name) ||
+             catIds.includes(id) || catIds.includes(slug);
     }
 
     return false;
@@ -352,27 +398,75 @@ export default function AnimateScreen() {
 
   const totalPages = Math.max(1, templatePages.length);
 
-  const currentModel = VIDEO_MODELS.find((m) => m.id === selectedModel) || VIDEO_MODELS[0];
+  const currentModel = videoModels.find((m) => m.id === selectedModel) || videoModels[0] || VIDEO_MODELS[0];
+
+  const activePreset = useMemo(() => {
+    if (activeTabMode !== "template" || !selectedTemplate) return null;
+    return animationTemplates.find((t) => (t.slug || t.id) === selectedTemplate) || null;
+  }, [activeTabMode, selectedTemplate, animationTemplates]);
+
+  const lockedModel = useMemo(() => {
+    if (!activePreset) return null;
+    const targetModelId = activePreset.modelId || activePreset.modelid || (activePreset.slug === "burj-khalifa-birthday" ? "seedance-2-fast" : null);
+    if (!targetModelId) return null;
+    // Fallback: Model must currently be in the active top 3 models
+    return videoModels.find((m) => m.id === targetModelId) || null;
+  }, [activePreset, videoModels]);
 
   const handleSelectModel = (modelId: string) => {
     setSelectedModel(modelId);
-    const model = VIDEO_MODELS.find((m) => m.id === modelId);
+    const model = videoModels.find((m) => m.id === modelId) || VIDEO_MODELS.find((m) => m.id === modelId);
     if (model) {
       if (model.allowedDurations && model.allowedDurations.length > 0) {
         if (!model.allowedDurations.includes(selectedDuration)) {
           setSelectedDuration(model.allowedDurations[0]);
         }
       } else {
-        if (selectedDuration === 5 && model.minDuration === 4) {
-          setSelectedDuration(4);
-        } else if (selectedDuration < model.minDuration) {
+        if (selectedDuration < model.minDuration) {
           setSelectedDuration(model.minDuration);
         } else if (selectedDuration > model.maxDuration) {
           setSelectedDuration(model.maxDuration);
         }
       }
+
+      if (!model.supportedResolutions.includes(selectedQuality as any)) {
+        setSelectedQuality(model.supportedResolutions[0] as any);
+      }
     }
   };
+
+  const handleSelectTemplate = useCallback((templateId: string, item?: any) => {
+    const prevTemplate = selectedTemplate;
+    setSelectedTemplate(templateId);
+    if (item?.prompt) {
+      setCustomPrompt(item.prompt);
+    }
+    const targetModelId = item?.modelId || item?.modelid || (templateId === "burj-khalifa-birthday" ? "seedance-2-fast" : null);
+    const modelToLock = targetModelId ? videoModels.find((m) => m.id === targetModelId) : null;
+    if (modelToLock) {
+      handleSelectModel(modelToLock.id);
+    } else {
+      const prevPreset = animationTemplates.find((t) => (t.slug || t.id) === prevTemplate);
+      const prevTargetId = prevPreset?.modelId || prevPreset?.modelid || (prevTemplate === "burj-khalifa-birthday" ? "seedance-2-fast" : null);
+      if (prevTargetId && videoModels.length > 0) {
+        handleSelectModel(videoModels[0].id);
+      }
+    }
+  }, [selectedTemplate, videoModels, animationTemplates]);
+
+  // Sync selectedModel with lockedModel or reset cleanly to default if model is removed/invalid
+  useEffect(() => {
+    if (lockedModel) {
+      if (selectedModel !== lockedModel.id) {
+        handleSelectModel(lockedModel.id);
+      }
+    } else {
+      const isInModels = videoModels.some((m) => m.id === selectedModel);
+      if (!isInModels && videoModels.length > 0) {
+        handleSelectModel(videoModels[0].id);
+      }
+    }
+  }, [lockedModel, videoModels]);
 
   // Auto-advance from Step 1 to Step 2 upon entering Animate screen during tour
   useEffect(() => {
@@ -462,6 +556,35 @@ export default function AnimateScreen() {
       }
     };
     fetchCategories();
+
+    const fetchModels = async () => {
+      try {
+        const response = await api.getVideoModels();
+        const modelsList = response?.models || response?.result || [];
+        if (Array.isArray(modelsList) && modelsList.length > 0) {
+          const mapped: VideoModelConfig[] = modelsList.map((m: any, idx: number) => {
+            const fallbackConfig = VIDEO_MODELS.find((vm) => vm.id === (m.id || m.modelId));
+            return {
+              id: m.id || m.modelId,
+              name: m.displayName || fallbackConfig?.name || m.name,
+              badge: idx === 0 ? "Default" : (m.displayName || "").includes("Fast") ? "Fast" : "Ultra",
+              desc: m.description || fallbackConfig?.desc || "",
+              minDuration: m.minDuration ?? fallbackConfig?.minDuration ?? 4,
+              maxDuration: m.maxDuration ?? fallbackConfig?.maxDuration ?? 10,
+              durationStep: m.durationStep ?? fallbackConfig?.durationStep ?? 1,
+              allowedDurations: m.supportedDurations || fallbackConfig?.allowedDurations,
+              supportedResolutions: m.supportedResolutions || fallbackConfig?.supportedResolutions || ["720p"],
+              costPerSecond: m.costPerSecond ?? fallbackConfig?.costPerSecond ?? 0.026,
+              creditsPerSecond: m.creditsPerSecond || fallbackConfig?.creditsPerSecond || { "720p": 0.8 },
+            };
+          });
+          setVideoModels(mapped);
+        }
+      } catch (error) {
+        // Silently use hardcoded fallback without visible error
+      }
+    };
+    fetchModels();
   }, []);
 
   const fetchUserCredits = useCallback(async () => {
@@ -496,14 +619,24 @@ export default function AnimateScreen() {
   useEffect(() => {
     const templateId = params.templateId as string | undefined;
 
-    if (templateId && animationTemplates.length > 0) {
-      const template = animationTemplates.find((t) => (t.slug || t.id) === templateId);
-      if (template) {
-        setSelectedTemplate(template.slug || template.id);
-        setCustomPrompt(template.prompt);
+    if (templateId) {
+      setSelectedTemplate(templateId);
+      if (animationTemplates.length > 0) {
+        const template = animationTemplates.find((t) => (t.slug || t.id) === templateId);
+        if (template) {
+          if (template.prompt) {
+            setCustomPrompt(template.prompt);
+          }
+
+          const targetModelId = template.modelId || template.modelid || ((template.slug || template.id) === "burj-khalifa-birthday" ? "seedance-2-fast" : null);
+          const modelToLock = targetModelId ? videoModels.find((m) => m.id === targetModelId) : null;
+          if (modelToLock) {
+            handleSelectModel(modelToLock.id);
+          }
+        }
       }
     }
-  }, [params.templateId, animationTemplates]);
+  }, [params.templateId, animationTemplates, videoModels]);
 
   const requestImagePermission = async () => {
     if (Platform.OS !== "web") {
@@ -536,8 +669,7 @@ export default function AnimateScreen() {
       setAnimatedVideo(null);
 
       if (animationTemplates && animationTemplates.length > 0) {
-        setSelectedTemplate(animationTemplates[0].slug || animationTemplates[0].id);
-        setCustomPrompt(animationTemplates[0].prompt || "");
+        handleSelectTemplate(animationTemplates[0].slug || animationTemplates[0].id, animationTemplates[0]);
       }
     } catch (uploadError: any) {
       console.error("Upload error:", uploadError);
@@ -549,7 +681,7 @@ export default function AnimateScreen() {
     } finally {
       setUploading(false);
     }
-  }, [getToken, animationTemplates, currentStep, nextStep]);
+  }, [getToken, animationTemplates, currentStep, nextStep, handleSelectTemplate]);
 
   const getAspectForMode = (
     mode: "vertical" | "horizontal" | "square"
@@ -832,6 +964,28 @@ export default function AnimateScreen() {
       if (template) {
         prompt = template.prompt;
       }
+    }
+
+    // Resolve {name} placeholder for Burj Khalifa Birthday and similar templates
+    const matchedPreset = selectedTemplate
+      ? animationTemplates.find((t) => (t.slug || t.id) === selectedTemplate)
+      : null;
+    if (selectedTemplate === "burj-khalifa-birthday" || matchedPreset?.prompt?.includes("{name}")) {
+      const nameToUse = (templateRecipientName || user?.firstName || user?.fullName?.split(" ")[0] || "You").trim();
+      prompt = prompt
+        .replace(/\{name\}/gi, nameToUse)
+        .replace(/\[name\]/gi, nameToUse);
+    }
+
+    // Resolve {year} placeholder for Lion & The Lady and similar templates
+    const currentYear = new Date().getFullYear();
+    prompt = prompt
+      .replace(/\{year\}/gi, String(currentYear))
+      .replace(/\[year\]/gi, String(currentYear));
+
+    // Lion & The Lady: use the hardcoded cinematic prompt with current year
+    if (selectedTemplate === "lion-and-the-lady" || matchedPreset?.slug === "lion-and-the-lady") {
+      prompt = `A cinematic, elegant celebration at night on a luxurious rooftop terrace overlooking the glowing illuminated Eiffel Tower in Paris. The person from the photo sits stylishly dressed in a sleek black outfit and dark sunglasses on a modern white couch, holding a crystal champagne glass. Glowing fireworks sparkle in the dark night sky. A majestic male lion wearing cool sunglasses, a gold Cuban link chain necklace, and a festive silver party hat approaches playfully and lounges comfortably beside the person. In front on the table rests a luxury birthday cake with glowing lit candles, champagne in a gold ice bucket, and bright glowing marquee light numbers proudly displaying the year ${currentYear}. The scene is celebratory, vibrant, and effortlessly cool.`;
     }
 
     const requiredCredits = calculateCreditCost(selectedModel, selectedQuality, selectedDuration, featureCosts);
@@ -1195,17 +1349,34 @@ export default function AnimateScreen() {
             <View style={styles.elevatedControlsSection} pointerEvents={isActive ? "none" : "auto"}>
               {/* AI Generation Model */}
               <View style={styles.qualitySectionCard}>
-                <Text style={styles.qualitySectionTitleCard}>AI Model</Text>
+                <View style={styles.modelHeaderRow}>
+                  <Text style={styles.qualitySectionTitleCard}>AI Model</Text>
+                  {lockedModel && (
+                    <View style={styles.modelLockedBadge}>
+                      <Text style={styles.modelLockedBadgeText}>🔒 Locked to Template</Text>
+                    </View>
+                  )}
+                </View>
                 <View style={styles.modelChipsRow}>
-                  {VIDEO_MODELS.map((model) => {
+                  {videoModels.map((model) => {
                     const isSelected = selectedModel === model.id;
-                    const creditCost = calculateCreditCost(model.id, selectedQuality, selectedDuration, featureCosts);
+                    const isLockedOut = !!lockedModel && !isSelected;
+                    const creditCost = calculateCreditCost(model.id, selectedQuality, selectedDuration, featureCosts, videoModels);
                     return (
                       <TouchableOpacity
                         key={model.id}
-                        style={[styles.modelChip, isSelected && styles.modelChipSelected]}
-                        onPress={() => handleSelectModel(model.id)}
-                        activeOpacity={0.75}
+                        style={[
+                          styles.modelChip,
+                          isSelected && styles.modelChipSelected,
+                          isLockedOut && { opacity: 0.35 },
+                        ]}
+                        onPress={() => {
+                          if (!lockedModel) {
+                            handleSelectModel(model.id);
+                          }
+                        }}
+                        disabled={!!lockedModel}
+                        activeOpacity={lockedModel ? 1 : 0.75}
                       >
                         {isSelected ? (
                           <LinearGradient
@@ -1214,7 +1385,9 @@ export default function AnimateScreen() {
                             end={{ x: 1, y: 0 }}
                             style={styles.modelChipGradient}
                           >
-                            <Text style={styles.modelChipNameSelected}>{model.name}</Text>
+                            <Text style={styles.modelChipNameSelected}>
+                              {lockedModel ? `🔒 ${model.name}` : model.name}
+                            </Text>
                             <Text style={styles.modelChipCostSelected}>{creditCost}cr</Text>
                           </LinearGradient>
                         ) : (
@@ -1227,6 +1400,11 @@ export default function AnimateScreen() {
                     );
                   })}
                 </View>
+                {lockedModel && (
+                  <Text style={styles.modelLockedNoticeText}>
+                    This template is optimized and locked to {lockedModel.name}.
+                  </Text>
+                )}
               </View>
 
               {/* Duration Slider */}
@@ -1236,7 +1414,7 @@ export default function AnimateScreen() {
                   value={selectedDuration}
                   min={currentModel?.minDuration || 4}
                   max={currentModel?.maxDuration || 10}
-                  step={1}
+                  step={currentModel?.durationStep || 1}
                   allowedValues={currentModel?.allowedDurations}
                   onValueChange={(val) => setSelectedDuration(val)}
                 />
@@ -1572,13 +1750,20 @@ export default function AnimateScreen() {
                 >
                   <Video
                     ref={previewVideoRef}
-                    source={{ uri: animatedVideo }}
+                    source={{ uri: animatedVideo ? encodeURI(animatedVideo) : "" }}
                     style={styles.resultVideo}
                     useNativeControls={false}
                     resizeMode={ResizeMode.CONTAIN}
                     isLooping
                     shouldPlay={true}
-                    onReadyForDisplay={() => setIsResultVideoLoading(false)}
+                    onLoad={() => {
+                      setIsResultVideoLoading(false);
+                      previewVideoRef.current?.playAsync().catch(() => {});
+                    }}
+                    onReadyForDisplay={() => {
+                      setIsResultVideoLoading(false);
+                      previewVideoRef.current?.playAsync().catch(() => {});
+                    }}
                     onPlaybackStatusUpdate={(status: any) => {
                       if (status && "isPlaying" in status) {
                         setIsPreviewPlaying(status.isPlaying);
@@ -1730,6 +1915,9 @@ export default function AnimateScreen() {
                   onPress={() => {
                     setActiveTabMode("custom");
                     setSelectedTemplate(null);
+                    if (lockedModel && videoModels.length > 0) {
+                      handleSelectModel(videoModels[0].id);
+                    }
                   }}
                   activeOpacity={0.8}
                 >
@@ -1859,10 +2047,7 @@ export default function AnimateScreen() {
                                           isSelected && styles.templateCardSelectedGrid,
                                         ]}
                                         onPress={() => {
-                                          setSelectedTemplate(templateId);
-                                          if (item.prompt) {
-                                            setCustomPrompt(item.prompt);
-                                          }
+                                          handleSelectTemplate(templateId, item);
                                           if (isActive && currentStep === 3) {
                                             mainScrollViewRef.current?.scrollToEnd({ animated: true });
                                             setTimeout(() => {
@@ -1876,9 +2061,10 @@ export default function AnimateScreen() {
                                       >
                                         <View style={styles.templateImageContainerGrid}>
                                           <AnimatedTemplateThumb
-                                            thumbnail={{ uri: formatImageUrl(item.thumbnailUrl || item.image) }}
                                             videoUrl={item.videoUrl ? formatImageUrl(item.videoUrl) : null}
-                                            autoPlay={shouldAutoplay}
+                                            thumbnailUrl={item.thumbnailUrl ? formatImageUrl(item.thumbnailUrl) : null}
+                                            image={item.image || null}
+                                            autoPlay={isSelected}
                                             active={isSelected}
                                             index={idx}
                                             style={styles.templateImageGrid}
@@ -1916,10 +2102,7 @@ export default function AnimateScreen() {
                                             isSelected && styles.templateCardSelectedGrid,
                                           ]}
                                           onPress={() => {
-                                            setSelectedTemplate(templateId);
-                                            if (item.prompt) {
-                                              setCustomPrompt(item.prompt);
-                                            }
+                                            handleSelectTemplate(templateId, item);
                                             if (isActive && currentStep === 3) {
                                               mainScrollViewRef.current?.scrollToEnd({ animated: true });
                                               setTimeout(() => {
@@ -1933,9 +2116,10 @@ export default function AnimateScreen() {
                                         >
                                           <View style={styles.templateImageContainerGrid}>
                                             <AnimatedTemplateThumb
-                                              thumbnail={{ uri: formatImageUrl(item.thumbnailUrl || item.image) }}
                                               videoUrl={item.videoUrl ? formatImageUrl(item.videoUrl) : null}
-                                              autoPlay={shouldAutoplay}
+                                              thumbnailUrl={item.thumbnailUrl ? formatImageUrl(item.thumbnailUrl) : null}
+                                              image={item.image || null}
+                                              autoPlay={isSelected}
                                               active={isSelected}
                                               index={idx + 3}
                                               style={styles.templateImageGrid}
@@ -2030,6 +2214,76 @@ export default function AnimateScreen() {
                       <Text style={styles.confirmedPillText}>✓ Active</Text>
                     </View>
                   </View>
+
+                  {/* Name input for Burj Khalifa Birthday / Year display for Lion & The Lady */}
+                  {(() => {
+                    const activePreset = animationTemplates.find(
+                      (t: any) => (t.slug || t.id) === selectedTemplate
+                    );
+
+                    // Lion & The Lady: show year banner
+                    if (selectedTemplate === "lion-and-the-lady" || activePreset?.slug === "lion-and-the-lady") {
+                      const currentYear = new Date().getFullYear();
+                      return (
+                        <View style={{ backgroundColor: '#FFFBEB', borderWidth: 1, borderColor: '#FCD34D', borderRadius: 12, padding: 12, marginTop: 10, gap: 8 }}>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                              <Text style={{ fontSize: 16 }}>{'\uD83E\uDD81'}</Text>
+                              <Text style={{ fontSize: 12, fontFamily: getFontFamily('700'), color: '#1F2937' }}>Lion & The Lady Celebration</Text>
+                            </View>
+                            <View style={{ backgroundColor: '#FEF3C7', borderWidth: 1, borderColor: '#F59E0B', paddingHorizontal: 10, paddingVertical: 3, borderRadius: 12 }}>
+                              <Text style={{ fontSize: 11, fontFamily: getFontFamily('700'), color: '#78350F' }}>Year {currentYear}</Text>
+                            </View>
+                          </View>
+                          <View style={{ backgroundColor: 'rgba(251, 191, 36, 0.15)', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8, flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                            <Text style={{ fontSize: 11, fontFamily: getFontFamily('600'), color: '#92400E' }}>{'\u2728'} In-video marquee lights:</Text>
+                            <Text style={{ fontSize: 11, fontFamily: getFontFamily('700'), color: '#78350F' }}>Displays year {currentYear} prominently</Text>
+                          </View>
+                        </View>
+                      );
+                    }
+
+                    // Burj Khalifa Birthday / templates with {name}: show name input
+                    const hasNamePlaceholder = activePreset?.prompt && (
+                      activePreset.prompt.includes("{name}") ||
+                      activePreset.prompt.includes("[name]") ||
+                      activePreset.prompt.includes("{Name}") ||
+                      activePreset.prompt.includes("[Name]")
+                    );
+                    if (!hasNamePlaceholder && selectedTemplate !== "burj-khalifa-birthday") return null;
+
+                    const effectiveName = (templateRecipientName || user?.firstName || user?.fullName?.split(" ")[0] || "You").trim();
+
+                    return (
+                      <View style={{ backgroundColor: '#FAF5FF', borderWidth: 1, borderColor: '#DDD6FE', borderRadius: 12, padding: 12, marginTop: 10, gap: 8 }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                            <Text style={{ fontSize: 16 }}>{'\uD83C\uDF82'}</Text>
+                            <Text style={{ fontSize: 12, fontFamily: getFontFamily('700'), color: '#1F2937' }}>Birthday Person's Name:</Text>
+                          </View>
+                          <TextInput
+                            value={templateRecipientName}
+                            onChangeText={(text) => {
+                              setTemplateRecipientName(text);
+                              if (activePreset?.prompt) {
+                                const resolved = activePreset.prompt
+                                  .replace(/\{name\}/gi, text || "You")
+                                  .replace(/\[name\]/gi, text || "You");
+                                setCustomPrompt(resolved);
+                              }
+                            }}
+                            placeholder={user?.firstName || "e.g. Olivia"}
+                            placeholderTextColor="#A78BFA"
+                            style={{ flex: 1, minWidth: 120, paddingHorizontal: 12, paddingVertical: 6, fontSize: 13, fontFamily: getFontFamily('700'), color: '#581C87', backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#C4B5FD', borderRadius: 10 }}
+                          />
+                        </View>
+                        <View style={{ backgroundColor: 'rgba(192, 132, 252, 0.12)', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8, flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                          <Text style={{ fontSize: 11, fontFamily: getFontFamily('600'), color: '#7C3AED' }}>{'\u2728'} Text on video:</Text>
+                          <Text style={{ fontSize: 11, fontFamily: getFontFamily('700'), color: '#581C87' }}>"Happy Birthday {effectiveName}"</Text>
+                        </View>
+                      </View>
+                    );
+                  })()}
                 </>
               )}
 
@@ -2302,6 +2556,32 @@ const styles = StyleSheet.create({
     marginBottom: 6,
     textTransform: "uppercase",
     letterSpacing: 0.5,
+  },
+  modelHeaderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 6,
+  },
+  modelLockedBadge: {
+    backgroundColor: "#FEF3C7",
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#FDE68A",
+  },
+  modelLockedBadgeText: {
+    fontSize: 10,
+    fontFamily: getFontFamily("700"),
+    color: "#B45309",
+  },
+  modelLockedNoticeText: {
+    fontSize: 11,
+    fontFamily: getFontFamily("500"),
+    color: "#B45309",
+    marginTop: 6,
+    paddingHorizontal: 2,
   },
   modelChipsRow: {
     flexDirection: "row",

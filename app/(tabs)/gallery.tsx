@@ -24,6 +24,7 @@ import FullScreenVideoViewer from "@/components/ui/FullScreenVideoViewer";
 import SearchIcon from "@/components/images/SearchIcon";
 import FilterIcon from "@/components/images/FilterIcon";
 import { useAuth as useAuthContext } from "@/contexts/AuthContext";
+import { useAuthGate } from "@/contexts/AuthGateContext";
 import { useAuth } from "@clerk/clerk-expo";
 import { api } from "@/services/api";
 import { downloadToDevice } from "@/lib/download";
@@ -47,6 +48,7 @@ interface GalleryItem {
 export default function GalleryScreen() {
   const { user } = useAuthContext();
   const { getToken } = useAuth();
+  const { requireAuth } = useAuthGate();
   const [activeTab, setActiveTab] = useState<"Image" | "Videos">("Videos");
   const [galleryItems, setGalleryItems] = useState<GalleryItem[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
@@ -60,6 +62,43 @@ export default function GalleryScreen() {
   } | null>(null);
   const [selectedVideo, setSelectedVideo] = useState<GalleryItem | null>(null);
   const [userCredits, setUserCredits] = useState<number | null>(null);
+
+  if (!user) {
+    return (
+      <View style={{ flex: 1 }}>
+        <ScreenWrapper addBottomPadding={true} useCustomScroll={true}>
+          <View style={styles.guestContainer}>
+            <LinearGradient
+              colors={["#38BDF8", "#D229FF"]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={styles.guestBadge}
+            >
+              <Text style={styles.guestBadgeText}>MY GALLERY</Text>
+            </LinearGradient>
+            <Text style={styles.guestTitle}>Sign in to View Your Gallery</Text>
+            <Text style={styles.guestSubtitle}>
+              All your AI animated videos and enhanced memories will appear here once you're signed in.
+            </Text>
+            <TouchableOpacity
+              style={styles.guestSignInButton}
+              onPress={() => requireAuth({ type: "tab", tabName: "gallery" })}
+              activeOpacity={0.85}
+            >
+              <LinearGradient
+                colors={["#38BDF8", "#A855F7", "#D229FF"]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                style={styles.guestSignInGradient}
+              >
+                <Text style={styles.guestSignInText}>Sign In to Continue</Text>
+              </LinearGradient>
+            </TouchableOpacity>
+          </View>
+        </ScreenWrapper>
+      </View>
+    );
+  }
 
   const fetchGallery = useCallback(async (isInitial = false) => {
     if (!user) {
@@ -813,5 +852,58 @@ const styles = StyleSheet.create({
     fontFamily: getFontFamily("400"),
     color: "#979797",
     textAlign: "center",
+  },
+  guestContainer: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 24,
+    paddingTop: 80,
+  },
+  guestBadge: {
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 16,
+    marginBottom: 12,
+  },
+  guestBadgeText: {
+    fontSize: 12,
+    fontFamily: getFontFamily("700"),
+    color: "#FFFFFF",
+    letterSpacing: 0.5,
+  },
+  guestTitle: {
+    fontSize: 22,
+    fontFamily: getFontFamily("700"),
+    color: "#0F172A",
+    textAlign: "center",
+    marginBottom: 8,
+  },
+  guestSubtitle: {
+    fontSize: 14,
+    fontFamily: getFontFamily("400"),
+    color: "#64748B",
+    textAlign: "center",
+    lineHeight: 20,
+    marginBottom: 24,
+    maxWidth: 320,
+  },
+  guestSignInButton: {
+    width: "100%",
+    maxWidth: 280,
+    height: 48,
+    borderRadius: 14,
+    overflow: "hidden",
+  },
+  guestSignInGradient: {
+    width: "100%",
+    height: "100%",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  guestSignInText: {
+    fontSize: 15,
+    fontFamily: getFontFamily("600"),
+    color: "#FFFFFF",
   },
 });

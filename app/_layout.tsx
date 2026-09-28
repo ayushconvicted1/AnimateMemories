@@ -1,7 +1,10 @@
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
+import { AuthGateProvider } from "@/contexts/AuthGateContext";
 import { SidebarProvider } from "@/contexts/SidebarContext";
 import { Stack, usePathname } from "expo-router";
 import { TourProvider } from "@/contexts/TourContext";
+import PostAuthBridge from "@/components/auth/PostAuthBridge";
+import LoginModal from "@/components/auth/LoginModal";
 import { useEffect, useRef } from "react";
 import * as Linking from "expo-linking";
 import { router } from "expo-router";
@@ -31,7 +34,7 @@ import {
 } from "@/services/tracking";
 import {
   setupNotificationListeners,
-  requestNotificationPermission,
+  checkNotificationPermission,
   getFCMToken,
   registerTokenWithBackend,
 } from "@/services/notifications";
@@ -221,22 +224,26 @@ export default function RootLayout() {
 
   return (
     <AuthProvider>
-      <TrackingBridge />
-      <ScreenTracker />
-      <NotificationBridge />
-      <SidebarProvider>
-        <TourProvider>
-          <StatusBar
-            style={Platform.OS === "android" ? "dark" : "auto"}
-            backgroundColor={Platform.OS === "android" ? "#ffffff" : undefined}
-          />
-          <Stack
-            screenOptions={{
-              headerShown: false,
-            }}
-          />
-        </TourProvider>
-      </SidebarProvider>
+      <AuthGateProvider>
+        <TrackingBridge />
+        <ScreenTracker />
+        <NotificationBridge />
+        <SidebarProvider>
+          <TourProvider>
+            <PostAuthBridge />
+            <StatusBar
+              style={Platform.OS === "android" ? "dark" : "auto"}
+              backgroundColor={Platform.OS === "android" ? "#ffffff" : undefined}
+            />
+            <Stack
+              screenOptions={{
+                headerShown: false,
+              }}
+            />
+            <LoginModal />
+          </TourProvider>
+        </SidebarProvider>
+      </AuthGateProvider>
     </AuthProvider>
   );
 }
@@ -302,23 +309,32 @@ function NotificationBridge() {
   const { user } = useAuth();
 
   useEffect(() => {
-    // 1. Request permission & retrieve token
+    const email =
+      user?.primaryEmailAddress?.emailAddress ||
+      user?.emailAddresses?.[0]?.emailAddress ||
+      null;
+
+    // If permission has already been granted, ensure token is retrieved & registered.
+    // Notice: We do NOT call requestNotificationPermission() here so we never
+    // interrupt the login/signup/auth flow. Permission is requested on the Home screen.
     (async () => {
-      const granted = await requestNotificationPermission();
+      const granted = await checkNotificationPermission();
       if (granted) {
         const token = await getFCMToken();
-        const email =
-          user?.primaryEmailAddress?.emailAddress ||
-          user?.emailAddresses?.[0]?.emailAddress;
-        if (token && email) {
-          console.log(`[FCM] Token ready for user ${email}:`, token);
+        if (token) {
+          console.log(`[FCM] Token ready for user ${email || "anonymous"}:`, token);
           await registerTokenWithBackend(token, email);
         }
       }
     })();
 
-    // 2. Attach notification listeners (foreground alerts, notification taps)
-    const cleanup = setupNotificationListeners();
+    // 2. Attach notification listeners (foreground alerts, notification taps, token refresh)
+    const cleanup = setupNotificationListeners({
+      onTokenRefresh: async (refreshedToken) => {
+        console.log("[FCM] Handling token refresh:", refreshedToken);
+        await registerTokenWithBackend(refreshedToken, email);
+      },
+    });
     return () => {
       cleanup();
     };

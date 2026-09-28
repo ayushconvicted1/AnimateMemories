@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import {
   FlatList,
   Modal,
@@ -16,9 +16,26 @@ import AnimatedTemplateThumb from "@/components/ui/AnimatedTemplateThumb";
 
 const API_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL || "https://www.animatememories.com";
 
-const formatImageUrl = (url?: string) => {
-  if (!url || url.startsWith("http://") || url.startsWith("https://") || url.startsWith("data:")) return url || "";
-  return `${API_BASE_URL}${url.startsWith("/") ? "" : "/"}${url}`;
+const formatImageUrl = (url?: string | null) => {
+  if (!url) return "";
+  let formatted = String(url).trim();
+  if (
+    formatted.startsWith("http://") ||
+    formatted.startsWith("https://") ||
+    formatted.startsWith("data:")
+  ) {
+    try {
+      return encodeURI(formatted);
+    } catch {
+      return formatted;
+    }
+  }
+  const full = `${API_BASE_URL}${formatted.startsWith("/") ? "" : "/"}${formatted}`;
+  try {
+    return encodeURI(full);
+  } catch {
+    return full;
+  }
 };
 
 interface TemplateExplorerModalProps {
@@ -33,12 +50,44 @@ export default function TemplateExplorerModal({ visible, onClose, templates, onS
   const { width } = useWindowDimensions();
   const [query, setQuery] = useState("");
   const [activeCategory, setActiveCategory] = useState("all");
-  // Template cards currently inside the viewport — capped to top 4 cards so Android hardware MediaCodec decoders never starve
-  const [visibleIds, setVisibleIds] = useState<Set<string>>(() => new Set());
+  const visibleItemIdsRef = useRef<string[]>([]);
+  const [activeVideoId, setActiveVideoId] = useState<string | null>(null);
   const isDraggingRef = useRef(false);
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const cardWidth = Math.floor((width - 48) / 2);
+
+  // Advance to the next visible card in continuous round-robin loop
+  const advanceToNextVideo = useCallback(() => {
+    const visible = visibleItemIdsRef.current;
+    if (!visible || visible.length === 0) return;
+    if (visible.length === 1) {
+      // Only 1 item visible: toggle to trigger replay of this single card
+      setActiveVideoId(null);
+      setTimeout(() => {
+        setActiveVideoId(visible[0]);
+      }, 50);
+      return;
+    }
+    setActiveVideoId((prevId) => {
+      const currentIndex = visible.indexOf(prevId || "");
+      if (currentIndex === -1) {
+        return visible[0];
+      }
+      const nextIndex = (currentIndex + 1) % visible.length;
+      return visible[nextIndex];
+    });
+  }, []);
+
+  // Video plays in full and advances naturally via onPlaybackFinished.
+  // 15s safety watchdog: only intervenes if a video stream hangs or disconnects.
+  useEffect(() => {
+    if (!visible || visibleItemIdsRef.current.length <= 1) return;
+    const watchdog = setTimeout(() => {
+      advanceToNextVideo();
+    }, 15000);
+    return () => clearTimeout(watchdog);
+  }, [activeVideoId, visible, advanceToNextVideo]);
 
   // Clear active decoders when modal is hidden
   useEffect(() => {
@@ -46,7 +95,8 @@ export default function TemplateExplorerModal({ visible, onClose, templates, onS
       if (debounceTimerRef.current) {
         clearTimeout(debounceTimerRef.current);
       }
-      setVisibleIds(new Set());
+      visibleItemIdsRef.current = [];
+      setActiveVideoId(null);
     }
   }, [visible]);
 
@@ -62,12 +112,15 @@ export default function TemplateExplorerModal({ visible, onClose, templates, onS
       }
       // Debounce video activation so fast scrolling displays instant static posters without churning decoders
       debounceTimerRef.current = setTimeout(() => {
-        if (!isDraggingRef.current) {
-          // Strictly cap active playing decoders to top 4 cards
-          const top4 = viewableItems.slice(0, 4);
-          setVisibleIds(
-            new Set(top4.map((v: any) => String(v.item?.slug || v.item?.id)))
-          );
+        if (!isDraggingRef.current && viewableItems && viewableItems.length > 0) {
+          const ids = viewableItems
+            .map((v: any) => String(v.item?.slug || v.item?.id))
+            .filter(Boolean);
+          visibleItemIdsRef.current = ids;
+          setActiveVideoId((prevId) => {
+            if (prevId && ids.includes(prevId)) return prevId;
+            return ids[0];
+          });
         }
       }, 150);
     }
@@ -76,8 +129,12 @@ export default function TemplateExplorerModal({ visible, onClose, templates, onS
   const categories = useMemo(() => {
     const unique = new Map<string, string>();
     templates.forEach((template) => {
-      const category = String(template.category || template.categoryId || "").trim();
-      if (category) unique.set(category.toLowerCase(), category);
+      const raw = String(template.category || template.categoryId || "").trim();
+      // Split comma-separated categories into individual entries
+      raw.split(/[\s,]+/).filter(Boolean).forEach((cat) => {
+        const lower = cat.toLowerCase();
+        if (!unique.has(lower)) unique.set(lower, cat.charAt(0).toUpperCase() + cat.slice(1));
+      });
     });
     return [{ id: "all", label: "All" }, ...Array.from(unique, ([id, label]) => ({ id, label }))];
   }, [templates]);
@@ -86,7 +143,11 @@ export default function TemplateExplorerModal({ visible, onClose, templates, onS
     const normalizedQuery = query.trim().toLowerCase();
     return templates.filter((template) => {
       const category = String(template.category || template.categoryId || "").toLowerCase();
-      const matchesCategory = activeCategory === "all" || category === activeCategory;
+      // Split comma-separated categories (e.g., "Viral, Birthday")
+      const cats = category.split(/[\s,]+/).filter(Boolean);
+      const matchesCategory = activeCategory === "all" || cats.includes(activeCategory) ||
+        ((activeCategory === "viral" || activeCategory === "trending") &&
+         (cats.includes("viral") || cats.includes("trending")));
       const content = `${template.name || ""} ${template.prompt || ""}`.toLowerCase();
       return matchesCategory && (!normalizedQuery || content.includes(normalizedQuery));
     });
@@ -182,13 +243,6 @@ export default function TemplateExplorerModal({ visible, onClose, templates, onS
               isDraggingRef.current = false;
             }}
             renderItem={({ item }) => {
-              const rawImage = item.thumbnailUrl || item.image;
-              const image =
-                rawImage && (typeof rawImage === "number" || typeof rawImage === "object")
-                  ? rawImage
-                  : rawImage
-                  ? { uri: formatImageUrl(rawImage) }
-                  : undefined;
               const itemId = String(item.slug || item.id);
               return (
                 <TouchableOpacity
@@ -198,16 +252,25 @@ export default function TemplateExplorerModal({ visible, onClose, templates, onS
                 >
                   <View style={[styles.imageWrap, { height: cardWidth * 1.25 }]}>
                     <AnimatedTemplateThumb
-                      thumbnail={image as any}
                       videoUrl={item.videoUrl ? formatImageUrl(item.videoUrl) : null}
-                      autoPlay={visibleIds.has(itemId)}
+                      thumbnailUrl={item.thumbnailUrl ? formatImageUrl(item.thumbnailUrl) : null}
+                      image={item.image || null}
+                      autoPlay={activeVideoId === itemId}
+                      onPlaybackFinished={activeVideoId === itemId ? advanceToNextVideo : undefined}
                       style={styles.image}
                     />
-                    {!!item.category && (
-                      <View style={styles.categoryBadgeWrap}>
-                        <Text style={styles.categoryBadgeText}>{item.category}</Text>
-                      </View>
-                    )}
+                    {!!item.category && (() => {
+                      // For multi-category templates, show the primary non-Viral category
+                      const cats = String(item.category).split(/[\s,]+/).filter(Boolean);
+                      const displayCat = cats.length > 1
+                        ? (cats.find(c => c.toLowerCase() !== "viral" && c.toLowerCase() !== "trending") || cats[0])
+                        : cats[0];
+                      return displayCat ? (
+                        <View style={styles.categoryBadgeWrap}>
+                          <Text style={styles.categoryBadgeText}>{displayCat}</Text>
+                        </View>
+                      ) : null;
+                    })()}
                   </View>
                   <View style={styles.cardFooter}>
                     <Text numberOfLines={1} style={styles.cardTitle}>

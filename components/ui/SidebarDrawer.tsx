@@ -25,6 +25,7 @@ import PrivacyIcon from "@/components/images/PrivacyIcon";
 import AnimateMemoriesTabsLogo from "@/components/images/AnimateMemoriesTabsLogo";
 import YouIcon from "@/components/images/YouIcon";
 import { useAuth } from "@/contexts/AuthContext";
+import { useAuthGate } from "@/contexts/AuthGateContext";
 import { useAuth as useClerkAuth } from "@clerk/clerk-expo";
 import { api } from "@/services/api";
 import { getFontFamily } from "@/constants/Fonts";
@@ -60,8 +61,28 @@ export default function SidebarDrawer({ visible, onClose }: SidebarDrawerProps) 
     }
   }, [visible, user, getToken]);
 
+  const { requireAuth } = useAuthGate();
+
   const handleNavigate = (path: string) => {
     onClose();
+    if (!user) {
+      if (path === "/(tabs)/animate") {
+        setTimeout(() => requireAuth({ type: "create" }), 200);
+        return;
+      }
+      if (path === "/(tabs)/gallery") {
+        setTimeout(() => requireAuth({ type: "tab", tabName: "gallery" }), 200);
+        return;
+      }
+      if (path === "/(tabs)/credit") {
+        setTimeout(() => requireAuth({ type: "tab", tabName: "credit" }), 200);
+        return;
+      }
+      if (path === "/(tabs)/you") {
+        setTimeout(() => requireAuth({ type: "tab", tabName: "you" }), 200);
+        return;
+      }
+    }
     setTimeout(() => {
       router.push(path as any);
     }, 150);
@@ -71,7 +92,7 @@ export default function SidebarDrawer({ visible, onClose }: SidebarDrawerProps) 
     onClose();
     try {
       await signOut();
-      router.replace("/(auth)" as any);
+      router.replace("/(tabs)" as any);
     } catch (e) {
       console.error("Sign out error", e);
     }
@@ -273,7 +294,10 @@ export default function SidebarDrawer({ visible, onClose }: SidebarDrawerProps) 
             ) : (
               <TouchableOpacity
                 style={styles.loginButton}
-                onPress={() => handleNavigate("/(auth)")}
+                onPress={() => {
+                  onClose();
+                  setTimeout(() => requireAuth({ type: "create" }), 200);
+                }}
                 activeOpacity={0.8}
               >
                 <LinearGradient

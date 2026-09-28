@@ -22,6 +22,7 @@ import { GradientText } from "@/components/ui/GradientText";
 import ScreenWrapper from "@/components/ui/ScreenWrapper";
 import { IconSymbol } from "@/components/ui/IconSymbol";
 import { useAuth as useAuthContext } from "@/contexts/AuthContext";
+import { useAuthGate } from "@/contexts/AuthGateContext";
 import { useAuth } from "@clerk/clerk-expo";
 import { SvgUri } from 'react-native-svg';
 import { api } from "@/services/api";
@@ -99,9 +100,47 @@ const SUBSCRIPTION_DETAILS = {
 export default function CreditScreen() {
   const { user } = useAuthContext();
   const { getToken } = useAuth();
+  const { requireAuth } = useAuthGate();
 
   const [billingType, setBillingType] = useState<'one-time' | 'subscription'>('subscription');
   const [selectedPack, setSelectedPack] = useState<'starter' | 'popular' | 'pro'>('popular');
+
+  if (!user) {
+    return (
+      <View style={{ flex: 1 }}>
+        <ScreenWrapper addBottomPadding={true}>
+          <View style={styles.guestContainer}>
+            <LinearGradient
+              colors={["#38BDF8", "#D229FF"]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={styles.guestBadge}
+            >
+              <Text style={styles.guestBadgeText}>CREDITS & PLANS</Text>
+            </LinearGradient>
+            <Text style={styles.guestTitle}>Sign in to Buy Credits</Text>
+            <Text style={styles.guestSubtitle}>
+              Sign in to your account to purchase credits and create unlimited animations with AI models.
+            </Text>
+            <TouchableOpacity
+              style={styles.guestSignInButton}
+              onPress={() => requireAuth({ type: "tab", tabName: "credit" })}
+              activeOpacity={0.85}
+            >
+              <LinearGradient
+                colors={["#38BDF8", "#A855F7", "#D229FF"]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                style={styles.guestSignInGradient}
+              >
+                <Text style={styles.guestSignInText}>Sign In to Continue</Text>
+              </LinearGradient>
+            </TouchableOpacity>
+          </View>
+        </ScreenWrapper>
+      </View>
+    );
+  }
 
   const [customAmount, setCustomAmount] = useState<number>(100);
 
@@ -1233,5 +1272,58 @@ const styles = StyleSheet.create({
   presetBtnTextActive: {
     color: '#000',
     fontFamily: getFontFamily('700'),
+  },
+  guestContainer: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 24,
+    paddingTop: 80,
+  },
+  guestBadge: {
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 16,
+    marginBottom: 12,
+  },
+  guestBadgeText: {
+    fontSize: 12,
+    fontFamily: getFontFamily("700"),
+    color: "#FFFFFF",
+    letterSpacing: 0.5,
+  },
+  guestTitle: {
+    fontSize: 22,
+    fontFamily: getFontFamily("700"),
+    color: "#0F172A",
+    textAlign: "center",
+    marginBottom: 8,
+  },
+  guestSubtitle: {
+    fontSize: 14,
+    fontFamily: getFontFamily("400"),
+    color: "#64748B",
+    textAlign: "center",
+    lineHeight: 20,
+    marginBottom: 24,
+    maxWidth: 320,
+  },
+  guestSignInButton: {
+    width: "100%",
+    maxWidth: 280,
+    height: 48,
+    borderRadius: 14,
+    overflow: "hidden",
+  },
+  guestSignInGradient: {
+    width: "100%",
+    height: "100%",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  guestSignInText: {
+    fontSize: 15,
+    fontFamily: getFontFamily("600"),
+    color: "#FFFFFF",
   },
 });

@@ -16,7 +16,7 @@ import PointerIcon from "@/components/images/PointerIcon";
 import SurpriseMeIcon from "@/components/images/SurpriseMeIcon";
 
 const TourOverlay = () => {
-  const { currentStep, isActive, nextStep, endTour } = useTour();
+  const { currentStep, isActive, tourEntryMode, nextStep, endTour } = useTour();
   const { user } = useUser();
 
   if (!isActive || !user) {
@@ -25,6 +25,21 @@ const TourOverlay = () => {
 
   // Step 0: Welcome Modal
   if (currentStep === 0) {
+    const isTemplateEntry = tourEntryMode === "template";
+    const isTabRedirect = tourEntryMode === "tab-redirect";
+
+    const titleText = isTemplateEntry
+      ? "Let's Animate Your Photo! 🎬"
+      : isTabRedirect
+      ? "Create Your First Animation! ✨"
+      : "Welcome to Animate Memories! 👋";
+
+    const descText = isTemplateEntry
+      ? "Your template is ready. Let's upload your photo and make it live!"
+      : isTabRedirect
+      ? "Follow these quick steps to turn your favorite photo into an animated video."
+      : "Let's get you started →\nClick the buttons below to begin!";
+
     return (
       <Modal
         transparent
@@ -43,17 +58,26 @@ const TourOverlay = () => {
               <Text style={styles.headerBadgeText}>QUICK TOUR</Text>
             </LinearGradient>
 
-            <Text style={styles.title}>Welcome to Animate Memories! 👋</Text>
-            <Text style={styles.text}>
-              Let's get you started →{"\n"}Click the buttons below to begin!
-            </Text>
+            <Text style={styles.title}>{titleText}</Text>
+            <Text style={styles.text}>{descText}</Text>
 
             <View style={styles.buttonRowCenter}>
               <TouchableOpacity onPress={endTour} style={styles.skipButton}>
                 <Text style={styles.skipButtonText}>Skip Tour</Text>
               </TouchableOpacity>
 
-              <TouchableOpacity onPress={nextStep} activeOpacity={0.8}>
+              <TouchableOpacity
+                onPress={() => {
+                  if (isTemplateEntry) {
+                    // Skip Step 1 (Create tab press) and go straight to Step 2 (Upload photo)
+                    nextStep();
+                    nextStep();
+                  } else {
+                    nextStep();
+                  }
+                }}
+                activeOpacity={0.8}
+              >
                 <LinearGradient
                   colors={["#28D4FA", "#D229FF"]}
                   start={{ x: 0, y: 0 }}

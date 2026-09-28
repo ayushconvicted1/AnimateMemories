@@ -33,7 +33,7 @@
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
       "package": "com.hexerve.AnimateMemories",
-      "versionCode": 4,
+      "versionCode": 5,
       "statusBar": {
         "barStyle": "dark-content",
         "backgroundColor": "#ffffff"
@@ -75,6 +75,7 @@
         }
       ],
       "@react-native-firebase/crashlytics",
+      "@react-native-firebase/messaging",
       [
         "expo-tracking-transparency",
         {
