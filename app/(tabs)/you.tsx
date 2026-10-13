@@ -60,43 +60,6 @@ export default function YouScreen() {
   const [isUpdating, setIsUpdating] = useState(false);
   const [isUpdatingImage, setIsUpdatingImage] = useState(false);
 
-  if (!user) {
-    return (
-      <View style={{ flex: 1 }}>
-        <ScreenWrapper addBottomPadding={true}>
-          <View style={styles.guestContainer}>
-            <LinearGradient
-              colors={["#38BDF8", "#D229FF"]}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 0 }}
-              style={styles.guestBadge}
-            >
-              <Text style={styles.guestBadgeText}>PROFILE</Text>
-            </LinearGradient>
-            <Text style={styles.guestTitle}>Sign in to View Your Account</Text>
-            <Text style={styles.guestSubtitle}>
-              Sign in to manage your account settings, credits, and subscription details.
-            </Text>
-            <TouchableOpacity
-              style={styles.guestSignInButton}
-              onPress={() => requireAuth({ type: "tab", tabName: "you" })}
-              activeOpacity={0.85}
-            >
-              <LinearGradient
-                colors={["#38BDF8", "#A855F7", "#D229FF"]}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 0 }}
-                style={styles.guestSignInGradient}
-              >
-                <Text style={styles.guestSignInText}>Sign In to Continue</Text>
-              </LinearGradient>
-            </TouchableOpacity>
-          </View>
-        </ScreenWrapper>
-      </View>
-    );
-  }
-
   const fetchUserCredits = useCallback(async () => {
     if (!user) return;
     try {
@@ -477,6 +440,43 @@ export default function YouScreen() {
       setIsUpdatingImage(false);
     }
   };
+
+  if (!user) {
+    return (
+      <View style={{ flex: 1 }}>
+        <ScreenWrapper addBottomPadding={true}>
+          <View style={styles.guestContainer}>
+            <LinearGradient
+              colors={["#38BDF8", "#D229FF"]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={styles.guestBadge}
+            >
+              <Text style={styles.guestBadgeText}>PROFILE</Text>
+            </LinearGradient>
+            <Text style={styles.guestTitle}>Sign in to View Your Account</Text>
+            <Text style={styles.guestSubtitle}>
+              Sign in to manage your account settings, credits, and subscription details.
+            </Text>
+            <TouchableOpacity
+              style={styles.guestSignInButton}
+              onPress={() => requireAuth({ type: "tab", tabName: "you" })}
+              activeOpacity={0.85}
+            >
+              <LinearGradient
+                colors={["#38BDF8", "#A855F7", "#D229FF"]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                style={styles.guestSignInGradient}
+              >
+                <Text style={styles.guestSignInText}>Sign In to Continue</Text>
+              </LinearGradient>
+            </TouchableOpacity>
+          </View>
+        </ScreenWrapper>
+      </View>
+    );
+  }
 
   return (
     <ScreenWrapper

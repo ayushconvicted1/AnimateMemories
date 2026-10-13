@@ -72,43 +72,6 @@ export default function GalleryScreen() {
   const [userCredits, setUserCredits] = useState<number | null>(null);
   const [isSharing, setIsSharing] = useState(false);
 
-  if (!user) {
-    return (
-      <View style={{ flex: 1 }}>
-        <ScreenWrapper addBottomPadding={true} useCustomScroll={true}>
-          <View style={styles.guestContainer}>
-            <LinearGradient
-              colors={["#38BDF8", "#D229FF"]}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 0 }}
-              style={styles.guestBadge}
-            >
-              <Text style={styles.guestBadgeText}>MY GALLERY</Text>
-            </LinearGradient>
-            <Text style={styles.guestTitle}>Sign in to View Your Gallery</Text>
-            <Text style={styles.guestSubtitle}>
-              All your AI animated videos and enhanced memories will appear here once you're signed in.
-            </Text>
-            <TouchableOpacity
-              style={styles.guestSignInButton}
-              onPress={() => requireAuth({ type: "tab", tabName: "gallery" })}
-              activeOpacity={0.85}
-            >
-              <LinearGradient
-                colors={["#38BDF8", "#A855F7", "#D229FF"]}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 0 }}
-                style={styles.guestSignInGradient}
-              >
-                <Text style={styles.guestSignInText}>Sign In to Continue</Text>
-              </LinearGradient>
-            </TouchableOpacity>
-          </View>
-        </ScreenWrapper>
-      </View>
-    );
-  }
-
   const fetchGallery = useCallback(async (isInitial = false) => {
     if (!user) {
       setLoading(false);
@@ -608,6 +571,43 @@ export default function GalleryScreen() {
       </Text>
     </View>
   );
+
+  if (!user) {
+    return (
+      <View style={{ flex: 1 }}>
+        <ScreenWrapper addBottomPadding={true} useCustomScroll={true}>
+          <View style={styles.guestContainer}>
+            <LinearGradient
+              colors={["#38BDF8", "#D229FF"]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={styles.guestBadge}
+            >
+              <Text style={styles.guestBadgeText}>MY GALLERY</Text>
+            </LinearGradient>
+            <Text style={styles.guestTitle}>Sign in to View Your Gallery</Text>
+            <Text style={styles.guestSubtitle}>
+              All your AI animated videos and enhanced memories will appear here once you're signed in.
+            </Text>
+            <TouchableOpacity
+              style={styles.guestSignInButton}
+              onPress={() => requireAuth({ type: "tab", tabName: "gallery" })}
+              activeOpacity={0.85}
+            >
+              <LinearGradient
+                colors={["#38BDF8", "#A855F7", "#D229FF"]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                style={styles.guestSignInGradient}
+              >
+                <Text style={styles.guestSignInText}>Sign In to Continue</Text>
+              </LinearGradient>
+            </TouchableOpacity>
+          </View>
+        </ScreenWrapper>
+      </View>
+    );
+  }
 
   return (
     <View style={{ flex: 1 }}>

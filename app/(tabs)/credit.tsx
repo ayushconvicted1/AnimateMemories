@@ -119,44 +119,6 @@ export default function CreditScreen() {
 
   const [billingType, setBillingType] = useState<'one-time' | 'subscription'>('subscription');
   const [selectedPack, setSelectedPack] = useState<'starter' | 'popular' | 'pro'>('popular');
-
-  if (!user) {
-    return (
-      <View style={{ flex: 1 }}>
-        <ScreenWrapper addBottomPadding={true}>
-          <View style={styles.guestContainer}>
-            <LinearGradient
-              colors={["#38BDF8", "#D229FF"]}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 0 }}
-              style={styles.guestBadge}
-            >
-              <Text style={styles.guestBadgeText}>CREDITS & PLANS</Text>
-            </LinearGradient>
-            <Text style={styles.guestTitle}>Sign in to Buy Credits</Text>
-            <Text style={styles.guestSubtitle}>
-              Sign in to your account to purchase credits and create unlimited animations with AI models.
-            </Text>
-            <TouchableOpacity
-              style={styles.guestSignInButton}
-              onPress={() => requireAuth({ type: "tab", tabName: "credit" })}
-              activeOpacity={0.85}
-            >
-              <LinearGradient
-                colors={["#38BDF8", "#A855F7", "#D229FF"]}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 0 }}
-                style={styles.guestSignInGradient}
-              >
-                <Text style={styles.guestSignInText}>Sign In to Continue</Text>
-              </LinearGradient>
-            </TouchableOpacity>
-          </View>
-        </ScreenWrapper>
-      </View>
-    );
-  }
-
   const [customAmount, setCustomAmount] = useState<number>(100);
 
   const getOneTimePrice = (credits: number) => {
@@ -624,6 +586,43 @@ export default function CreditScreen() {
       setIsProcessingIAP(false);
     }
   };
+
+  if (!user) {
+    return (
+      <View style={{ flex: 1 }}>
+        <ScreenWrapper addBottomPadding={true}>
+          <View style={styles.guestContainer}>
+            <LinearGradient
+              colors={["#38BDF8", "#D229FF"]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={styles.guestBadge}
+            >
+              <Text style={styles.guestBadgeText}>CREDITS & PLANS</Text>
+            </LinearGradient>
+            <Text style={styles.guestTitle}>Sign in to Buy Credits</Text>
+            <Text style={styles.guestSubtitle}>
+              Sign in to your account to purchase credits and create unlimited animations with AI models.
+            </Text>
+            <TouchableOpacity
+              style={styles.guestSignInButton}
+              onPress={() => requireAuth({ type: "tab", tabName: "credit" })}
+              activeOpacity={0.85}
+            >
+              <LinearGradient
+                colors={["#38BDF8", "#A855F7", "#D229FF"]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                style={styles.guestSignInGradient}
+              >
+                <Text style={styles.guestSignInText}>Sign In to Continue</Text>
+              </LinearGradient>
+            </TouchableOpacity>
+          </View>
+        </ScreenWrapper>
+      </View>
+    );
+  }
 
   return (
     <ScreenWrapper

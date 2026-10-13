@@ -624,7 +624,7 @@ export default function LoginModal() {
 
                   {/* Switch to Sign Up */}
                   <View style={styles.switchRow}>
-                    <Text style={styles.switchText}>Don't have an account? </Text>
+                    <Text style={styles.switchText}>{"Don't have an account? "}</Text>
                     <TouchableOpacity
                       onPress={() => {
                         resetFormState();
