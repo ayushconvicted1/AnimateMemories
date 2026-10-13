@@ -36,11 +36,38 @@ import BeforeAfterSlider from "@/components/ui/BeforeAfterSlider";
 import { useAuth as useAuthContext } from "@/contexts/AuthContext";
 import { useAuth } from "@clerk/clerk-expo";
 import { api } from "@/services/api";
-import { downloadToDevice } from "@/lib/download";
-import { useLocalSearchParams, router } from "expo-router";
+import { downloadToDevice, shareMedia } from "@/lib/download";
+import { useLocalSearchParams, router, Redirect, useFocusEffect } from "expo-router";
 import { useTour } from "@/contexts/TourContext";
 import TourStepWrapper from "@/components/tour/TourStepWrapper";
 import { getFontFamily } from "@/constants/Fonts";
+import ShareVideoModal from "@/components/ui/ShareVideoModal";
+import { validatePromptSafety } from "@/lib/safetyFilter";
+import {
+  trackUploadPhoto,
+  trackAnimationGenerationStarted,
+  trackAnimationGenerationCompleted,
+  trackViewAnimation,
+  trackDownloadAnimation,
+  trackShareAnimation,
+  trackFreeCreditUsed,
+  trackCreditsExhausted,
+  trackGenerateStart,
+  trackRegenerateClick,
+  trackGenerationFailed,
+  trackStudioView,
+  trackSelectTool,
+  trackUploadFailed,
+  trackViewContent,
+} from "@/services/tracking";
+import {
+  templateAudioCoordinator,
+  isAudioTemplate as checkIsAudioTemplate,
+} from "@/services/templateAudioCoordinator";
+import {
+  FALLBACK_TEMPLATES,
+  FALLBACK_CATEGORIES,
+} from "@/constants/defaultPresets";
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
 const CONTENT_WIDTH = SCREEN_WIDTH - 32;
@@ -49,70 +76,170 @@ const CONTENT_WIDTH = SCREEN_WIDTH - 32;
 const API_BASE_URL =
   process.env.EXPO_PUBLIC_API_BASE_URL || "https://www.animatememories.com";
 
-const formatImageUrl = (url?: string) => {
+const formatImageUrl = (url?: string | null) => {
   if (!url) return "";
-  if (url.startsWith("http://") || url.startsWith("https://") || url.startsWith("data:")) {
-    return url;
+  let formatted = String(url).trim();
+  if (formatted.startsWith("http://") || formatted.startsWith("https://") || formatted.startsWith("data:")) {
+    try {
+      return encodeURI(formatted);
+    } catch {
+      return formatted;
+    }
   }
-  return `${API_BASE_URL}${url.startsWith("/") ? "" : "/"}${url}`;
+  const full = `${API_BASE_URL}${formatted.startsWith("/") ? "" : "/"}${formatted}`;
+  try {
+    return encodeURI(full);
+  } catch {
+    return full;
+  }
 };
 
 const promptExamples = [
   "slowly turns head left and right, blinks softly, gentle smile",
   "natural breathing motion, subtle eye movement, peaceful expression",
   "gentle swaying dance movement, rhythmic head bob, joyful expression",
-  "two people hugging warmly, slight rocking motion, emotional embrace",
+  "family smiling warmly together, gentle head nods, cheerful expressions",
   "playful dancing with shoulder movements, happy facial expressions",
 ];
 
-const VIDEO_MODELS = [
+interface VideoModelConfig {
+  id: string;
+  name: string;
+  badge: string;
+  desc: string;
+  minDuration: number;
+  maxDuration: number;
+  durationStep?: number;
+  supportedResolutions: ("480p" | "720p" | "1080p")[];
+  costPerSecond: number;
+  creditsPerSecond: Partial<Record<"480p" | "720p" | "1080p", number>>;
+  allowedDurations?: number[];
+  supportsAudio?: boolean;
+}
+
+const VIDEO_MODELS: VideoModelConfig[] = [
   {
-    id: "kling-v2-1",
-    name: "⚡ Kling v2.1",
+    id: "seedance-1-5-pro",
+    name: "✨ Seedance 1.5 Pro",
     badge: "Default",
-    desc: "Fast, realistic motion & face preservation",
+    desc: "Realistic facial expressions, lifelike motion & memory preservation",
     minDuration: 4,
     maxDuration: 10,
-    allowedDurations: [5, 10],
+    durationStep: 1,
     supportedResolutions: ["720p", "1080p"],
-    costPerSecond: 0.05,
+    costPerSecond: 0.026,
     creditsPerSecond: { "720p": 0.8, "1080p": 1.6 },
+    supportsAudio: true,
+  },
+  {
+    id: "seedance-1-pro-fast",
+    name: "⚡ Seedance 1 Pro Fast",
+    badge: "Fast",
+    desc: "Fast generation with smooth, natural motion",
+    minDuration: 4,
+    maxDuration: 10,
+    durationStep: 1,
+    supportedResolutions: ["720p", "1080p"],
+    costPerSecond: 0.025,
+    creditsPerSecond: { "720p": 0.8, "1080p": 1.6 },
+    supportsAudio: false,
   },
   {
     id: "seedance-2-fast",
     name: "🚀 Seedance 2.0 Fast",
-    badge: "Quick",
-    desc: "High detail & smooth motion",
+    badge: "Ultra",
+    desc: "Next-gen detail & multimodal synthesis",
     minDuration: 4,
     maxDuration: 10,
+    durationStep: 1,
     supportedResolutions: ["720p"],
-    costPerSecond: 0.08,
-    creditsPerSecond: { "720p": 1.0 },
-  },
-  {
-    id: "seedance-2",
-    name: "✨ Seedance 2.0 Premium",
-    badge: "Pro",
-    desc: "Ultra-cinematic motion quality",
-    minDuration: 4,
-    maxDuration: 10,
-    supportedResolutions: ["720p", "1080p"],
     costPerSecond: 0.15,
-    creditsPerSecond: { "720p": 1.6, "1080p": 2.6 },
+    creditsPerSecond: { "720p": 2.0 },
+    supportsAudio: true,
   },
 ];
 
-function calculateCreditCost(modelId: string, quality: string, duration: number, featureCosts?: any) {
-  const model = VIDEO_MODELS.find((m) => m.id === modelId);
+const DEFAULT_ANIMATION_TEMPLATES = [
+  {
+    slug: "groove-duo",
+    id: "groove-duo",
+    name: "Groove Duo",
+    prompt:
+      "Two stylish hip-hop grandmothers from the photo come alive in urban streetwear with sunglasses, bucket hats, and thick gold Cuban link chain necklaces, rhythmically beatboxing and grooving together side by side against a warm solid studio backdrop. They rhythmically nod their heads, make expressive beatboxing mouth movements and hand gestures with swagger and playful attitude. Dynamic, funny, high quality music video vibe, crisp lighting, infectious hip-hop beatbox energy.",
+    thumbnailUrl: "https://pub-b01a35ccbe054425bacd868be6412477.r2.dev/templates/groove-duo.webp",
+    category: "Viral, Funny",
+    videoUrl: "https://pub-b01a35ccbe054425bacd868be6412477.r2.dev/templates/groove-duo.mp4",
+    hasAudio: true,
+  },
+  {
+    slug: "mic-drop-rap",
+    id: "mic-drop-rap",
+    name: "Mic Drop Rap",
+    prompt:
+      "The person from the photo becomes a confident rap artist on a dramatic stage with neon spotlights and smoke effects. They grip a microphone tightly, delivering powerful rap bars with intense energy and attitude. Dynamic camera angles capture their expressive hand gestures and head movements as they spit fire lyrics. The stage has pulsing LED screens, dramatic lighting shifts between purple and gold, and a hype crowd in the background. The person finishes with a mic drop gesture, the microphone falling in slow motion as the crowd erupts. Cinematic, music video quality, bass-heavy atmosphere with visible sound waves.",
+    thumbnailUrl: "/templates/mic-drop-rap.webp",
+    category: "Viral",
+    videoUrl: "https://pub-b01a35ccbe054425bacd868be6412477.r2.dev/templates/mic-drop-rap.mp4",
+    hasAudio: true,
+  },
+  {
+    slug: "baby-dance",
+    id: "baby-dance",
+    name: "Baby Dance",
+    prompt:
+      "A cute baby from the photo comes alive dressed in a stylish black sequin jacket, black fedora hat, and sparkly glove, performing iconic smooth Michael Jackson dance moves on a dark sleek stage with dramatic spotlights. The baby grooves to the beat with adorable smiles, moonwalking, spinning, and stepping with joyful rhythm. High quality, charming, cinematic lighting, cute and playful dance animation.",
+    thumbnailUrl: "https://pub-b01a35ccbe054425bacd868be6412477.r2.dev/templates/baby-dance.webp",
+    category: "Kids, Viral",
+    videoUrl: "https://pub-b01a35ccbe054425bacd868be6412477.r2.dev/templates/baby-dance.mp4",
+    hasAudio: false,
+  },
+  {
+    slug: "lion-and-the-lady",
+    id: "lion-and-the-lady",
+    name: "Lion & The Lady",
+    prompt:
+      "A cinematic, elegant celebration at night on a luxurious rooftop terrace overlooking the glowing illuminated Eiffel Tower in Paris. The person from the photo sits stylishly dressed in a sleek black outfit and dark sunglasses on a modern white couch, holding a crystal champagne glass. Glowing fireworks sparkle in the dark night sky. A majestic male lion wearing cool sunglasses, a gold Cuban link chain necklace, and a festive silver party hat approaches playfully and lounges comfortably beside the person. In front on the table rests a luxury birthday cake with glowing lit candles, champagne in a gold ice bucket, and bright glowing marquee light numbers proudly displaying the year {year}. The scene is celebratory, vibrant, and effortlessly cool.",
+    thumbnailUrl: "/templates/lion-and-the-lady.webp",
+    category: "Viral, Birthday",
+    videoUrl: "https://pub-b01a35ccbe054425bacd868be6412477.r2.dev/templates/lion-and-the-lady.mp4",
+    hasAudio: false,
+  },
+  {
+    slug: "family-photo-pose",
+    id: "family-photo-pose",
+    name: "Family Smile",
+    prompt: "A family smiling warmly together, natural blinking, gentle head nods, cheerful lively expressions",
+    thumbnailUrl: "/templates/FamilyPhoto.jpeg",
+    videoUrl: "https://pub-b01a35ccbe054425bacd868be6412477.r2.dev/templates/family-photo-pose.mp4",
+    category: "Family",
+    hasAudio: false,
+  },
+  {
+    slug: "jump-scare",
+    id: "jump-scare",
+    name: "Jump Scare",
+    prompt: "A person in costume suddenly lunges forward with a spooky expression, arms extended as if to grab the viewer.",
+    thumbnailUrl: "https://images.unsplash.com/photo-1509281373149-e957c6296406?w=200&q=80",
+    videoUrl: "https://pub-b01a35ccbe054425bacd868be6412477.r2.dev/templates/jump-scare.mp4",
+    category: "Funny",
+    hasAudio: false,
+  },
+];
+
+function calculateCreditCost(modelId: string, quality: string, duration: number, featureCosts?: any, modelsList?: VideoModelConfig[]) {
+  // Gracefully remap discontinued kling-v2-1 to seedance-1-5-pro
+  const models = modelsList || VIDEO_MODELS;
+  const effectiveModelId = (!modelId || modelId === "kling-v2-1") ? (models[0]?.id || "seedance-1-5-pro") : modelId;
+  const model = models.find((m) => m.id === effectiveModelId) || models[0] || VIDEO_MODELS[0];
   const dur = Number(duration) || 5;
 
   if (featureCosts) {
-    const key = `model_${modelId.replace(/-/g, "_")}_${quality}`;
+    const key = `model_${effectiveModelId.replace(/-/g, "_")}_${quality}`;
     if (featureCosts[key] !== undefined && featureCosts[key] !== null) {
       const val = Number(featureCosts[key]);
       return Math.ceil(val * dur);
     }
-    const directModelKey = `model_${modelId.replace(/-/g, "_")}`;
+    const directModelKey = `model_${effectiveModelId.replace(/-/g, "_")}`;
     if (featureCosts[directModelKey] !== undefined && featureCosts[directModelKey] !== null) {
       const val = Number(featureCosts[directModelKey]);
       return Math.ceil(val * (dur / 5));
@@ -135,12 +262,17 @@ function calculateCreditCost(modelId: string, quality: string, duration: number,
 }
 
 export default function AnimateScreen() {
-  const { user } = useAuthContext();
+  const { user, isSignedIn, isLoaded } = useAuthContext();
   const { getToken } = useAuth();
   const { currentStep, isActive, nextStep, endTour } = useTour();
   const params = useLocalSearchParams();
   const mainScrollViewRef = useRef<ScrollView>(null);
   const [templatesLayoutY, setTemplatesLayoutY] = useState(0);
+
+  // If user accesses AnimateScreen while unauthenticated, redirect to Home
+  if (isLoaded && !isSignedIn) {
+    return <Redirect href="/(tabs)" />;
+  }
 
   // Default to animate tool and jump scare template
   const [selectedTool, setSelectedTool] = useState<
@@ -210,6 +342,23 @@ export default function AnimateScreen() {
   ).current;
   const [restoredImage, setRestoredImage] = useState<string | null>(null);
   const [animatedVideo, setAnimatedVideo] = useState<string | null>(null);
+  const [hasGeneratedCurrent, setHasGeneratedCurrent] = useState({
+    animate: false,
+    restore: false,
+    enhance: false,
+  });
+  const [isShareModalOpen, setIsShareModalOpen] = useState(false);
+
+  // Check if current photo has already been generated in current mode
+  const isRegenerate = useMemo(() => {
+    if (selectedTool === "restore") {
+      return Boolean(restoredImage || hasGeneratedCurrent.restore);
+    }
+    if (selectedTool === "enhance") {
+      return Boolean(restoredImage || hasGeneratedCurrent.enhance);
+    }
+    return Boolean(animatedVideo || hasGeneratedCurrent.animate);
+  }, [selectedTool, restoredImage, animatedVideo, hasGeneratedCurrent]);
   const [loading, setLoading] = useState(false);
   const isSubmittingRef = useRef(false);
   const [uploading, setUploading] = useState(false);
@@ -218,7 +367,7 @@ export default function AnimateScreen() {
   const [uploadHighlighted, setUploadHighlighted] = useState<boolean>(false);
   const [surpriseSubject, setSurpriseSubject] = useState<string>("");
   const [selectedTemplate, setSelectedTemplate] = useState<string | null>(
-    "jump-scare"
+    (params.templateId as string) || "jump-scare"
   );
   const [activeTabMode, setActiveTabMode] = useState<"template" | "custom">("template");
   const [enhanceOptions, setEnhanceOptions] = useState({
@@ -230,6 +379,7 @@ export default function AnimateScreen() {
   // Real progress (0-100) reported by the backend for the animate tool
   const [genProgress, setGenProgress] = useState<number | null>(null);
   const [downloading, setDownloading] = useState(false);
+  const [isSharing, setIsSharing] = useState(false);
   const [savedToast, setSavedToast] = useState<{
     title: string;
     path: string | null;
@@ -240,14 +390,50 @@ export default function AnimateScreen() {
   const previewVideoRef = useRef<Video>(null);
   const [featureCosts, setFeatureCosts] = useState<any>(null);
   const [selectedQuality, setSelectedQuality] = useState<"480p" | "720p" | "1080p">("720p");
-  const [selectedModel, setSelectedModel] = useState<string>("kling-v2-1");
+  const [selectedModel, setSelectedModel] = useState<string>("seedance-1-5-pro");
+  const [videoModels, setVideoModels] = useState<VideoModelConfig[]>(VIDEO_MODELS);
   const [selectedDuration, setSelectedDuration] = useState<number>(5);
   const [selectedAspectRatio, setSelectedAspectRatio] = useState<"vertical" | "horizontal" | "square">("vertical");
+  const [templateRecipientName, setTemplateRecipientName] = useState("");
 
-  const [categories, setCategories] = useState<any[]>([]);
-  const [selectedCategory, setSelectedCategory] = useState<string>("all");
+  const [categories, setCategories] = useState<any[]>(
+    FALLBACK_CATEGORIES.map((c, i) => ({ id: i + 1, name: c, slug: c.toLowerCase() }))
+  );
+  const [selectedCategory, setSelectedCategory] = useState<string>("viral");
   const [searchQuery, setSearchQuery] = useState("");
-  const [animationTemplates, setAnimationTemplates] = useState<any[]>([]);
+  const [animationTemplates, setAnimationTemplates] = useState<any[]>(FALLBACK_TEMPLATES);
+
+  // Check if currently selected template is an audio template (e.g. Mic Drop Rap, Groove Duo)
+  const isAudioTemplate = useMemo(() => {
+    if (!selectedTemplate || selectedTemplate === "custom") return false;
+    if (selectedTemplate === "mic-drop-rap" || selectedTemplate === "groove-duo") return true;
+    const matched = animationTemplates.find((p) => (p.slug || p.id) === selectedTemplate);
+    return Boolean(matched?.hasAudio || matched?.hasaudio || checkIsAudioTemplate(matched));
+  }, [selectedTemplate, animationTemplates]);
+
+  // Models visible in selector: when an audio template is selected, prioritize sound-capable models
+  const visibleModels = useMemo(() => {
+    if (isAudioTemplate) {
+      const audioModels = videoModels.filter((m) => m.supportsAudio);
+      if (audioModels.length > 0) return audioModels;
+      return videoModels.filter((m) => m.id === "seedance-1-5-pro" || m.id === "seedance-2-fast");
+    }
+    return videoModels;
+  }, [isAudioTemplate, videoModels]);
+
+  // Track studio_view when screen is focused, and stop template preview audio on exit
+  useFocusEffect(
+    useCallback(() => {
+      trackStudioView({
+        mode: selectedTool || "animate",
+        template: selectedTemplate || undefined,
+        screen_name: "AnimateScreen",
+      });
+      return () => {
+        templateAudioCoordinator.stopAudio();
+      };
+    }, [selectedTool, selectedTemplate])
+  );
   const [isPagerScrolling, setIsPagerScrolling] = useState(false);
   // Autoplay the current page's template previews only while the grid is on
   // screen — as soon as it scrolls out of view the videos unmount, so hidden
@@ -274,6 +460,13 @@ export default function AnimateScreen() {
   useEffect(() => {
     updateGridVisibility();
   }, [templatesLayoutY, updateGridVisibility]);
+
+  // Stop template preview audio when templates section scrolls off-screen
+  useEffect(() => {
+    if (!gridOnScreen) {
+      templateAudioCoordinator.stopAudio();
+    }
+  }, [gridOnScreen]);
   const [currentPage, setCurrentPage] = useState<number>(1);
   const ITEMS_PER_PAGE = 6;
 
@@ -283,8 +476,17 @@ export default function AnimateScreen() {
 
     const tCat = (template.category || "").toString().toLowerCase();
     const tCatId = (template.categoryId || "").toString().toLowerCase();
+    // Split comma-separated categories (e.g., "Viral, Birthday")
+    const cats = tCat.split(/[\s,]+/).filter(Boolean);
+    const catIds = tCatId.split(/[\s,]+/).filter(Boolean);
 
-    if (tCat === selLower || tCatId === selLower) return true;
+    // Match viral/trending interchangeably (same as web)
+    if (selLower === "viral" || selLower === "trending") {
+      return cats.includes("viral") || cats.includes("trending") ||
+             catIds.includes("viral") || catIds.includes("trending");
+    }
+
+    if (cats.includes(selLower) || catIds.includes(selLower)) return true;
 
     const catObj = categories.find(
       (c) => (c.slug || c.name || c.id || "").toString().toLowerCase() === selLower
@@ -294,7 +496,8 @@ export default function AnimateScreen() {
       const slug = (catObj.slug || "").toString().toLowerCase();
       const name = (catObj.name || "").toString().toLowerCase();
       const id = (catObj.id || "").toString().toLowerCase();
-      return tCat === slug || tCat === name || tCatId === id || tCatId === slug;
+      return cats.includes(slug) || cats.includes(name) ||
+             catIds.includes(id) || catIds.includes(slug);
     }
 
     return false;
@@ -317,12 +520,14 @@ export default function AnimateScreen() {
   }, [categories]);
 
   const handleCategoryPillPress = useCallback((catValue: string) => {
+    templateAudioCoordinator.stopAudio();
     setSelectedCategory(catValue);
     setCurrentPage(1);
     templatePagerRef.current?.scrollTo({ x: 0, animated: false });
   }, []);
 
   const handleSearchChange = useCallback((text: string) => {
+    templateAudioCoordinator.stopAudio();
     setSearchQuery(text);
     setCurrentPage(1);
     templatePagerRef.current?.scrollTo({ x: 0, animated: false });
@@ -352,27 +557,110 @@ export default function AnimateScreen() {
 
   const totalPages = Math.max(1, templatePages.length);
 
-  const currentModel = VIDEO_MODELS.find((m) => m.id === selectedModel) || VIDEO_MODELS[0];
+  const currentModel = videoModels.find((m) => m.id === selectedModel) || videoModels[0] || VIDEO_MODELS[0];
+
+  const activePreset = useMemo(() => {
+    if (activeTabMode !== "template" || !selectedTemplate) return null;
+    return animationTemplates.find((t) => (t.slug || t.id) === selectedTemplate) || null;
+  }, [activeTabMode, selectedTemplate, animationTemplates]);
+
+  const lockedModel = useMemo(() => {
+    if (!activePreset) return null;
+    const targetModelId = activePreset.modelId || activePreset.modelid || (activePreset.slug === "burj-khalifa-birthday" ? "seedance-2-fast" : null);
+    if (!targetModelId) return null;
+    // Fallback: Model must currently be in the active top 3 models
+    return videoModels.find((m) => m.id === targetModelId) || null;
+  }, [activePreset, videoModels]);
 
   const handleSelectModel = (modelId: string) => {
     setSelectedModel(modelId);
-    const model = VIDEO_MODELS.find((m) => m.id === modelId);
+    const model = videoModels.find((m) => m.id === modelId) || VIDEO_MODELS.find((m) => m.id === modelId);
     if (model) {
       if (model.allowedDurations && model.allowedDurations.length > 0) {
         if (!model.allowedDurations.includes(selectedDuration)) {
           setSelectedDuration(model.allowedDurations[0]);
         }
       } else {
-        if (selectedDuration === 5 && model.minDuration === 4) {
-          setSelectedDuration(4);
-        } else if (selectedDuration < model.minDuration) {
+        if (selectedDuration < model.minDuration) {
           setSelectedDuration(model.minDuration);
         } else if (selectedDuration > model.maxDuration) {
           setSelectedDuration(model.maxDuration);
         }
       }
+
+      if (!model.supportedResolutions.includes(selectedQuality as any)) {
+        setSelectedQuality(model.supportedResolutions[0] as any);
+      }
     }
   };
+
+  const handleSelectTemplate = useCallback((templateId: string, item?: any) => {
+    templateAudioCoordinator.stopAudio();
+    const prevTemplate = selectedTemplate;
+    setSelectedTemplate(templateId);
+    trackViewContent({
+      template_name: item?.name || templateId,
+      category: item?.category || selectedCategory || "All",
+    });
+    if (item?.prompt) {
+      setCustomPrompt(item.prompt);
+    }
+
+    const isAudio = Boolean(
+      item?.hasAudio ||
+      item?.hasaudio ||
+      checkIsAudioTemplate(item) ||
+      templateId === "mic-drop-rap" ||
+      templateId === "groove-duo"
+    );
+
+    if (isAudio) {
+      const audioModel = videoModels.find((m) => m.supportsAudio) || videoModels[0];
+      if (audioModel) {
+        handleSelectModel(audioModel.id);
+        return;
+      }
+    }
+
+    const targetModelId = item?.modelId || item?.modelid || (templateId === "burj-khalifa-birthday" ? "seedance-2-fast" : null);
+    const modelToLock = targetModelId ? videoModels.find((m) => m.id === targetModelId) : null;
+    if (modelToLock) {
+      handleSelectModel(modelToLock.id);
+    } else {
+      const prevPreset = animationTemplates.find((t) => (t.slug || t.id) === prevTemplate);
+      const prevTargetId = prevPreset?.modelId || prevPreset?.modelid || (prevTemplate === "burj-khalifa-birthday" ? "seedance-2-fast" : null);
+      if (prevTargetId && videoModels.length > 0) {
+        handleSelectModel(videoModels[0].id);
+      }
+    }
+  }, [selectedTemplate, videoModels, animationTemplates]);
+
+  // When an audio template is selected, auto-select an audio-capable model if the current one does not support sound
+  useEffect(() => {
+    if (isAudioTemplate && videoModels.length > 0) {
+      const currentConfig = videoModels.find((m) => m.id === selectedModel);
+      if (!currentConfig?.supportsAudio) {
+        const audioModel = videoModels.find((m) => m.supportsAudio) || videoModels[0];
+        if (audioModel && audioModel.id !== selectedModel) {
+          handleSelectModel(audioModel.id);
+        }
+      }
+    }
+  }, [isAudioTemplate, videoModels, selectedModel]);
+
+  // Sync selectedModel with lockedModel or reset cleanly to default if model is removed/invalid
+  useEffect(() => {
+    if (lockedModel) {
+      if (selectedModel !== lockedModel.id) {
+        handleSelectModel(lockedModel.id);
+      }
+    } else {
+      const isInModels = videoModels.some((m) => m.id === selectedModel);
+      if (!isInModels && videoModels.length > 0) {
+        handleSelectModel(videoModels[0].id);
+      }
+    }
+  }, [lockedModel, videoModels]);
 
   // Auto-advance from Step 1 to Step 2 upon entering Animate screen during tour
   useEffect(() => {
@@ -423,45 +711,64 @@ export default function AnimateScreen() {
   }, [selectedModel]);
 
   useEffect(() => {
-    const fetchCosts = async () => {
+    const loadInitialData = async () => {
       try {
-        const response = await api.getFeatureCosts();
-        setFeatureCosts(response?.result);
-      } catch (error) {
-        console.error("Failed to fetch feature costs", error);
-      }
-    };
-    fetchCosts();
+        const [costsRes, templatesRes, categoriesRes, modelsRes] = await Promise.allSettled([
+          api.getFeatureCosts(),
+          api.getVideoPresets(),
+          api.getTemplateCategories(),
+          api.getVideoModels(),
+        ]);
 
-    const fetchTemplates = async () => {
-      try {
-        const response = await api.getVideoPresets();
-        const presetsList = response?.result || response?.presets || (Array.isArray(response) ? response : []);
-        if (presetsList.length > 0) {
-          setAnimationTemplates(presetsList);
+        if (costsRes.status === "fulfilled" && costsRes.value?.result) {
+          setFeatureCosts(costsRes.value.result);
+        }
 
-          if (!selectedTemplate) {
-            setSelectedTemplate(presetsList[0].slug || presetsList[0].id);
-            setCustomPrompt(presetsList[0].prompt || "");
+        if (templatesRes.status === "fulfilled") {
+          const response = templatesRes.value;
+          const presetsList = response?.result || response?.presets || (Array.isArray(response) ? response : []);
+          if (presetsList.length > 0) {
+            setAnimationTemplates(presetsList);
+            if (!selectedTemplate) {
+              setSelectedTemplate(presetsList[0].slug || presetsList[0].id);
+              setCustomPrompt(presetsList[0].prompt || "");
+            }
           }
         }
-      } catch (error) {
-        console.error("Failed to fetch templates", error);
-      }
-    };
-    fetchTemplates();
 
-    const fetchCategories = async () => {
-      try {
-        const response = await api.getTemplateCategories();
-        if (response && response.result) {
-          setCategories(response.result);
+        if (categoriesRes.status === "fulfilled" && categoriesRes.value?.result) {
+          setCategories(categoriesRes.value.result);
         }
-      } catch (error) {
-        console.error("Failed to fetch categories", error);
+
+        if (modelsRes.status === "fulfilled") {
+          const response = modelsRes.value;
+          const modelsList = response?.models || response?.result || [];
+          if (Array.isArray(modelsList) && modelsList.length > 0) {
+            const mapped: VideoModelConfig[] = modelsList.map((m: any, idx: number) => {
+              const fallbackConfig = VIDEO_MODELS.find((vm) => vm.id === (m.id || m.modelId));
+              return {
+                id: m.id || m.modelId,
+                name: m.displayName || fallbackConfig?.name || m.name,
+                badge: idx === 0 ? "Default" : (m.displayName || "").includes("Fast") ? "Fast" : "Ultra",
+                desc: m.description || fallbackConfig?.desc || "",
+                minDuration: m.minDuration ?? fallbackConfig?.minDuration ?? 4,
+                maxDuration: m.maxDuration ?? fallbackConfig?.maxDuration ?? 10,
+                durationStep: m.durationStep ?? fallbackConfig?.durationStep ?? 1,
+                allowedDurations: m.supportedDurations || fallbackConfig?.allowedDurations,
+                supportedResolutions: m.supportedResolutions || fallbackConfig?.supportedResolutions || ["720p"],
+                costPerSecond: m.costPerSecond ?? fallbackConfig?.costPerSecond ?? 0.026,
+                creditsPerSecond: m.creditsPerSecond || fallbackConfig?.creditsPerSecond || { "720p": 0.8 },
+                supportsAudio: Boolean(m.supportsAudio ?? fallbackConfig?.supportsAudio),
+              };
+            });
+            setVideoModels(mapped);
+          }
+        }
+      } catch (err) {
+        console.warn("Failed to load initial data in parallel:", err);
       }
     };
-    fetchCategories();
+    loadInitialData();
   }, []);
 
   const fetchUserCredits = useCallback(async () => {
@@ -496,29 +803,24 @@ export default function AnimateScreen() {
   useEffect(() => {
     const templateId = params.templateId as string | undefined;
 
-    if (templateId && animationTemplates.length > 0) {
-      const template = animationTemplates.find((t) => (t.slug || t.id) === templateId);
-      if (template) {
-        setSelectedTemplate(template.slug || template.id);
-        setCustomPrompt(template.prompt);
-      }
-    }
-  }, [params.templateId, animationTemplates]);
+    if (templateId) {
+      setSelectedTemplate(templateId);
+      if (animationTemplates.length > 0) {
+        const template = animationTemplates.find((t) => (t.slug || t.id) === templateId);
+        if (template) {
+          if (template.prompt) {
+            setCustomPrompt(template.prompt);
+          }
 
-  const requestImagePermission = async () => {
-    if (Platform.OS !== "web") {
-      const { status } =
-        await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (status !== "granted") {
-        Alert.alert(
-          "Permission needed",
-          "Please grant camera roll permissions to upload images."
-        );
-        return false;
+          const targetModelId = template.modelId || template.modelid || ((template.slug || template.id) === "burj-khalifa-birthday" ? "seedance-2-fast" : null);
+          const modelToLock = targetModelId ? videoModels.find((m) => m.id === targetModelId) : null;
+          if (modelToLock) {
+            handleSelectModel(modelToLock.id);
+          }
+        }
       }
     }
-    return true;
-  };
+  }, [params.templateId, animationTemplates, videoModels]);
 
   // Helper function to upload image from URI
   const uploadImageFromUri = useCallback(async (imageUri: string) => {
@@ -532,15 +834,21 @@ export default function AnimateScreen() {
         throw new Error("Upload failed - no URL returned");
       }
       setUploadedImage(cloudinaryUrl);
+      setHasGeneratedCurrent({ animate: false, restore: false, enhance: false });
+      trackUploadPhoto({ source: "gallery_picker", tool: selectedTool || "animate" });
       setRestoredImage(null);
       setAnimatedVideo(null);
 
       if (animationTemplates && animationTemplates.length > 0) {
-        setSelectedTemplate(animationTemplates[0].slug || animationTemplates[0].id);
-        setCustomPrompt(animationTemplates[0].prompt || "");
+        handleSelectTemplate(animationTemplates[0].slug || animationTemplates[0].id, animationTemplates[0]);
       }
     } catch (uploadError: any) {
       console.error("Upload error:", uploadError);
+      trackUploadFailed({
+        error_type: "UPLOAD_NETWORK_ERROR",
+        error_message: uploadError?.message || "Failed to upload image",
+        mode: selectedTool || "animate",
+      });
       Alert.alert(
         "Upload Error",
         uploadError.message ||
@@ -549,7 +857,7 @@ export default function AnimateScreen() {
     } finally {
       setUploading(false);
     }
-  }, [getToken, animationTemplates, currentStep, nextStep]);
+  }, [getToken, animationTemplates, currentStep, nextStep, handleSelectTemplate, selectedTool]);
 
   const getAspectForMode = (
     mode: "vertical" | "horizontal" | "square"
@@ -561,8 +869,6 @@ export default function AnimateScreen() {
 
   const pickImage = async (overrideAspect?: "vertical" | "horizontal" | "square") => {
     try {
-      const hasPermission = await requestImagePermission();
-      if (!hasPermission) return;
 
       const targetRatio = overrideAspect || selectedAspectRatio;
       const aspect =
@@ -583,6 +889,12 @@ export default function AnimateScreen() {
 
       const asset = result.assets[0];
       if (asset.fileSize && asset.fileSize > 20 * 1024 * 1024) {
+        trackUploadFailed({
+          error_type: "FILE_TOO_LARGE",
+          error_message: "Image size exceeds 20MB limit",
+          file_size_mb: asset.fileSize / (1024 * 1024),
+          mode: selectedTool || "animate",
+        });
         Alert.alert(
           "File Too Large",
           "The selected image exceeds the maximum allowed size of 20MB. Please choose a smaller image."
@@ -600,6 +912,11 @@ export default function AnimateScreen() {
       await uploadImageFromUri(imageUri);
     } catch (error: any) {
       console.error("Error picking image:", error);
+      trackUploadFailed({
+        error_type: "UPLOAD_PICK_ERROR",
+        error_message: error?.message || "Failed to pick image",
+        mode: selectedTool || "animate",
+      });
       Alert.alert(
         "Error",
         error.message || "Failed to pick image. Please try again."
@@ -692,6 +1009,7 @@ export default function AnimateScreen() {
     setUploadedImage(null);
     setRestoredImage(null);
     setAnimatedVideo(null);
+    setHasGeneratedCurrent({ animate: false, restore: false, enhance: false });
   };
 
   const handleRestore = async () => {
@@ -716,6 +1034,10 @@ export default function AnimateScreen() {
 
     const cost = featureCosts?.restore_photo || 1;
     if ((userCredits ?? 0) < cost) {
+      trackCreditsExhausted({
+        remaining_credits: userCredits ?? 0,
+        required_credits: cost,
+      });
       Alert.alert(
         "Insufficient Credits",
         `You need at least ${cost} credit(s) to restore images. You currently have ${userCredits ?? 0} credit(s).`
@@ -723,19 +1045,70 @@ export default function AnimateScreen() {
       return;
     }
 
+    if (isRegenerate) {
+      trackRegenerateClick({
+        mode: "restore",
+        template: "restore",
+        model: "codeformer",
+        credits_used: cost,
+      });
+    }
+
+    trackGenerateStart({
+      mode: "restore",
+      template: "restore",
+      model: "codeformer",
+      credits_used: cost,
+      is_regenerate: isRegenerate,
+      button_label: isRegenerate ? "regenerate" : "generate",
+    });
+
+    const genStartTime = Date.now();
     isSubmittingRef.current = true;
     setLoading(true);
     try {
       const token = await getToken();
       const result = await api.restoreImage(uploadedImage, userEmail, token);
       setRestoredImage(result.result);
+      setHasGeneratedCurrent((prev) => ({ ...prev, restore: true }));
       await fetchUserCredits();
+      const remaining = Math.max(0, (userCredits ?? 0) - cost);
+      trackAnimationGenerationCompleted({
+        animation_type: "restore",
+        model_id: "codeformer",
+        duration: 0,
+        quality: "original",
+        generation_time_seconds: Math.max(1, (Date.now() - genStartTime) / 1000),
+        credits_used: cost,
+        remaining_credits: remaining,
+        has_audio: false,
+      });
+      trackFreeCreditUsed({
+        credits_used: cost,
+        remaining_credits: remaining,
+        animation_type: "restore",
+      });
+      trackViewAnimation({
+        animation_id: "restore_" + Date.now(),
+        animation_type: "restore",
+      });
       Alert.alert("Success", "Photo restored successfully!");
     } catch (error: any) {
       console.error("Error restoring image:", error);
+      const errorMsg = error.message || "Failed to restore image. Please try again.";
+      const errorType = error.response?.status ? `HTTP_${error.response.status}` : "RESTORE_ERROR";
+      trackGenerationFailed({
+        mode: "restore",
+        template: "restore",
+        model: "codeformer",
+        credits_attempted: cost,
+        error_type: errorType,
+        error_message: errorMsg,
+        is_regenerate: isRegenerate,
+      });
       Alert.alert(
         "Error",
-        error.message || "Failed to restore image. Please try again."
+        errorMsg
       );
     } finally {
       setLoading(false);
@@ -774,6 +1147,10 @@ export default function AnimateScreen() {
     }
 
     if ((userCredits ?? 0) < totalCost) {
+      trackCreditsExhausted({
+        remaining_credits: userCredits ?? 0,
+        required_credits: totalCost,
+      });
       Alert.alert(
         "Insufficient Credits",
         `You need at least ${totalCost} credits to perform this enhancement. Please purchase more credits to continue.`
@@ -781,19 +1158,70 @@ export default function AnimateScreen() {
       return;
     }
 
+    if (isRegenerate) {
+      trackRegenerateClick({
+        mode: "enhance",
+        template: "enhance",
+        model: "face-enhance",
+        credits_used: totalCost,
+      });
+    }
+
+    trackGenerateStart({
+      mode: "enhance",
+      template: "enhance",
+      model: "face-enhance",
+      credits_used: totalCost,
+      is_regenerate: isRegenerate,
+      button_label: isRegenerate ? "regenerate" : "generate",
+    });
+
+    const genStartTime = Date.now();
     isSubmittingRef.current = true;
     setLoading(true);
     try {
       const token = await getToken();
       const result = await api.enhanceImage(uploadedImage, userEmail, enhanceOptions, token);
       setRestoredImage(result.result);
+      setHasGeneratedCurrent((prev) => ({ ...prev, enhance: true }));
       await fetchUserCredits();
+      const remaining = Math.max(0, (userCredits ?? 0) - totalCost);
+      trackAnimationGenerationCompleted({
+        animation_type: "enhance",
+        model_id: "face-enhance",
+        duration: 0,
+        quality: "enhanced",
+        generation_time_seconds: Math.max(1, (Date.now() - genStartTime) / 1000),
+        credits_used: totalCost,
+        remaining_credits: remaining,
+        has_audio: false,
+      });
+      trackFreeCreditUsed({
+        credits_used: totalCost,
+        remaining_credits: remaining,
+        animation_type: "enhance",
+      });
+      trackViewAnimation({
+        animation_id: "enhance_" + Date.now(),
+        animation_type: "enhance",
+      });
       Alert.alert("Success", "Image enhanced successfully!");
     } catch (error: any) {
       console.error("Error enhancing image:", error);
+      const errorMsg = error.message || "Failed to enhance image. Please try again.";
+      const errorType = error.response?.status ? `HTTP_${error.response.status}` : "ENHANCE_ERROR";
+      trackGenerationFailed({
+        mode: "enhance",
+        template: "enhance",
+        model: "face-enhance",
+        credits_attempted: totalCost,
+        error_type: errorType,
+        error_message: errorMsg,
+        is_regenerate: isRegenerate,
+      });
       Alert.alert(
         "Error",
-        error.message || "Failed to enhance image. Please try again."
+        errorMsg
       );
     } finally {
       setLoading(false);
@@ -816,6 +1244,8 @@ export default function AnimateScreen() {
       return;
     }
 
+    templateAudioCoordinator.stopAudio();
+
     const userEmail =
       user?.primaryEmailAddress?.emailAddress ||
       user?.emailAddresses?.[0]?.emailAddress;
@@ -834,8 +1264,73 @@ export default function AnimateScreen() {
       }
     }
 
+    // Resolve {name} placeholder for Burj Khalifa Birthday and similar templates
+    const matchedPreset = selectedTemplate
+      ? animationTemplates.find((t) => (t.slug || t.id) === selectedTemplate)
+      : null;
+    if (selectedTemplate === "burj-khalifa-birthday" || matchedPreset?.prompt?.includes("{name}")) {
+      const nameToUse = (templateRecipientName || user?.firstName || user?.fullName?.split(" ")[0] || "You").trim();
+      prompt = prompt
+        .replace(/\{name\}/gi, nameToUse)
+        .replace(/\[name\]/gi, nameToUse);
+    }
+
+    // Resolve {year} placeholder for Lion & The Lady and similar templates
+    const currentYear = new Date().getFullYear();
+    prompt = prompt
+      .replace(/\{year\}/gi, String(currentYear))
+      .replace(/\[year\]/gi, String(currentYear));
+
+    // Lion & The Lady: use the hardcoded cinematic prompt with current year
+    if (selectedTemplate === "lion-and-the-lady" || matchedPreset?.slug === "lion-and-the-lady") {
+      prompt = `A cinematic, elegant celebration at night on a luxurious rooftop terrace overlooking the glowing illuminated Eiffel Tower in Paris. The person from the photo sits stylishly dressed in a sleek black outfit and dark sunglasses on a modern white couch, holding a crystal champagne glass. Glowing fireworks sparkle in the dark night sky. A majestic male lion wearing cool sunglasses, a gold Cuban link chain necklace, and a festive silver party hat approaches playfully and lounges comfortably beside the person. In front on the table rests a luxury birthday cake with glowing lit candles, champagne in a gold ice bucket, and bright glowing marquee light numbers proudly displaying the year ${currentYear}. The scene is celebratory, vibrant, and effortlessly cool.`;
+    }
+
+    // Baby Dance: Michael Jackson dance moves prompt
+    if (
+      selectedTemplate === "baby-dance" ||
+      matchedPreset?.slug === "baby-dance" ||
+      (prompt.toLowerCase().includes("baby") &&
+        (prompt.toLowerCase().includes("dance") || prompt.toLowerCase().includes("michael jackson")))
+    ) {
+      prompt =
+        "A cute baby from the photo comes alive dressed in a stylish black sequin jacket, black fedora hat, and sparkly glove, performing iconic smooth Michael Jackson dance moves on a dark sleek stage with dramatic spotlights. The baby grooves to the beat with adorable smiles, moonwalking, spinning, and stepping with joyful rhythm. High quality, charming, cinematic lighting, cute and playful dance animation.";
+    }
+
+    // Groove Duo: Hip-hop beatbox grandmothers prompt
+    if (
+      selectedTemplate === "groove-duo" ||
+      matchedPreset?.slug === "groove-duo" ||
+      (prompt.toLowerCase().includes("groove duo") ||
+        (prompt.toLowerCase().includes("beatbox") && prompt.toLowerCase().includes("grandm")))
+    ) {
+      prompt =
+        "Two stylish hip-hop grandmothers from the photo come alive in urban streetwear with sunglasses, bucket hats, and thick gold Cuban link chain necklaces, rhythmically beatboxing and grooving together side by side against a warm solid studio backdrop. They rhythmically nod their heads, make expressive beatboxing mouth movements and hand gestures with swagger and playful attitude. Dynamic, funny, high quality music video vibe, crisp lighting, infectious hip-hop beatbox energy.";
+    }
+
+    // Mic Drop Rap: Stage rap battle prompt
+    if (
+      selectedTemplate === "mic-drop-rap" ||
+      matchedPreset?.slug === "mic-drop-rap" ||
+      (prompt.toLowerCase().includes("rap") && prompt.toLowerCase().includes("mic"))
+    ) {
+      prompt =
+        "The person from the photo becomes a confident rap artist on a dramatic stage with neon spotlights and smoke effects. They grip a microphone tightly, delivering powerful rap bars with intense energy and attitude. Dynamic camera angles capture their expressive hand gestures and head movements as they spit fire lyrics. The stage has pulsing LED screens, dramatic lighting shifts between purple and gold, and a hype crowd in the background. The person finishes with a mic drop gesture, the microphone falling in slow motion as the crowd erupts. Cinematic, music video quality, bass-heavy atmosphere with visible sound waves.";
+    }
+
+    // Guideline 1.1 Safety Check: Ensure prompt does not request intimate physical contact
+    const safetyCheck = validatePromptSafety(prompt);
+    if (!safetyCheck.isSafe) {
+      Alert.alert("Content Safety", safetyCheck.reason || "This prompt is not permitted.");
+      return;
+    }
+
     const requiredCredits = calculateCreditCost(selectedModel, selectedQuality, selectedDuration, featureCosts);
     if ((userCredits ?? 0) < requiredCredits) {
+      trackCreditsExhausted({
+        remaining_credits: userCredits ?? 0,
+        required_credits: requiredCredits,
+      });
       Alert.alert(
         "Insufficient Credits",
         `You need at least ${requiredCredits} credit(s) to animate images. You currently have ${userCredits ?? 0} credit(s).`,
@@ -847,9 +1342,43 @@ export default function AnimateScreen() {
       return;
     }
 
+    if (isRegenerate) {
+      trackRegenerateClick({
+        mode: "animate",
+        template: selectedTemplate || "custom",
+        model: selectedModel,
+        duration_s: selectedDuration,
+        quality: selectedQuality,
+        aspect_ratio: selectedAspectRatio,
+        credits_used: requiredCredits,
+      });
+    }
+
+    trackGenerateStart({
+      mode: "animate",
+      template: selectedTemplate || "custom",
+      model: selectedModel,
+      duration_s: selectedDuration,
+      quality: selectedQuality,
+      aspect_ratio: selectedAspectRatio,
+      credits_used: requiredCredits,
+      is_regenerate: isRegenerate,
+      button_label: isRegenerate ? "regenerate" : "generate",
+    });
+
+    const shouldGenerateAudio = Boolean(
+      isAudioTemplate ||
+      matchedPreset?.hasAudio ||
+      matchedPreset?.hasaudio ||
+      checkIsAudioTemplate(matchedPreset) ||
+      selectedTemplate === "mic-drop-rap" ||
+      selectedTemplate === "groove-duo"
+    );
+
     isSubmittingRef.current = true;
     setLoading(true);
     setGenProgress(null);
+    const genStartTime = Date.now();
     try {
       const token = await getToken();
       const imageToAnimate = restoredImage || uploadedImage;
@@ -863,7 +1392,10 @@ export default function AnimateScreen() {
         token,
         selectedQuality,
         selectedModel,
-        selectedAspectRatio
+        selectedAspectRatio,
+        selectedCategory,
+        selectedTemplate || matchedPreset?.slug,
+        shouldGenerateAudio
       );
       const predictionId = startResult?.predictionId;
       if (!predictionId) {
@@ -872,20 +1404,77 @@ export default function AnimateScreen() {
         );
       }
 
+      trackAnimationGenerationStarted({
+        animation_type: selectedTemplate || "custom",
+        model_id: selectedModel,
+        duration: selectedDuration,
+        quality: selectedQuality,
+        credits_used: startResult?.creditCost || requiredCredits,
+        has_audio: shouldGenerateAudio,
+      });
+
       const result = await pollAnimationStatus(
         predictionId,
         userEmail,
         startResult?.creditCost || 0
       );
+      const genDurationSec = Math.max(1, (Date.now() - genStartTime) / 1000);
       setGenProgress(100);
+      templateAudioCoordinator.stopAudio();
       setAnimatedVideo(result);
+      setHasGeneratedCurrent((prev) => ({ ...prev, animate: true }));
       await fetchUserCredits();
+
+      const remaining = Math.max(0, (userCredits ?? 0) - (startResult?.creditCost || requiredCredits));
+
+      trackAnimationGenerationCompleted({
+        animation_type: selectedTemplate || "custom",
+        model_id: selectedModel,
+        duration: selectedDuration,
+        quality: selectedQuality,
+        generation_time_seconds: genDurationSec,
+        credits_used: startResult?.creditCost || requiredCredits,
+        remaining_credits: remaining,
+        has_audio: shouldGenerateAudio,
+      });
+
+      trackFreeCreditUsed({
+        credits_used: startResult?.creditCost || requiredCredits,
+        remaining_credits: remaining,
+        animation_type: selectedTemplate || "custom",
+      });
+
+      if (remaining <= 0) {
+        trackCreditsExhausted({
+          remaining_credits: 0,
+          required_credits: requiredCredits,
+        });
+      }
+
+      trackViewAnimation({
+        animation_id: predictionId,
+        animation_type: selectedTemplate || "custom",
+      });
     } catch (error: any) {
       console.error("Error animating image:", error);
+      const errorMsg = error.message || "Failed to animate image. Please try again.";
+      const errorType = error.response?.status ? `HTTP_${error.response.status}` : "ANIMATE_ERROR";
+      trackGenerationFailed({
+        mode: "animate",
+        template: selectedTemplate || "custom",
+        model: selectedModel,
+        duration_s: selectedDuration,
+        quality: selectedQuality,
+        aspect_ratio: selectedAspectRatio,
+        credits_attempted: requiredCredits,
+        error_type: errorType,
+        error_message: errorMsg,
+        is_regenerate: isRegenerate,
+      });
       await fetchUserCredits(); // Credits may have been refunded on failure
       Alert.alert(
         "Error",
-        error.message || "Failed to animate image. Please try again."
+        errorMsg
       );
     } finally {
       setLoading(false);
@@ -969,6 +1558,10 @@ export default function AnimateScreen() {
           title: type === "video" ? "Video saved!" : "Image saved!",
           path: result.path,
         });
+        trackDownloadAnimation({
+          animation_id: url,
+          animation_type: selectedTemplate || "custom",
+        });
       } else if (!result.fallbackUsed) {
         Alert.alert(
           "Download failed",
@@ -980,6 +1573,28 @@ export default function AnimateScreen() {
       Alert.alert("Error", "Failed to download file. Please try again.");
     } finally {
       setDownloading(false);
+    }
+  };
+
+  const handleShareVideo = async () => {
+    if (!animatedVideo) return;
+    setIsSharing(true);
+    try {
+      const success = await shareMedia({
+        url: animatedVideo,
+        fileName: "animatememories-video",
+        mimeType: "video/mp4",
+      });
+      if (success) {
+        trackShareAnimation({
+          animation_id: animatedVideo,
+          animation_type: selectedTemplate || "custom",
+        });
+      }
+    } catch (err) {
+      console.warn("Share failed:", err);
+    } finally {
+      setIsSharing(false);
     }
   };
 
@@ -1015,8 +1630,8 @@ export default function AnimateScreen() {
           );
         }
 
-        // Real progress from Replicate (null → modal uses its estimate)
-        if (typeof data?.progress === "number") {
+        // Real progress from Replicate (only update if meaningful > 2)
+        if (typeof data?.progress === "number" && data.progress > 2) {
           setGenProgress(data.progress);
         }
         await new Promise((r) => setTimeout(r, POLL_INTERVAL));
@@ -1042,7 +1657,7 @@ export default function AnimateScreen() {
           scrollEnabled={!isPagerScrolling}
           nestedScrollEnabled={true}
           directionalLockEnabled={true}
-          scrollEventThrottle={16}
+          scrollEventThrottle={64}
           onScroll={(e) => {
             scrollYRef.current = e.nativeEvent.contentOffset.y;
             updateGridVisibility();
@@ -1065,9 +1680,46 @@ export default function AnimateScreen() {
         {/* AI Tool Selection - Clean Text Buttons */}
         <View style={styles.toolSelection} pointerEvents={isActive ? "none" : "auto"}>
           {[
-            { id: "restore" as const, label: "Restore", onPress: () => { setSelectedTool("restore"); setAnimatedVideo(null); } },
-            { id: "animate" as const, label: "Animate", onPress: () => setSelectedTool("animate") },
-            { id: "enhance" as const, label: "Enhance", onPress: () => setSelectedTool("enhance") },
+            {
+              id: "restore" as const,
+              label: "Restore",
+              onPress: () => {
+                const prev = selectedTool;
+                setSelectedTool("restore");
+                setAnimatedVideo(null);
+                trackSelectTool({
+                  tool_name: "restore",
+                  previous_tool: prev,
+                  template: selectedTemplate || undefined,
+                });
+              },
+            },
+            {
+              id: "animate" as const,
+              label: "Animate",
+              onPress: () => {
+                const prev = selectedTool;
+                setSelectedTool("animate");
+                trackSelectTool({
+                  tool_name: "animate",
+                  previous_tool: prev,
+                  template: selectedTemplate || undefined,
+                });
+              },
+            },
+            {
+              id: "enhance" as const,
+              label: "Enhance",
+              onPress: () => {
+                const prev = selectedTool;
+                setSelectedTool("enhance");
+                trackSelectTool({
+                  tool_name: "enhance",
+                  previous_tool: prev,
+                  template: selectedTemplate || undefined,
+                });
+              },
+            },
           ].map((tool) => {
             const isSelected = selectedTool === tool.id;
             return (
@@ -1129,7 +1781,7 @@ export default function AnimateScreen() {
               >
                 <TouchableOpacity
                   style={styles.uploadTouchArea}
-                  onPress={pickImage}
+                  onPress={() => pickImage()}
                   disabled={uploading}
                   activeOpacity={0.75}
                 >
@@ -1195,17 +1847,34 @@ export default function AnimateScreen() {
             <View style={styles.elevatedControlsSection} pointerEvents={isActive ? "none" : "auto"}>
               {/* AI Generation Model */}
               <View style={styles.qualitySectionCard}>
-                <Text style={styles.qualitySectionTitleCard}>AI Model</Text>
+                <View style={styles.modelHeaderRow}>
+                  <Text style={styles.qualitySectionTitleCard}>AI Model</Text>
+                  {lockedModel && (
+                    <View style={styles.modelLockedBadge}>
+                      <Text style={styles.modelLockedBadgeText}>🔒 Locked to Template</Text>
+                    </View>
+                  )}
+                </View>
                 <View style={styles.modelChipsRow}>
-                  {VIDEO_MODELS.map((model) => {
+                  {visibleModels.map((model) => {
                     const isSelected = selectedModel === model.id;
-                    const creditCost = calculateCreditCost(model.id, selectedQuality, selectedDuration, featureCosts);
+                    const isLockedOut = !!lockedModel && !isSelected;
+                    const creditCost = calculateCreditCost(model.id, selectedQuality, selectedDuration, featureCosts, videoModels);
                     return (
                       <TouchableOpacity
                         key={model.id}
-                        style={[styles.modelChip, isSelected && styles.modelChipSelected]}
-                        onPress={() => handleSelectModel(model.id)}
-                        activeOpacity={0.75}
+                        style={[
+                          styles.modelChip,
+                          isSelected && styles.modelChipSelected,
+                          isLockedOut && { opacity: 0.35 },
+                        ]}
+                        onPress={() => {
+                          if (!lockedModel) {
+                            handleSelectModel(model.id);
+                          }
+                        }}
+                        disabled={!!lockedModel}
+                        activeOpacity={lockedModel ? 1 : 0.75}
                       >
                         {isSelected ? (
                           <LinearGradient
@@ -1214,12 +1883,18 @@ export default function AnimateScreen() {
                             end={{ x: 1, y: 0 }}
                             style={styles.modelChipGradient}
                           >
-                            <Text style={styles.modelChipNameSelected}>{model.name}</Text>
+                            <Text style={styles.modelChipNameSelected}>
+                              {lockedModel ? `🔒 ${model.name}` : model.name}
+                              {model.supportsAudio ? " 🎵" : ""}
+                            </Text>
                             <Text style={styles.modelChipCostSelected}>{creditCost}cr</Text>
                           </LinearGradient>
                         ) : (
                           <View style={styles.modelChipInner}>
-                            <Text style={styles.modelChipName}>{model.name}</Text>
+                            <Text style={styles.modelChipName}>
+                              {model.name}
+                              {model.supportsAudio ? " 🎵" : ""}
+                            </Text>
                             <Text style={styles.modelChipCost}>{creditCost}cr</Text>
                           </View>
                         )}
@@ -1227,6 +1902,19 @@ export default function AnimateScreen() {
                     );
                   })}
                 </View>
+                {isAudioTemplate && (
+                  <View style={{ backgroundColor: "#F3E8FF", borderWidth: 1, borderColor: "#D8B4FE", borderRadius: 10, paddingVertical: 6, paddingHorizontal: 10, marginTop: 8, flexDirection: "row", alignItems: "center", gap: 6 }}>
+                    <Ionicons name="musical-notes" size={13} color="#9333EA" />
+                    <Text style={{ fontSize: 11, fontFamily: getFontFamily("600"), color: "#6B21A8" }}>
+                      Audio Template: Model generates video with synchronized background audio.
+                    </Text>
+                  </View>
+                )}
+                {lockedModel && (
+                  <Text style={styles.modelLockedNoticeText}>
+                    This template is optimized and locked to {lockedModel.name}.
+                  </Text>
+                )}
               </View>
 
               {/* Duration Slider */}
@@ -1236,7 +1924,7 @@ export default function AnimateScreen() {
                   value={selectedDuration}
                   min={currentModel?.minDuration || 4}
                   max={currentModel?.maxDuration || 10}
-                  step={1}
+                  step={currentModel?.durationStep || 1}
                   allowedValues={currentModel?.allowedDurations}
                   onValueChange={(val) => setSelectedDuration(val)}
                 />
@@ -1502,7 +2190,9 @@ export default function AnimateScreen() {
                 colors={
                   hasInsufficientCredits
                     ? ["#F59E0B", "#EF4444"]
-                    : ["#38BDF8", "#A855F7", "#D229FF"]
+                    : isRegenerate
+                      ? ["#4F46E5", "#9333EA"]
+                      : ["#38BDF8", "#A855F7", "#D229FF"]
                 }
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 0 }}
@@ -1512,7 +2202,11 @@ export default function AnimateScreen() {
                   <>
                     <ActivityIndicator color="#fff" size="small" />
                     <Text style={styles.generateText}>
-                      {selectedTool === "restore" ? "Restoring Photo..." : "Enhancing Photo..."}
+                      {isRegenerate
+                        ? "Regenerating..."
+                        : selectedTool === "restore"
+                          ? "Restoring Photo..."
+                          : "Enhancing Photo..."}
                     </Text>
                   </>
                 ) : hasInsufficientCredits ? (
@@ -1524,9 +2218,17 @@ export default function AnimateScreen() {
                   </>
                 ) : (
                   <>
-                    <GenerateIcon width={20} height={20} color="#FFFFFF" />
+                    {isRegenerate ? (
+                      <Ionicons name="refresh" size={20} color="#FFFFFF" />
+                    ) : (
+                      <GenerateIcon width={20} height={20} color="#FFFFFF" />
+                    )}
                     <Text style={styles.generateText}>
-                      {selectedTool === "restore" ? "Restore Photo" : "Enhance Photo"}
+                      {isRegenerate
+                        ? "Regenerate"
+                        : selectedTool === "restore"
+                          ? "Restore Photo"
+                          : "Enhance Photo"}
                     </Text>
                     <View style={styles.creditsBadge}>
                       <GenerateCreditIcon color="#FFFFFF" width={12} height={12} />
@@ -1572,13 +2274,20 @@ export default function AnimateScreen() {
                 >
                   <Video
                     ref={previewVideoRef}
-                    source={{ uri: animatedVideo }}
+                    source={{ uri: animatedVideo ? encodeURI(animatedVideo) : "" }}
                     style={styles.resultVideo}
                     useNativeControls={false}
                     resizeMode={ResizeMode.CONTAIN}
                     isLooping
                     shouldPlay={true}
-                    onReadyForDisplay={() => setIsResultVideoLoading(false)}
+                    onLoad={() => {
+                      setIsResultVideoLoading(false);
+                      previewVideoRef.current?.playAsync().catch(() => {});
+                    }}
+                    onReadyForDisplay={() => {
+                      setIsResultVideoLoading(false);
+                      previewVideoRef.current?.playAsync().catch(() => {});
+                    }}
                     onPlaybackStatusUpdate={(status: any) => {
                       if (status && "isPlaying" in status) {
                         setIsPreviewPlaying(status.isPlaying);
@@ -1630,10 +2339,44 @@ export default function AnimateScreen() {
                   {downloading ? (
                     <ActivityIndicator size="small" color="#fff" />
                   ) : (
-                    <Text style={styles.downloadButtonText}>Download</Text>
+                    <>
+                      <Ionicons name="download-outline" size={16} color="#fff" style={{ marginRight: 6 }} />
+                      <Text style={styles.downloadButtonText}>Download</Text>
+                    </>
                   )}
                 </LinearGradient>
               </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.regenerateButton, styles.resultActionButton]}
+                onPress={() => {
+                  if (selectedTool === "restore") handleRestore();
+                  else if (selectedTool === "enhance") handleEnhance();
+                  else handleAnimate();
+                }}
+                disabled={loading}
+              >
+                <Ionicons name="refresh" size={16} color="#9333EA" style={{ marginRight: 6 }} />
+                <Text style={styles.regenerateButtonText}>Regenerate</Text>
+              </TouchableOpacity>
+
+              {animatedVideo && (
+                <TouchableOpacity
+                  style={[styles.shareButton, styles.resultActionButton]}
+                  onPress={() => setIsShareModalOpen(true)}
+                >
+                  <LinearGradient
+                    colors={["#9333EA", "#4F46E5"]}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 0 }}
+                    style={styles.shareButtonGradient}
+                  >
+                    <Ionicons name="share-social-outline" size={16} color="#FFFFFF" style={{ marginRight: 6 }} />
+                    <Text style={styles.shareButtonText}>Share</Text>
+                  </LinearGradient>
+                </TouchableOpacity>
+              )}
+
               <TouchableOpacity
                 style={[styles.resetButton, styles.resultActionButton]}
                 onPress={handleReset}
@@ -1660,6 +2403,8 @@ export default function AnimateScreen() {
               handleDownload(animatedVideo, "video");
             }
           }}
+          onShare={() => setIsShareModalOpen(true)}
+          isSharing={isSharing}
           isDownloading={downloading}
           toastTitle={savedToast?.title ?? null}
           toastPath={savedToast?.path ?? null}
@@ -1669,6 +2414,20 @@ export default function AnimateScreen() {
               setIsPreviewPlaying(false);
             }).catch(console.error);
           }}
+        />
+
+        {/* Share Video Modal */}
+        <ShareVideoModal
+          visible={isShareModalOpen}
+          onClose={() => setIsShareModalOpen(false)}
+          videoUrl={animatedVideo}
+          title={
+            selectedTemplate
+              ? selectedTemplate.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())
+              : "My Animated Memory"
+          }
+          templateSlug={selectedTemplate || ""}
+          thumbnailUrl={uploadedImage}
         />
 
         {/* Generating Modal */}
@@ -1736,8 +2495,12 @@ export default function AnimateScreen() {
                 <TouchableOpacity
                   style={styles.templateTabBtn}
                   onPress={() => {
+                    templateAudioCoordinator.stopAudio();
                     setActiveTabMode("custom");
                     setSelectedTemplate(null);
+                    if (lockedModel && videoModels.length > 0) {
+                      handleSelectModel(videoModels[0].id);
+                    }
                   }}
                   activeOpacity={0.8}
                 >
@@ -1856,6 +2619,7 @@ export default function AnimateScreen() {
                     >
                       {templatePages.map((pageItems: any[], pageIdx: number) => {
                         const isCurrentPage = pageIdx === currentPage - 1;
+                        const isNearbyPage = Math.abs(pageIdx - (currentPage - 1)) <= 1;
                         const shouldAutoplay = isCurrentPage;
                         const row1 = pageItems.slice(0, 3);
                         const row2 = pageItems.slice(3, 6);
@@ -1867,18 +2631,76 @@ export default function AnimateScreen() {
                                 {row1.map((item: any, idx: number) => {
                                   const templateId = item.slug || item.id;
                                   const isSelected = selectedTemplate === templateId;
+                                  const shouldRenderFull = isNearbyPage || isSelected;
                                   return (
                                     <View key={templateId || idx} style={styles.templateGridItem}>
-                                      <TouchableOpacity
+                                      <View
                                         style={[
                                           styles.templateCardGrid,
                                           isSelected && styles.templateCardSelectedGrid,
                                         ]}
+                                      >
+                                        <View style={styles.templateImageContainerGrid}>
+                                          {shouldRenderFull ? (
+                                            <AnimatedTemplateThumb
+                                              id={templateId}
+                                              hasAudio={Boolean(item.hasAudio || item.hasaudio || checkIsAudioTemplate(item) || templateId === "mic-drop-rap" || templateId === "groove-duo")}
+                                              videoUrl={item.videoUrl ? formatImageUrl(item.videoUrl) : null}
+                                              thumbnailUrl={item.thumbnailUrl ? formatImageUrl(item.thumbnailUrl) : null}
+                                              image={item.image || null}
+                                              autoPlay={isSelected}
+                                              active={isSelected}
+                                              index={idx}
+                                              onPressCard={() => {
+                                                handleSelectTemplate(templateId, item);
+                                                if (isActive && currentStep === 3) {
+                                                  mainScrollViewRef.current?.scrollToEnd({ animated: true });
+                                                  setTimeout(() => {
+                                                    if (currentStep === 3) {
+                                                      nextStep();
+                                                    }
+                                                  }, 400);
+                                                }
+                                              }}
+                                              style={styles.templateImageGrid}
+                                            />
+                                          ) : (
+                                            <TouchableOpacity
+                                              activeOpacity={0.8}
+                                              onPress={() => {
+                                                handleSelectTemplate(templateId, item);
+                                                if (isActive && currentStep === 3) {
+                                                  mainScrollViewRef.current?.scrollToEnd({ animated: true });
+                                                  setTimeout(() => {
+                                                    if (currentStep === 3) {
+                                                      nextStep();
+                                                    }
+                                                  }, 400);
+                                                }
+                                              }}
+                                              style={[styles.templateImageGrid, { backgroundColor: "#1e1435", overflow: "hidden" }]}
+                                            >
+                                              {item.thumbnailUrl || item.image ? (
+                                                <Image
+                                                  source={typeof item.image === "number" ? item.image : { uri: formatImageUrl(item.thumbnailUrl || item.image) }}
+                                                  style={StyleSheet.absoluteFill}
+                                                  resizeMode="cover"
+                                                />
+                                              ) : (
+                                                <View style={[StyleSheet.absoluteFill, { backgroundColor: "#1e1435" }]} />
+                                              )}
+                                            </TouchableOpacity>
+                                          )}
+                                        </View>
+                                        {isSelected && (
+                                          <View style={styles.selectedCheckBadge} pointerEvents="none">
+                                            <Text style={styles.selectedCheckText}>✓</Text>
+                                          </View>
+                                        )}
+                                      </View>
+                                      <TouchableOpacity
                                         onPress={() => {
-                                          setSelectedTemplate(templateId);
-                                          if (item.prompt) {
-                                            setCustomPrompt(item.prompt);
-                                          }
+                                          handleSelectTemplate(templateId, item);
                                           if (isActive && currentStep === 3) {
                                             mainScrollViewRef.current?.scrollToEnd({ animated: true });
                                             setTimeout(() => {
@@ -1890,25 +2712,10 @@ export default function AnimateScreen() {
                                         }}
                                         activeOpacity={0.8}
                                       >
-                                        <View style={styles.templateImageContainerGrid}>
-                                          <AnimatedTemplateThumb
-                                            thumbnail={{ uri: formatImageUrl(item.thumbnailUrl || item.image) }}
-                                            videoUrl={item.videoUrl ? formatImageUrl(item.videoUrl) : null}
-                                            autoPlay={shouldAutoplay}
-                                            active={isSelected}
-                                            index={idx}
-                                            style={styles.templateImageGrid}
-                                          />
-                                        </View>
-                                        {isSelected && (
-                                          <View style={styles.selectedCheckBadge}>
-                                            <Text style={styles.selectedCheckText}>✓</Text>
-                                          </View>
-                                        )}
+                                        <Text style={styles.templateNameGrid} numberOfLines={1}>
+                                          {item.name}
+                                        </Text>
                                       </TouchableOpacity>
-                                      <Text style={styles.templateNameGrid} numberOfLines={1}>
-                                        {item.name}
-                                      </Text>
                                     </View>
                                   );
                                 })}
@@ -1924,18 +2731,76 @@ export default function AnimateScreen() {
                                   {row2.map((item: any, idx: number) => {
                                     const templateId = item.slug || item.id;
                                     const isSelected = selectedTemplate === templateId;
+                                    const shouldRenderFull = isNearbyPage || isSelected;
                                     return (
                                       <View key={templateId || (idx + 3)} style={styles.templateGridItem}>
-                                        <TouchableOpacity
+                                        <View
                                           style={[
                                             styles.templateCardGrid,
                                             isSelected && styles.templateCardSelectedGrid,
                                           ]}
+                                        >
+                                          <View style={styles.templateImageContainerGrid}>
+                                            {shouldRenderFull ? (
+                                              <AnimatedTemplateThumb
+                                                id={templateId}
+                                                hasAudio={Boolean(item.hasAudio || item.hasaudio || checkIsAudioTemplate(item) || templateId === "mic-drop-rap" || templateId === "groove-duo")}
+                                                videoUrl={item.videoUrl ? formatImageUrl(item.videoUrl) : null}
+                                                thumbnailUrl={item.thumbnailUrl ? formatImageUrl(item.thumbnailUrl) : null}
+                                                image={item.image || null}
+                                                autoPlay={isSelected}
+                                                active={isSelected}
+                                                index={idx + 3}
+                                                onPressCard={() => {
+                                                  handleSelectTemplate(templateId, item);
+                                                  if (isActive && currentStep === 3) {
+                                                    mainScrollViewRef.current?.scrollToEnd({ animated: true });
+                                                    setTimeout(() => {
+                                                      if (currentStep === 3) {
+                                                        nextStep();
+                                                      }
+                                                    }, 400);
+                                                  }
+                                                }}
+                                                style={styles.templateImageGrid}
+                                              />
+                                            ) : (
+                                              <TouchableOpacity
+                                                activeOpacity={0.8}
+                                                onPress={() => {
+                                                  handleSelectTemplate(templateId, item);
+                                                  if (isActive && currentStep === 3) {
+                                                    mainScrollViewRef.current?.scrollToEnd({ animated: true });
+                                                    setTimeout(() => {
+                                                      if (currentStep === 3) {
+                                                        nextStep();
+                                                      }
+                                                    }, 400);
+                                                  }
+                                                }}
+                                                style={[styles.templateImageGrid, { backgroundColor: "#1e1435", overflow: "hidden" }]}
+                                              >
+                                                {item.thumbnailUrl || item.image ? (
+                                                  <Image
+                                                    source={typeof item.image === "number" ? item.image : { uri: formatImageUrl(item.thumbnailUrl || item.image) }}
+                                                    style={StyleSheet.absoluteFill}
+                                                    resizeMode="cover"
+                                                  />
+                                                ) : (
+                                                  <View style={[StyleSheet.absoluteFill, { backgroundColor: "#1e1435" }]} />
+                                                )}
+                                              </TouchableOpacity>
+                                            )}
+                                          </View>
+                                          {isSelected && (
+                                            <View style={styles.selectedCheckBadge} pointerEvents="none">
+                                              <Text style={styles.selectedCheckText}>✓</Text>
+                                            </View>
+                                          )}
+                                        </View>
+                                        <TouchableOpacity
                                           onPress={() => {
-                                            setSelectedTemplate(templateId);
-                                            if (item.prompt) {
-                                              setCustomPrompt(item.prompt);
-                                            }
+                                            handleSelectTemplate(templateId, item);
                                             if (isActive && currentStep === 3) {
                                               mainScrollViewRef.current?.scrollToEnd({ animated: true });
                                               setTimeout(() => {
@@ -1947,25 +2812,10 @@ export default function AnimateScreen() {
                                           }}
                                           activeOpacity={0.8}
                                         >
-                                          <View style={styles.templateImageContainerGrid}>
-                                            <AnimatedTemplateThumb
-                                              thumbnail={{ uri: formatImageUrl(item.thumbnailUrl || item.image) }}
-                                              videoUrl={item.videoUrl ? formatImageUrl(item.videoUrl) : null}
-                                              autoPlay={shouldAutoplay}
-                                              active={isSelected}
-                                              index={idx + 3}
-                                              style={styles.templateImageGrid}
-                                            />
-                                          </View>
-                                          {isSelected && (
-                                            <View style={styles.selectedCheckBadge}>
-                                              <Text style={styles.selectedCheckText}>✓</Text>
-                                            </View>
-                                          )}
+                                          <Text style={styles.templateNameGrid} numberOfLines={1}>
+                                            {item.name}
+                                          </Text>
                                         </TouchableOpacity>
-                                        <Text style={styles.templateNameGrid} numberOfLines={1}>
-                                          {item.name}
-                                        </Text>
                                       </View>
                                     );
                                   })}
@@ -2046,6 +2896,111 @@ export default function AnimateScreen() {
                       <Text style={styles.confirmedPillText}>✓ Active</Text>
                     </View>
                   </View>
+
+                  {/* Name input for Burj Khalifa Birthday / Year display for Lion & The Lady */}
+                  {(() => {
+                    const activePreset = animationTemplates.find(
+                      (t: any) => (t.slug || t.id) === selectedTemplate
+                    );
+
+                    // Audio Templates (e.g. Mic Drop Rap, Groove Duo, etc.): show audio performance banner
+                    if (
+                      selectedTemplate === "mic-drop-rap" ||
+                      selectedTemplate === "groove-duo" ||
+                      activePreset?.hasAudio ||
+                      activePreset?.hasaudio ||
+                      checkIsAudioTemplate(activePreset)
+                    ) {
+                      const isRap = selectedTemplate === "mic-drop-rap" || activePreset?.slug === "mic-drop-rap";
+                      return (
+                        <View style={{ backgroundColor: '#FAF5FF', borderWidth: 1, borderColor: '#D8B4FE', borderRadius: 12, padding: 12, marginTop: 10, gap: 8 }}>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                              <Text style={{ fontSize: 16 }}>{isRap ? '\uD83C\uDFA4' : '\uD83C\uDFB5'}</Text>
+                              <Text style={{ fontSize: 12, fontFamily: getFontFamily('700'), color: '#1F2937' }}>
+                                {activePreset?.name || (isRap ? "Mic Drop Rap Performance" : "Audio Motion Performance")}
+                              </Text>
+                            </View>
+                            <View style={{ backgroundColor: '#9333EA', paddingHorizontal: 9, paddingVertical: 3, borderRadius: 12, flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                              <Ionicons name="volume-high" size={12} color="#FFFFFF" />
+                              <Text style={{ fontSize: 11, fontFamily: getFontFamily('700'), color: '#FFFFFF' }}>Audio Enabled</Text>
+                            </View>
+                          </View>
+                          <View style={{ backgroundColor: 'rgba(147, 51, 234, 0.08)', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+                            <Text style={{ fontSize: 11, fontFamily: getFontFamily('600'), color: '#7E22CE' }}>{'\uD83C\uDFB5'} Full Audio Track:</Text>
+                            <Text style={{ fontSize: 11, fontFamily: getFontFamily('500'), color: '#6B21A8', flex: 1 }}>
+                              {isRap
+                                ? "Includes synced rap cadence, crowd cheer & hip-hop beat generation."
+                                : "Includes synchronized high-energy motion soundtrack & audio effects."}
+                            </Text>
+                          </View>
+                        </View>
+                      );
+                    }
+
+                    // Lion & The Lady: show year banner
+                    if (selectedTemplate === "lion-and-the-lady" || activePreset?.slug === "lion-and-the-lady") {
+                      const currentYear = new Date().getFullYear();
+                      return (
+                        <View style={{ backgroundColor: '#FFFBEB', borderWidth: 1, borderColor: '#FCD34D', borderRadius: 12, padding: 12, marginTop: 10, gap: 8 }}>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                              <Text style={{ fontSize: 16 }}>{'\uD83E\uDD81'}</Text>
+                              <Text style={{ fontSize: 12, fontFamily: getFontFamily('700'), color: '#1F2937' }}>Lion & The Lady Celebration</Text>
+                            </View>
+                            <View style={{ backgroundColor: '#FEF3C7', borderWidth: 1, borderColor: '#F59E0B', paddingHorizontal: 10, paddingVertical: 3, borderRadius: 12 }}>
+                              <Text style={{ fontSize: 11, fontFamily: getFontFamily('700'), color: '#78350F' }}>Year {currentYear}</Text>
+                            </View>
+                          </View>
+                          <View style={{ backgroundColor: 'rgba(251, 191, 36, 0.15)', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8, flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                            <Text style={{ fontSize: 11, fontFamily: getFontFamily('600'), color: '#92400E' }}>{'\u2728'} In-video marquee lights:</Text>
+                            <Text style={{ fontSize: 11, fontFamily: getFontFamily('700'), color: '#78350F' }}>Displays year {currentYear} prominently</Text>
+                          </View>
+                        </View>
+                      );
+                    }
+
+                    // Burj Khalifa Birthday / templates with {name}: show name input
+                    const hasNamePlaceholder = activePreset?.prompt && (
+                      activePreset.prompt.includes("{name}") ||
+                      activePreset.prompt.includes("[name]") ||
+                      activePreset.prompt.includes("{Name}") ||
+                      activePreset.prompt.includes("[Name]")
+                    );
+                    if (!hasNamePlaceholder && selectedTemplate !== "burj-khalifa-birthday") return null;
+
+                    const effectiveName = (templateRecipientName || user?.firstName || user?.fullName?.split(" ")[0] || "You").trim();
+
+                    return (
+                      <View style={{ backgroundColor: '#FAF5FF', borderWidth: 1, borderColor: '#DDD6FE', borderRadius: 12, padding: 12, marginTop: 10, gap: 8 }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                            <Text style={{ fontSize: 16 }}>{'\uD83C\uDF82'}</Text>
+                            <Text style={{ fontSize: 12, fontFamily: getFontFamily('700'), color: '#1F2937' }}>Birthday Person's Name:</Text>
+                          </View>
+                          <TextInput
+                            value={templateRecipientName}
+                            onChangeText={(text) => {
+                              setTemplateRecipientName(text);
+                              if (activePreset?.prompt) {
+                                const resolved = activePreset.prompt
+                                  .replace(/\{name\}/gi, text || "You")
+                                  .replace(/\[name\]/gi, text || "You");
+                                setCustomPrompt(resolved);
+                              }
+                            }}
+                            placeholder={user?.firstName || "e.g. Olivia"}
+                            placeholderTextColor="#A78BFA"
+                            style={{ flex: 1, minWidth: 120, paddingHorizontal: 12, paddingVertical: 6, fontSize: 13, fontFamily: getFontFamily('700'), color: '#581C87', backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#C4B5FD', borderRadius: 10 }}
+                          />
+                        </View>
+                        <View style={{ backgroundColor: 'rgba(192, 132, 252, 0.12)', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8, flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                          <Text style={{ fontSize: 11, fontFamily: getFontFamily('600'), color: '#7C3AED' }}>{'\u2728'} Text on video:</Text>
+                          <Text style={{ fontSize: 11, fontFamily: getFontFamily('700'), color: '#581C87' }}>"Happy Birthday {effectiveName}"</Text>
+                        </View>
+                      </View>
+                    );
+                  })()}
                 </>
               )}
 
@@ -2158,7 +3113,9 @@ export default function AnimateScreen() {
                         colors={
                           hasInsufficientCredits
                             ? ["#F59E0B", "#EF4444"]
-                            : ["#28D4FA", "#D229FF"]
+                            : isRegenerate
+                              ? ["#4F46E5", "#9333EA"]
+                              : ["#28D4FA", "#D229FF"]
                         }
                         start={{ x: 0, y: 0 }}
                         end={{ x: 1, y: 0 }}
@@ -2167,7 +3124,9 @@ export default function AnimateScreen() {
                         {loading ? (
                           <>
                             <ActivityIndicator color="#fff" size="small" />
-                            <Text style={styles.generateText}>Generating Animation...</Text>
+                            <Text style={styles.generateText}>
+                              {isRegenerate ? "Regenerating Animation..." : "Generating Animation..."}
+                            </Text>
                           </>
                         ) : hasInsufficientCredits ? (
                           <>
@@ -2176,8 +3135,14 @@ export default function AnimateScreen() {
                           </>
                         ) : (
                           <>
-                            <GenerateIcon width={20} height={20} color="#FFFFFF" />
-                            <Text style={styles.generateText}>Generate</Text>
+                            {isRegenerate ? (
+                              <Ionicons name="refresh" size={20} color="#FFFFFF" />
+                            ) : (
+                              <GenerateIcon width={20} height={20} color="#FFFFFF" />
+                            )}
+                            <Text style={styles.generateText}>
+                              {isRegenerate ? "Regenerate" : "Generate"}
+                            </Text>
                             <View style={styles.creditsBadge}>
                               <GenerateCreditIcon color="#FFFFFF" width={12} height={12} />
                               <Text style={styles.creditsBadgeText}>
@@ -2318,6 +3283,32 @@ const styles = StyleSheet.create({
     marginBottom: 6,
     textTransform: "uppercase",
     letterSpacing: 0.5,
+  },
+  modelHeaderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 6,
+  },
+  modelLockedBadge: {
+    backgroundColor: "#FEF3C7",
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#FDE68A",
+  },
+  modelLockedBadgeText: {
+    fontSize: 10,
+    fontFamily: getFontFamily("700"),
+    color: "#B45309",
+  },
+  modelLockedNoticeText: {
+    fontSize: 11,
+    fontFamily: getFontFamily("500"),
+    color: "#B45309",
+    marginTop: 6,
+    paddingHorizontal: 2,
   },
   modelChipsRow: {
     flexDirection: "row",
@@ -2771,35 +3762,71 @@ const styles = StyleSheet.create({
   },
   resultActions: {
     flexDirection: "row",
-    gap: 12,
+    flexWrap: "wrap",
+    gap: 10,
+    marginTop: 8,
   },
   resultActionButton: {
     flex: 1,
+    minWidth: 140,
   },
   downloadButton: {
-    borderRadius: 8,
+    borderRadius: 10,
     overflow: "hidden",
   },
   downloadButtonGradient: {
-    paddingVertical: 14,
+    paddingVertical: 12,
     alignItems: "center",
+    justifyContent: "center",
+    flexDirection: "row",
   },
   downloadButtonText: {
     color: "#fff",
-    fontSize: 18,
+    fontSize: 15,
+    fontFamily: getFontFamily("600"),
+  },
+  regenerateButton: {
+    backgroundColor: "#FAF5FF",
+    borderRadius: 10,
+    paddingVertical: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    flexDirection: "row",
+    borderWidth: 1,
+    borderColor: "#E9D5FF",
+  },
+  regenerateButtonText: {
+    color: "#9333EA",
+    fontSize: 15,
+    fontFamily: getFontFamily("600"),
+  },
+  shareButton: {
+    borderRadius: 10,
+    overflow: "hidden",
+  },
+  shareButtonGradient: {
+    paddingVertical: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    flexDirection: "row",
+  },
+  shareButtonText: {
+    color: "#fff",
+    fontSize: 15,
     fontFamily: getFontFamily("600"),
   },
   resetButton: {
     backgroundColor: "#f3f4f6",
-    borderRadius: 8,
-    paddingVertical: 14,
+    borderRadius: 10,
+    paddingVertical: 12,
     alignItems: "center",
+    justifyContent: "center",
     borderWidth: 1,
     borderColor: "#e5e7eb",
   },
   resetButtonText: {
     color: "#374151",
-    fontSize: 18,
+    fontSize: 15,
     fontFamily: getFontFamily("600"),
   },
   templatesSection: {
@@ -2901,64 +3928,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontFamily: getFontFamily("600"),
     color: "rgba(255,255,255,0.9)",
-    marginTop: 2,
-  },
-  modelChipsRow: {
-    flexDirection: "row" as const,
-    gap: 8,
-  },
-  modelChip: {
-    flex: 1,
-    borderRadius: 10,
-    overflow: "hidden" as const,
-    borderWidth: 1.5,
-    borderColor: "#e5e7eb",
-  },
-  modelChipSelected: {
-    borderColor: "transparent",
-    shadowColor: "#D229FF",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.18,
-    shadowRadius: 5,
-    elevation: 3,
-  },
-  modelChipGradient: {
-    flex: 1,
-    paddingVertical: 8,
-    paddingHorizontal: 6,
-    alignItems: "center" as const,
-    justifyContent: "center" as const,
-  },
-  modelChipInner: {
-    flex: 1,
-    paddingVertical: 8,
-    paddingHorizontal: 6,
-    alignItems: "center" as const,
-    justifyContent: "center" as const,
-    backgroundColor: "#fafafa",
-  },
-  modelChipName: {
-    fontSize: 13,
-    fontFamily: getFontFamily("600"),
-    color: "#374151",
-    textAlign: "center" as const,
-  },
-  modelChipNameSelected: {
-    fontSize: 13,
-    fontFamily: getFontFamily("600"),
-    color: "#fff",
-    textAlign: "center" as const,
-  },
-  modelChipCost: {
-    fontSize: 12,
-    fontFamily: getFontFamily("600"),
-    color: "#9ca3af",
-    marginTop: 2,
-  },
-  modelChipCostSelected: {
-    fontSize: 12,
-    fontFamily: getFontFamily("600"),
-    color: "rgba(255,255,255,0.85)",
     marginTop: 2,
   },
   restoreDetailsCard: {

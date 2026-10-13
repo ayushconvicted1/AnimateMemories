@@ -1,15 +1,12 @@
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import PendingPurchaseHandler from "@/components/ui/PendingPurchaseHandler";
+import { AuthGateProvider } from "@/contexts/AuthGateContext";
 import { SidebarProvider } from "@/contexts/SidebarContext";
-import { Stack } from "expo-router";
+import { Stack, usePathname } from "expo-router";
 import { TourProvider } from "@/contexts/TourContext";
-import { useEffect } from "react";
-import {
-  setupNotificationListeners,
-  requestNotificationPermission,
-  getFCMToken,
-  registerTokenWithBackend,
-} from "@/services/notifications";
+import PostAuthBridge from "@/components/auth/PostAuthBridge";
+import LoginModal from "@/components/auth/LoginModal";
+import { useEffect, useRef } from "react";
 import * as Linking from "expo-linking";
 import { router } from "expo-router";
 import * as WebBrowser from "expo-web-browser";
@@ -29,6 +26,19 @@ import {
   Outfit_900Black,
 } from "@expo-google-fonts/outfit";
 import * as SplashScreen from "expo-splash-screen";
+import {
+  initTracking,
+  requestTrackingPermissionAndInit,
+  setUser,
+  clearUser,
+  trackScreen,
+} from "@/services/tracking";
+import {
+  setupNotificationListeners,
+  checkNotificationPermission,
+  getFCMToken,
+  registerTokenWithBackend,
+} from "@/services/notifications";
 
 // Keep the splash screen visible while we fetch resources
 SplashScreen.preventAutoHideAsync();
@@ -176,11 +186,14 @@ export default function RootLayout() {
         return;
       }
 
-      // Handle payment callbacks - check both path and full URL
+      // Handle payment callbacks - check both path and full URL (payment-success and thank-you)
       const isSuccess =
         parsed.path === "payment-success" ||
+        parsed.path === "thank-you" ||
         url.includes("payment-success") ||
-        parsed.hostname === "payment-success";
+        url.includes("thank-you") ||
+        parsed.hostname === "payment-success" ||
+        parsed.hostname === "thank-you";
       const isCancelled =
         parsed.path === "payment-cancelled" ||
         url.includes("payment-cancelled") ||
@@ -189,6 +202,7 @@ export default function RootLayout() {
       if (isSuccess) {
         const sessionId =
           (parsed.queryParams?.session_id as string) ||
+          (parsed.queryParams?.sessionId as string) ||
           (parsed.queryParams?.["session_id"] as string) ||
           "";
         console.log(
@@ -241,26 +255,86 @@ export default function RootLayout() {
 
   return (
     <AuthProvider>
-      <PendingPurchaseHandler />
-      <NotificationBridge />
-      <SidebarProvider>
-        <TourProvider>
-          <StatusBar
-            style="dark"
-            backgroundColor={Platform.OS === "android" ? "#ffffff" : undefined}
-          />
-          <Stack
-            screenOptions={{
-              headerShown: false,
-            }}
-          />
-        </TourProvider>
-      </SidebarProvider>
+      <AuthGateProvider>
+        <PendingPurchaseHandler />
+        <TrackingBridge />
+        <ScreenTracker />
+        <NotificationBridge />
+        <SidebarProvider>
+          <TourProvider>
+            <PostAuthBridge />
+            <StatusBar
+              style="dark"
+              backgroundColor={Platform.OS === "android" ? "#ffffff" : undefined}
+            />
+            <Stack
+              screenOptions={{
+                headerShown: false,
+              }}
+            />
+            <LoginModal />
+          </TourProvider>
+        </SidebarProvider>
+      </AuthGateProvider>
     </AuthProvider>
   );
 }
 
 /**
+ * Initializes Firebase + Meta once, requests App Tracking Transparency on iOS,
+ * and keeps the user identity in sync with Clerk (fires on sign-in/out).
+ * Rendered inside <AuthProvider> so it can read useAuth().
+ */
+function TrackingBridge() {
+  const { user, isSignedIn } = useAuth();
+
+  // One-time SDK init + tracking-permission request.
+  useEffect(() => {
+    (async () => {
+      await initTracking();
+      await requestTrackingPermissionAndInit();
+    })();
+  }, []);
+
+  // Sync the pseudonymous Clerk user id to GA4 + Meta on auth changes.
+  useEffect(() => {
+    if (!isSignedIn || !user) {
+      clearUser();
+      return;
+    }
+    const email =
+      user.primaryEmailAddress?.emailAddress ||
+      user.emailAddresses?.[0]?.emailAddress ||
+      null;
+    setUser({ id: user.id, email, signedIn: true });
+  }, [isSignedIn, user?.id]);
+
+  return null;
+}
+
+/**
+ * Sends a GA4 screen_view whenever the active expo-router route changes.
+ * Rendered inside <Stack> is not required; usePathname() works anywhere under the
+ * RouterProvider.
+ */
+function ScreenTracker() {
+  const pathname = usePathname();
+  const prevRef = useRef<string | null>(null);
+  const firstRef = useRef(true);
+
+  useEffect(() => {
+    if (firstRef.current || prevRef.current !== pathname) {
+      trackScreen(pathname || "root");
+      prevRef.current = pathname;
+      firstRef.current = false;
+    }
+  }, [pathname]);
+
+  return null;
+}
+
+/**
+>>>>>>> android-payment-separate
  * Initializes FCM notifications, requests permissions, and attaches foreground,
  * background, and cold-start tap handlers.
  */
@@ -268,23 +342,32 @@ function NotificationBridge() {
   const { user } = useAuth();
 
   useEffect(() => {
-    // 1. Request permission & retrieve token
+    const email =
+      user?.primaryEmailAddress?.emailAddress ||
+      user?.emailAddresses?.[0]?.emailAddress ||
+      null;
+
+    // If permission has already been granted, ensure token is retrieved & registered.
+    // Notice: We do NOT call requestNotificationPermission() here so we never
+    // interrupt the login/signup/auth flow. Permission is requested on the Home screen.
     (async () => {
-      const granted = await requestNotificationPermission();
+      const granted = await checkNotificationPermission();
       if (granted) {
         const token = await getFCMToken();
-        const email =
-          user?.primaryEmailAddress?.emailAddress ||
-          user?.emailAddresses?.[0]?.emailAddress;
-        if (token && email) {
-          console.log(`[FCM] Token ready for user ${email}:`, token);
+        if (token) {
+          console.log(`[FCM] Token ready for user ${email || "anonymous"}:`, token);
           await registerTokenWithBackend(token, email);
         }
       }
     })();
 
-    // 2. Attach notification listeners (foreground alerts, notification taps)
-    const cleanup = setupNotificationListeners();
+    // 2. Attach notification listeners (foreground alerts, notification taps, token refresh)
+    const cleanup = setupNotificationListeners({
+      onTokenRefresh: async (refreshedToken) => {
+        console.log("[FCM] Handling token refresh:", refreshedToken);
+        await registerTokenWithBackend(refreshedToken, email);
+      },
+    });
     return () => {
       cleanup();
     };

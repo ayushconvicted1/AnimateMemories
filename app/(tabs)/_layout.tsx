@@ -25,8 +25,9 @@ import GalleryIcon from "@/components/images/GalleryIcon";
 import CreditIcon from "@/components/images/CreditIcon";
 import YouIcon from "@/components/images/YouIcon";
 import { getFontFamily } from "@/constants/Fonts";
-import TourStepWrapper from "@/components/tour/TourStepWrapper";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useAuth } from "@/contexts/AuthContext";
+import { useAuthGate } from "@/contexts/AuthGateContext";
 import { useTour } from "@/contexts/TourContext";
 
 const AnimatedLinearGradient = Animated.createAnimatedComponent(LinearGradient);
@@ -158,11 +159,11 @@ const CreateButton = ({ focused }: { focused: boolean }) => {
 
   // Animate gradient when focused state changes
   useEffect(() => {
-    gradientProgress.value = withTiming(focused || isTourStep1 ? 1 : 0, {
+    gradientProgress.value = withTiming(focused ? 1 : 0, {
       duration: 300,
       easing: Easing.inOut(Easing.ease),
     });
-  }, [focused, isTourStep1]);
+  }, [focused]);
 
   const animatedStyle = useAnimatedStyle(() => {
     return {
@@ -228,18 +229,8 @@ const CreateButton = ({ focused }: { focused: boolean }) => {
 };
 
 export default function TabLayout() {
-  const createTourBlockerListener = () => ({
-    tabPress: (e: any) => {
-      try {
-        const { isActive } = require("@/contexts/TourContext").useTour();
-        if (isActive) {
-          e.preventDefault();
-        }
-      } catch (err) {}
-    },
-  });
-
-  const { isActive, currentStep } = useTour();
+  const { isSignedIn } = useAuth();
+  const { requireAuth } = useAuthGate();
   const insets = useSafeAreaInsets();
   const liquidGlass = useMemo(() => isLiquidGlassAvailable(), []);
 
@@ -310,7 +301,6 @@ export default function TabLayout() {
       >
       <Tabs.Screen
         name="index"
-        listeners={createTourBlockerListener}
         options={{
           title: "Home",
           tabBarButton: HapticTab,
@@ -325,7 +315,14 @@ export default function TabLayout() {
       />
       <Tabs.Screen
         name="gallery"
-        listeners={createTourBlockerListener}
+        listeners={() => ({
+          tabPress: (e: any) => {
+            if (!isSignedIn) {
+              e.preventDefault();
+              requireAuth({ type: "tab", tabName: "gallery" });
+            }
+          },
+        })}
         options={{
           title: "Gallery",
           tabBarButton: HapticTab,
@@ -357,6 +354,11 @@ export default function TabLayout() {
         name="animate"
         listeners={() => ({
           tabPress: (e: any) => {
+            if (!isSignedIn) {
+              e.preventDefault();
+              requireAuth({ type: "create" });
+              return;
+            }
             try {
               const { isActive, currentStep, nextStep } = require("@/contexts/TourContext").useTour();
               if (isActive && currentStep === 1) {
@@ -373,7 +375,6 @@ export default function TabLayout() {
           tabBarButton: (props) => (
              <PlatformPressable
                {...props}
-               disabled={isActive && currentStep > 1}
                onPressIn={(ev) => {
                  if (process.env.EXPO_OS === 'ios') {
                    require('expo-haptics').impactAsync(
@@ -388,7 +389,14 @@ export default function TabLayout() {
       />
       <Tabs.Screen
         name="credit"
-        listeners={createTourBlockerListener}
+        listeners={() => ({
+          tabPress: (e: any) => {
+            if (!isSignedIn) {
+              e.preventDefault();
+              requireAuth({ type: "tab", tabName: "credit" });
+            }
+          },
+        })}
         options={{
           title: "Credit",
           tabBarButton: HapticTab,
@@ -403,7 +411,14 @@ export default function TabLayout() {
       />
       <Tabs.Screen
         name="you"
-        listeners={createTourBlockerListener}
+        listeners={() => ({
+          tabPress: (e: any) => {
+            if (!isSignedIn) {
+              e.preventDefault();
+              requireAuth({ type: "tab", tabName: "you" });
+            }
+          },
+        })}
         options={{
           title: "You",
           tabBarButton: HapticTab,

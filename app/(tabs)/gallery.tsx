@@ -24,11 +24,19 @@ import FullScreenVideoViewer from "@/components/ui/FullScreenVideoViewer";
 import SearchIcon from "@/components/images/SearchIcon";
 import FilterIcon from "@/components/images/FilterIcon";
 import { useAuth as useAuthContext } from "@/contexts/AuthContext";
+import { useAuthGate } from "@/contexts/AuthGateContext";
 import { useAuth } from "@clerk/clerk-expo";
 import { api } from "@/services/api";
-import { downloadToDevice } from "@/lib/download";
+import { downloadToDevice, shareMedia } from "@/lib/download";
 import SavedToast from "@/components/ui/SavedToast";
+import ShareVideoModal from "@/components/ui/ShareVideoModal";
 import { getFontFamily } from "@/constants/Fonts";
+import {
+  trackViewAnimation,
+  trackDownloadAnimation,
+  trackShareAnimation,
+} from "@/services/tracking";
+import { templateAudioCoordinator } from "@/services/templateAudioCoordinator";
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
 const CONTENT_WIDTH = SCREEN_WIDTH - 32;
@@ -47,6 +55,7 @@ interface GalleryItem {
 export default function GalleryScreen() {
   const { user } = useAuthContext();
   const { getToken } = useAuth();
+  const { requireAuth } = useAuthGate();
   const [activeTab, setActiveTab] = useState<"Image" | "Videos">("Videos");
   const [galleryItems, setGalleryItems] = useState<GalleryItem[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
@@ -59,7 +68,46 @@ export default function GalleryScreen() {
     path: string | null;
   } | null>(null);
   const [selectedVideo, setSelectedVideo] = useState<GalleryItem | null>(null);
+  const [shareItem, setShareItem] = useState<GalleryItem | null>(null);
   const [userCredits, setUserCredits] = useState<number | null>(null);
+  const [isSharing, setIsSharing] = useState(false);
+
+  if (!user) {
+    return (
+      <View style={{ flex: 1 }}>
+        <ScreenWrapper addBottomPadding={true} useCustomScroll={true}>
+          <View style={styles.guestContainer}>
+            <LinearGradient
+              colors={["#38BDF8", "#D229FF"]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={styles.guestBadge}
+            >
+              <Text style={styles.guestBadgeText}>MY GALLERY</Text>
+            </LinearGradient>
+            <Text style={styles.guestTitle}>Sign in to View Your Gallery</Text>
+            <Text style={styles.guestSubtitle}>
+              All your AI animated videos and enhanced memories will appear here once you're signed in.
+            </Text>
+            <TouchableOpacity
+              style={styles.guestSignInButton}
+              onPress={() => requireAuth({ type: "tab", tabName: "gallery" })}
+              activeOpacity={0.85}
+            >
+              <LinearGradient
+                colors={["#38BDF8", "#A855F7", "#D229FF"]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                style={styles.guestSignInGradient}
+              >
+                <Text style={styles.guestSignInText}>Sign In to Continue</Text>
+              </LinearGradient>
+            </TouchableOpacity>
+          </View>
+        </ScreenWrapper>
+      </View>
+    );
+  }
 
   const fetchGallery = useCallback(async (isInitial = false) => {
     if (!user) {
@@ -109,6 +157,9 @@ export default function GalleryScreen() {
         fetchGallery();
         fetchUserCredits();
       }
+      return () => {
+        templateAudioCoordinator.stopAudio();
+      };
     }, [user, fetchGallery, fetchUserCredits])
   );
 
@@ -194,6 +245,12 @@ export default function GalleryScreen() {
           title: isVideoItem ? "Video saved!" : "Image saved!",
           path: result.path,
         });
+        if (isVideoItem) {
+          trackDownloadAnimation({
+            animation_id: item.id?.toString(),
+            animation_type: item.designType || "video",
+          });
+        }
       } else if (!result.fallbackUsed) {
         Alert.alert(
           "Download failed",
@@ -205,6 +262,30 @@ export default function GalleryScreen() {
       Alert.alert("Error", "Failed to download file. Please try again.");
     } finally {
       setDownloadingId(null);
+    }
+  };
+
+  const handleShare = async (item: GalleryItem) => {
+    const isVideoItem = isVideo(item);
+    setIsSharing(true);
+    try {
+      const success = await shareMedia({
+        url: item.aiImage || item.orgImage,
+        fileName: isVideoItem
+          ? `animatememories-video-${item.id}`
+          : `animatememories-image-${item.id}`,
+        mimeType: isVideoItem ? "video/mp4" : "image/jpeg",
+      });
+      if (success && isVideoItem) {
+        trackShareAnimation({
+          animation_id: item.id?.toString(),
+          animation_type: item.designType || "video",
+        });
+      }
+    } catch (err) {
+      console.warn("Share failed:", err);
+    } finally {
+      setIsSharing(false);
     }
   };
 
@@ -235,6 +316,11 @@ export default function GalleryScreen() {
 
   const handleVideoPress = (item: GalleryItem) => {
     if (isVideo(item)) {
+      templateAudioCoordinator.stopAudio();
+      trackViewAnimation({
+        animation_id: item.id?.toString(),
+        animation_type: item.designType || "video",
+      });
       setSelectedVideo(item);
     }
   };
@@ -285,6 +371,11 @@ export default function GalleryScreen() {
     await handleDownload(selectedVideo);
   };
 
+  const handleShareFromModal = async () => {
+    if (!selectedVideo) return;
+    setShareItem(selectedVideo);
+  };
+
   const renderItem = ({ item }: { item: GalleryItem }) => {
     const isVideoItem = isVideo(item);
     const posterUrl = isVideoItem ? getVideoPosterUrl(item) : (item.aiImage || item.orgImage);
@@ -329,6 +420,16 @@ export default function GalleryScreen() {
           ) : (
             <Ionicons name="download-outline" size={18} color="#FFFFFF" />
           )}
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.actionButton}
+          onPress={(e) => {
+            e.stopPropagation();
+            setShareItem(item);
+          }}
+          activeOpacity={0.8}
+        >
+          <Ionicons name="share-social-outline" size={17} color="#FFFFFF" />
         </TouchableOpacity>
         <TouchableOpacity
           style={[styles.actionButton, styles.deleteButton]}
@@ -553,6 +654,8 @@ export default function GalleryScreen() {
         posterUri={selectedVideo ? getVideoPosterUrl(selectedVideo) : null}
         onClose={closeVideoModal}
         onDownload={handleDownloadFromModal}
+        onShare={handleShareFromModal}
+        isSharing={isSharing}
         onDelete={handleDeleteFromModal}
         isDeleting={deletingId === selectedVideo?.id}
         isDownloading={downloadingId !== null}
@@ -560,6 +663,16 @@ export default function GalleryScreen() {
         toastTitle={savedToast?.title ?? null}
         toastPath={savedToast?.path ?? null}
         onToastHide={() => setSavedToast(null)}
+      />
+
+      {/* Share Video Modal */}
+      <ShareVideoModal
+        visible={shareItem !== null}
+        onClose={() => setShareItem(null)}
+        videoUrl={shareItem?.aiImage || shareItem?.orgImage}
+        title={shareItem?.designType || shareItem?.roomType || "AI Animated Memory"}
+        templateSlug={shareItem?.designType || ""}
+        thumbnailUrl={getVideoPosterUrl(shareItem)}
       />
       </ScreenWrapper>
 
@@ -813,5 +926,58 @@ const styles = StyleSheet.create({
     fontFamily: getFontFamily("400"),
     color: "#979797",
     textAlign: "center",
+  },
+  guestContainer: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 24,
+    paddingTop: 80,
+  },
+  guestBadge: {
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 16,
+    marginBottom: 12,
+  },
+  guestBadgeText: {
+    fontSize: 12,
+    fontFamily: getFontFamily("700"),
+    color: "#FFFFFF",
+    letterSpacing: 0.5,
+  },
+  guestTitle: {
+    fontSize: 22,
+    fontFamily: getFontFamily("700"),
+    color: "#0F172A",
+    textAlign: "center",
+    marginBottom: 8,
+  },
+  guestSubtitle: {
+    fontSize: 14,
+    fontFamily: getFontFamily("400"),
+    color: "#64748B",
+    textAlign: "center",
+    lineHeight: 20,
+    marginBottom: 24,
+    maxWidth: 320,
+  },
+  guestSignInButton: {
+    width: "100%",
+    maxWidth: 280,
+    height: 48,
+    borderRadius: 14,
+    overflow: "hidden",
+  },
+  guestSignInGradient: {
+    width: "100%",
+    height: "100%",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  guestSignInText: {
+    fontSize: 15,
+    fontFamily: getFontFamily("600"),
+    color: "#FFFFFF",
   },
 });

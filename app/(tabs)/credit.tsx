@@ -22,12 +22,21 @@ import { GradientText } from "@/components/ui/GradientText";
 import ScreenWrapper from "@/components/ui/ScreenWrapper";
 import { IconSymbol } from "@/components/ui/IconSymbol";
 import { useAuth as useAuthContext } from "@/contexts/AuthContext";
+import { useAuthGate } from "@/contexts/AuthGateContext";
 import { useAuth } from "@clerk/clerk-expo";
 import { SvgUri } from 'react-native-svg';
 import { api } from "@/services/api";
 import { useFocusEffect } from "expo-router";
 import * as WebBrowser from "expo-web-browser";
 import { iapService } from "@/services/iap-service";
+import {
+  trackPurchase,
+  trackSubscriptionStarted,
+  trackViewPricing,
+  trackSelectPlan,
+  trackBeginCheckout,
+} from "@/services/tracking";
+import { templateAudioCoordinator } from "@/services/templateAudioCoordinator";
 import { IAP_PRODUCTS, IAP_SUBSCRIPTION_PRODUCTS } from "@/constants/iap-config";
 import CustomSlider from '@/components/ui/CustomSlider';
 
@@ -106,9 +115,47 @@ const PACK_INDEX_MAP: Record<string, number> = {
 export default function CreditScreen() {
   const { user } = useAuthContext();
   const { getToken } = useAuth();
+  const { requireAuth } = useAuthGate();
 
   const [billingType, setBillingType] = useState<'one-time' | 'subscription'>('subscription');
   const [selectedPack, setSelectedPack] = useState<'starter' | 'popular' | 'pro'>('popular');
+
+  if (!user) {
+    return (
+      <View style={{ flex: 1 }}>
+        <ScreenWrapper addBottomPadding={true}>
+          <View style={styles.guestContainer}>
+            <LinearGradient
+              colors={["#38BDF8", "#D229FF"]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={styles.guestBadge}
+            >
+              <Text style={styles.guestBadgeText}>CREDITS & PLANS</Text>
+            </LinearGradient>
+            <Text style={styles.guestTitle}>Sign in to Buy Credits</Text>
+            <Text style={styles.guestSubtitle}>
+              Sign in to your account to purchase credits and create unlimited animations with AI models.
+            </Text>
+            <TouchableOpacity
+              style={styles.guestSignInButton}
+              onPress={() => requireAuth({ type: "tab", tabName: "credit" })}
+              activeOpacity={0.85}
+            >
+              <LinearGradient
+                colors={["#38BDF8", "#A855F7", "#D229FF"]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                style={styles.guestSignInGradient}
+              >
+                <Text style={styles.guestSignInText}>Sign In to Continue</Text>
+              </LinearGradient>
+            </TouchableOpacity>
+          </View>
+        </ScreenWrapper>
+      </View>
+    );
+  }
 
   const [customAmount, setCustomAmount] = useState<number>(100);
 
@@ -126,6 +173,28 @@ export default function CreditScreen() {
   };
 
   const [selectedSubPack, setSelectedSubPack] = useState<'basic' | 'standard' | 'premium'>('standard');
+
+  const handleSelectSub = (subKey: 'basic' | 'standard' | 'premium') => {
+    setSelectedSubPack(subKey);
+    const sub = SUBSCRIPTION_DETAILS[subKey];
+    trackSelectPlan({
+      plan: sub.id,
+      price: dynamicPricing[sub.id]?.amount ?? sub.price,
+      currency: "USD",
+      credits: dynamicPricing[sub.id]?.credits ?? sub.credits,
+    });
+  };
+
+  const handleSelectOneTimeAmount = (amount: number) => {
+    setCustomAmount(amount);
+    trackSelectPlan({
+      plan: amount === 30 ? "starter" : amount === 100 ? "popular" : amount === 200 ? "pro" : "custom",
+      price: getOneTimePrice(amount),
+      currency: "USD",
+      credits: amount,
+    });
+  };
+
   const [userCredits, setUserCredits] = useState<number | null>(null);
   const [userPlan, setUserPlan] = useState<{ packId: string; credits: number; amount: number; createdAt: string; } | null>(null);
   const [isProcessingIAP, setIsProcessingIAP] = useState(false);
@@ -234,10 +303,14 @@ export default function CreditScreen() {
 
   useFocusEffect(
     useCallback(() => {
+      trackViewPricing();
       if (user) {
         fetchUserCredits();
         fetchUserPlan();
       }
+      return () => {
+        templateAudioCoordinator.stopAudio();
+      };
     }, [user, fetchUserCredits, fetchUserPlan])
   );
 
@@ -353,6 +426,12 @@ export default function CreditScreen() {
 
       setIsProcessingIAP(true);
       try {
+        trackBeginCheckout({
+          plan: purchaseId || productId,
+          price: Number(purchasePrice) || 0,
+          currency: "USD",
+          credits: purchaseCredits,
+        });
         const token = await getToken();
         const result = await iapService.purchaseProduct(productId, userEmail, token);
         
@@ -361,6 +440,22 @@ export default function CreditScreen() {
             "Payment Successful! 🎉",
             "Your credits have been added to your account."
           );
+          trackPurchase({
+            transaction_id: (result as any)?.transactionId || productId || purchaseId,
+            plan: purchaseId || productId,
+            price: Number(purchasePrice) || 0,
+            currency: "USD",
+            credits: purchaseCredits,
+            remaining_credits: (userCredits ?? 0) + purchaseCredits,
+          });
+          if (isSubscription) {
+            trackSubscriptionStarted({
+              transaction_id: (result as any)?.transactionId || productId || purchaseId,
+              plan: purchaseId || productId,
+              price: Number(purchasePrice) || 0,
+              currency: "USD",
+            });
+          }
           fetchUserCredits();
           fetchUserPlan();
         } else if (
@@ -432,6 +527,12 @@ export default function CreditScreen() {
 
         if (checkoutData?.url) {
           const initialCredits = userCredits;
+          trackBeginCheckout({
+            plan: purchaseId || productId,
+            price: Number(purchasePrice) || 0,
+            currency: "USD",
+            credits: purchaseCredits,
+          });
           const browserResult = await WebBrowser.openAuthSessionAsync(
             checkoutData.url,
             "animatememories://"
@@ -441,7 +542,28 @@ export default function CreditScreen() {
           const latestCredits = await fetchUserCredits();
           await fetchUserPlan();
 
-          if (
+          if (latestCredits !== null && latestCredits > (initialCredits || 0)) {
+            trackPurchase({
+              transaction_id: `stripe_${Date.now()}`,
+              plan: purchaseId || productId,
+              price: Number(purchasePrice) || 0,
+              currency: "USD",
+              credits: purchaseCredits,
+              remaining_credits: latestCredits,
+            });
+            if (billingType === "subscription") {
+              trackSubscriptionStarted({
+                transaction_id: `stripe_${Date.now()}`,
+                plan: purchaseId || productId,
+                price: Number(purchasePrice) || 0,
+                currency: "USD",
+              });
+            }
+            Alert.alert(
+              "Payment Successful! 🎉",
+              "Your credits have been added to your account."
+            );
+          } else if (
             browserResult.type === "cancel" ||
             browserResult.type === "dismiss" ||
             (browserResult.type === "success" &&
@@ -572,7 +694,7 @@ export default function CreditScreen() {
             
             <TouchableOpacity
               style={styles.packTab}
-              onPress={() => setSelectedSubPack('basic')}
+              onPress={() => handleSelectSub('basic')}
               onLayout={(event) => {
                 const { width, x } = event.nativeEvent.layout;
                 tabLayouts.current[0] = { x, width };
@@ -592,7 +714,7 @@ export default function CreditScreen() {
             </TouchableOpacity>
             <TouchableOpacity
               style={styles.packTab}
-              onPress={() => setSelectedSubPack('standard')}
+              onPress={() => handleSelectSub('standard')}
               onLayout={(event) => {
                 const { width, x } = event.nativeEvent.layout;
                 tabLayouts.current[1] = { x, width };
@@ -612,7 +734,7 @@ export default function CreditScreen() {
             </TouchableOpacity>
             <TouchableOpacity
               style={styles.packTab}
-              onPress={() => setSelectedSubPack('premium')}
+              onPress={() => handleSelectSub('premium')}
               onLayout={(event) => {
                 const { width, x } = event.nativeEvent.layout;
                 tabLayouts.current[2] = { x, width };
@@ -725,19 +847,19 @@ export default function CreditScreen() {
           <View style={styles.sliderPresets}>
             <TouchableOpacity 
               style={[styles.presetBtn, customAmount === 30 && styles.presetBtnActive]} 
-              onPress={() => setCustomAmount(30)}
+              onPress={() => handleSelectOneTimeAmount(30)}
             >
               <Text style={[styles.presetBtnText, customAmount === 30 && styles.presetBtnTextActive]}>Starter (30)</Text>
             </TouchableOpacity>
             <TouchableOpacity 
               style={[styles.presetBtn, customAmount === 100 && styles.presetBtnActive]} 
-              onPress={() => setCustomAmount(100)}
+              onPress={() => handleSelectOneTimeAmount(100)}
             >
               <Text style={[styles.presetBtnText, customAmount === 100 && styles.presetBtnTextActive]}>Popular (100)</Text>
             </TouchableOpacity>
             <TouchableOpacity 
               style={[styles.presetBtn, customAmount === 200 && styles.presetBtnActive]} 
-              onPress={() => setCustomAmount(200)}
+              onPress={() => handleSelectOneTimeAmount(200)}
             >
               <Text style={[styles.presetBtnText, customAmount === 200 && styles.presetBtnTextActive]}>Pro (200)</Text>
             </TouchableOpacity>
@@ -1306,5 +1428,58 @@ const styles = StyleSheet.create({
   presetBtnTextActive: {
     color: '#000',
     fontFamily: getFontFamily('700'),
+  },
+  guestContainer: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 24,
+    paddingTop: 80,
+  },
+  guestBadge: {
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 16,
+    marginBottom: 12,
+  },
+  guestBadgeText: {
+    fontSize: 12,
+    fontFamily: getFontFamily("700"),
+    color: "#FFFFFF",
+    letterSpacing: 0.5,
+  },
+  guestTitle: {
+    fontSize: 22,
+    fontFamily: getFontFamily("700"),
+    color: "#0F172A",
+    textAlign: "center",
+    marginBottom: 8,
+  },
+  guestSubtitle: {
+    fontSize: 14,
+    fontFamily: getFontFamily("400"),
+    color: "#64748B",
+    textAlign: "center",
+    lineHeight: 20,
+    marginBottom: 24,
+    maxWidth: 320,
+  },
+  guestSignInButton: {
+    width: "100%",
+    maxWidth: 280,
+    height: 48,
+    borderRadius: 14,
+    overflow: "hidden",
+  },
+  guestSignInGradient: {
+    width: "100%",
+    height: "100%",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  guestSignInText: {
+    fontSize: 15,
+    fontFamily: getFontFamily("600"),
+    color: "#FFFFFF",
   },
 });

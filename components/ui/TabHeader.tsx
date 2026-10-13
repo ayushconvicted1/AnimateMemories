@@ -9,6 +9,7 @@ import { api } from "@/services/api";
 import { router } from "expo-router";
 import { getFontFamily } from "@/constants/Fonts";
 import { useSidebar } from "@/contexts/SidebarContext";
+import { useAuthGate } from "@/contexts/AuthGateContext";
 
 interface TabHeaderProps {
   creditsText?: string;
@@ -21,7 +22,7 @@ export default function TabHeader({ creditsText }: TabHeaderProps) {
   const { user } = useAuth();
   const { getToken } = useClerkAuth();
   const { openSidebar } = useSidebar();
-  const { isActive } = require("@/contexts/TourContext").useTour();
+  const { requireAuth } = useAuthGate();
   const [fetchedCredits, setFetchedCredits] = useState<number | null>(
     globalLastKnownCredits
   );
@@ -77,7 +78,7 @@ export default function TabHeader({ creditsText }: TabHeaderProps) {
   const pillGradientColors: readonly [string, string] = ["#38BDF8", "#D229FF"];
 
   return (
-    <View style={styles.header} pointerEvents={isActive ? "none" : "auto"}>
+    <View style={styles.header}>
       {/* Brand Logo */}
       <TouchableOpacity
         onPress={() => router.push("/(tabs)")}
@@ -89,36 +90,56 @@ export default function TabHeader({ creditsText }: TabHeaderProps) {
       </TouchableOpacity>
 
       <View style={styles.headerRight}>
-        {/* Unified Smart Credit & Upgrade Pill */}
-        <TouchableOpacity
-          onPress={() => router.push("/(tabs)/credit")}
-          activeOpacity={0.8}
-          style={styles.creditPillTouchable}
-        >
-          <LinearGradient
-            colors={pillGradientColors}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 0 }}
-            style={styles.smartCreditPill}
+        {/* If guest user, show Sign In button */}
+        {!user ? (
+          <TouchableOpacity
+            onPress={() => requireAuth({ type: "create" })}
+            activeOpacity={0.8}
+            style={styles.creditPillTouchable}
           >
-            {isLoading ? (
-              <Text style={styles.creditCountText}>Loading...</Text>
-            ) : isLowCredits ? (
-              <View style={styles.lowCreditContent}>
-                <Text style={styles.creditCountText}>
-                  {currentCreditCount}{" "}
-                  {currentCreditCount === 1 ? "Credit" : "Credits"}
-                </Text>
-                <View style={styles.pillDivider} />
-                <Text style={styles.upgradeActionText}>+ Upgrade</Text>
-              </View>
-            ) : (
-              <Text style={styles.creditCountText}>
-                {currentCreditCount} Credits
+            <LinearGradient
+              colors={pillGradientColors}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={styles.smartCreditPill}
+            >
+              <Text style={[styles.creditCountText, { fontFamily: getFontFamily("600"), paddingHorizontal: 4 }]}>
+                Sign In
               </Text>
-            )}
-          </LinearGradient>
-        </TouchableOpacity>
+            </LinearGradient>
+          </TouchableOpacity>
+        ) : (
+          /* Unified Smart Credit & Upgrade Pill */
+          <TouchableOpacity
+            onPress={() => router.push("/(tabs)/credit")}
+            activeOpacity={0.8}
+            style={styles.creditPillTouchable}
+          >
+            <LinearGradient
+              colors={pillGradientColors}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={styles.smartCreditPill}
+            >
+              {isLoading ? (
+                <Text style={styles.creditCountText}>Loading...</Text>
+              ) : isLowCredits ? (
+                <View style={styles.lowCreditContent}>
+                  <Text style={styles.creditCountText}>
+                    {currentCreditCount}{" "}
+                    {currentCreditCount === 1 ? "Credit" : "Credits"}
+                  </Text>
+                  <View style={styles.pillDivider} />
+                  <Text style={styles.upgradeActionText}>+ Upgrade</Text>
+                </View>
+              ) : (
+                <Text style={styles.creditCountText}>
+                  {currentCreditCount} Credits
+                </Text>
+              )}
+            </LinearGradient>
+          </TouchableOpacity>
+        )}
 
         {/* Menu Drawer Toggle */}
         <TouchableOpacity

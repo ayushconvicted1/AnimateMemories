@@ -1,6 +1,7 @@
 import { Platform, PermissionsAndroid, Alert } from "react-native";
 import messaging, { FirebaseMessagingTypes } from "@react-native-firebase/messaging";
 import { router } from "expo-router";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 export interface NotificationPayload {
   title?: string;
@@ -74,6 +75,47 @@ export async function checkNotificationPermission(): Promise<boolean> {
 }
 
 /**
+ * Prompts user for notification permission on the Home screen (after login/signup).
+ * - If already granted: ensures device token is registered with backend.
+ * - If not granted: prompts once cleanly without interrupting auth flow.
+ */
+export async function promptNotificationPermissionOnHome(
+  userEmail?: string | null
+): Promise<boolean> {
+  try {
+    const alreadyGranted = await checkNotificationPermission();
+    if (alreadyGranted) {
+      const token = await getFCMToken();
+      if (token) {
+        await registerTokenWithBackend(token, userEmail);
+      }
+      return true;
+    }
+
+    const promptKey = userEmail
+      ? `@notification_home_prompted_${userEmail}`
+      : "@notification_home_prompted";
+    const alreadyPrompted = await AsyncStorage.getItem(promptKey);
+    if (alreadyPrompted === "true") {
+      return false;
+    }
+
+    await AsyncStorage.setItem(promptKey, "true");
+    const granted = await requestNotificationPermission();
+    if (granted) {
+      const token = await getFCMToken();
+      if (token) {
+        await registerTokenWithBackend(token, userEmail);
+      }
+    }
+    return granted;
+  } catch (error) {
+    console.warn("[Notifications] Error prompting on home screen:", error);
+    return false;
+  }
+}
+
+/**
  * Retrieve the FCM device registration token
  */
 export async function getFCMToken(): Promise<string | null> {
@@ -97,21 +139,27 @@ export async function getFCMToken(): Promise<string | null> {
  */
 export async function registerTokenWithBackend(
   token: string,
-  userEmail: string
+  userEmail?: string | null
 ): Promise<boolean> {
   try {
-    const API_BASE_URL = "https://www.animatememories.com";
+    const API_BASE_URL =
+      process.env.EXPO_PUBLIC_API_BASE_URL || "https://www.animatememories.com";
     const res = await fetch(`${API_BASE_URL}/api/notifications/save-token`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        userEmail,
+        userEmail: userEmail || "anonymous@animatememories.com",
         fcmToken: token,
         platform: Platform.OS,
       }),
     });
-    const data = await res.json();
-    console.log("[FCM] Registered token with backend:", data);
+    let data;
+    try {
+      data = await res.json();
+    } catch {
+      data = null;
+    }
+    console.log("[FCM] Registered token with backend:", data || res.status);
     return res.ok;
   } catch (err) {
     console.warn("[FCM] Failed to register token with backend:", err);

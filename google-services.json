@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "1023800638667",
+    "project_id": "animatememories-f1c78",
+    "storage_bucket": "animatememories-f1c78.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1023800638667:android:108bb54a571b1803e16f4e",
+        "android_client_info": {
+          "package_name": "com.hexerve.AnimateMemories"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyC2o9UJEVle2Xodh9I4ltsG-uQIFYbP6dE"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

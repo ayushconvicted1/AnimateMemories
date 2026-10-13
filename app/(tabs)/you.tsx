@@ -13,6 +13,7 @@ import {
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { useAuth } from "@/contexts/AuthContext";
+import { useAuthGate } from "@/contexts/AuthGateContext";
 import { useAuth as useClerkAuth, useUser } from "@clerk/clerk-expo";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { router } from "expo-router";
@@ -30,6 +31,7 @@ import SkeletonLoader from "@/components/ui/SkeletonLoader";
 import { api } from "@/services/api";
 import SearchGradient from "@/components/reusable/SearchGradient";
 import { getFontFamily } from "@/constants/Fonts";
+import { trackUploadFailed } from "@/services/tracking";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 const CONTENT_WIDTH = SCREEN_WIDTH - 32;
@@ -45,6 +47,7 @@ interface UserStats {
 export default function YouScreen() {
   const { user, signOut } = useAuth();
   const { getToken } = useClerkAuth();
+  const { requireAuth } = useAuthGate();
   const { user: clerkUser } = useUser();
   const [userCredits, setUserCredits] = useState<number | null>(null);
   const [userStats, setUserStats] = useState<UserStats | null>(null);
@@ -56,6 +59,43 @@ export default function YouScreen() {
   const [editingEmail, setEditingEmail] = useState("");
   const [isUpdating, setIsUpdating] = useState(false);
   const [isUpdatingImage, setIsUpdatingImage] = useState(false);
+
+  if (!user) {
+    return (
+      <View style={{ flex: 1 }}>
+        <ScreenWrapper addBottomPadding={true}>
+          <View style={styles.guestContainer}>
+            <LinearGradient
+              colors={["#38BDF8", "#D229FF"]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={styles.guestBadge}
+            >
+              <Text style={styles.guestBadgeText}>PROFILE</Text>
+            </LinearGradient>
+            <Text style={styles.guestTitle}>Sign in to View Your Account</Text>
+            <Text style={styles.guestSubtitle}>
+              Sign in to manage your account settings, credits, and subscription details.
+            </Text>
+            <TouchableOpacity
+              style={styles.guestSignInButton}
+              onPress={() => requireAuth({ type: "tab", tabName: "you" })}
+              activeOpacity={0.85}
+            >
+              <LinearGradient
+                colors={["#38BDF8", "#A855F7", "#D229FF"]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                style={styles.guestSignInGradient}
+              >
+                <Text style={styles.guestSignInText}>Sign In to Continue</Text>
+              </LinearGradient>
+            </TouchableOpacity>
+          </View>
+        </ScreenWrapper>
+      </View>
+    );
+  }
 
   const fetchUserCredits = useCallback(async () => {
     if (!user) return;
@@ -108,7 +148,7 @@ export default function YouScreen() {
   const handleLogout = async () => {
     try {
       await signOut();
-      router.replace("/(auth)");
+      router.replace("/(tabs)");
     } catch (error) {
       console.error("Logout error:", error);
     }
@@ -236,21 +276,6 @@ export default function YouScreen() {
     }
   };
 
-  const requestImagePermission = async () => {
-    if (Platform.OS !== "web") {
-      const { status } =
-        await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (status !== "granted") {
-        Alert.alert(
-          "Permission needed",
-          "Please grant camera roll permissions to upload images."
-        );
-        return false;
-      }
-    }
-    return true;
-  };
-
   const requestCameraPermission = async () => {
     if (Platform.OS !== "web") {
       const { status } = await ImagePicker.requestCameraPermissionsAsync();
@@ -301,6 +326,12 @@ export default function YouScreen() {
       if (!result.canceled && result.assets && result.assets[0]) {
         const asset = result.assets[0];
         if (asset.fileSize && asset.fileSize > 20 * 1024 * 1024) {
+          trackUploadFailed({
+            error_type: "FILE_TOO_LARGE",
+            error_message: "Profile image size exceeds 20MB limit",
+            file_size_mb: asset.fileSize / (1024 * 1024),
+            mode: "profile",
+          });
           Alert.alert(
             "File Too Large",
             "The selected image exceeds the maximum allowed size of 20MB. Please choose a smaller image."
@@ -311,6 +342,11 @@ export default function YouScreen() {
       }
     } catch (error: any) {
       console.error("Error opening camera:", error);
+      trackUploadFailed({
+        error_type: "CAMERA_PICK_ERROR",
+        error_message: error?.message || "Failed to open camera",
+        mode: "profile",
+      });
       Alert.alert(
         "Error",
         error.message || "Failed to open camera. Please try again."
@@ -320,8 +356,6 @@ export default function YouScreen() {
 
   const openGallery = async () => {
     try {
-      const hasPermission = await requestImagePermission();
-      if (!hasPermission) return;
 
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
@@ -333,6 +367,12 @@ export default function YouScreen() {
       if (!result.canceled && result.assets && result.assets[0]) {
         const asset = result.assets[0];
         if (asset.fileSize && asset.fileSize > 20 * 1024 * 1024) {
+          trackUploadFailed({
+            error_type: "FILE_TOO_LARGE",
+            error_message: "Profile image size exceeds 20MB limit",
+            file_size_mb: asset.fileSize / (1024 * 1024),
+            mode: "profile",
+          });
           Alert.alert(
             "File Too Large",
             "The selected image exceeds the maximum allowed size of 20MB. Please choose a smaller image."
@@ -343,6 +383,11 @@ export default function YouScreen() {
       }
     } catch (error: any) {
       console.error("Error opening gallery:", error);
+      trackUploadFailed({
+        error_type: "GALLERY_PICK_ERROR",
+        error_message: error?.message || "Failed to open gallery",
+        mode: "profile",
+      });
       Alert.alert(
         "Error",
         error.message || "Failed to open gallery. Please try again."
@@ -671,12 +716,12 @@ export default function YouScreen() {
                       }
                       await AsyncStorage.removeItem("@tour_completed").catch(() => {});
                       await signOut();
-                      router.replace("/(auth)");
+                      router.replace("/(tabs)");
                     } catch (err) {
                       console.error("Error deleting account:", err);
                       try {
                         await signOut();
-                        router.replace("/(auth)");
+                        router.replace("/(tabs)");
                       } catch {
                         Alert.alert("Error", "Failed to delete account. Please try again or contact support.");
                       }
@@ -1223,5 +1268,58 @@ const styles = StyleSheet.create({
     fontFamily: getFontFamily("400"),
     color: "#979797",
     lineHeight: 22,
+  },
+  guestContainer: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 24,
+    paddingTop: 80,
+  },
+  guestBadge: {
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 16,
+    marginBottom: 12,
+  },
+  guestBadgeText: {
+    fontSize: 12,
+    fontFamily: getFontFamily("700"),
+    color: "#FFFFFF",
+    letterSpacing: 0.5,
+  },
+  guestTitle: {
+    fontSize: 22,
+    fontFamily: getFontFamily("700"),
+    color: "#0F172A",
+    textAlign: "center",
+    marginBottom: 8,
+  },
+  guestSubtitle: {
+    fontSize: 14,
+    fontFamily: getFontFamily("400"),
+    color: "#64748B",
+    textAlign: "center",
+    lineHeight: 20,
+    marginBottom: 24,
+    maxWidth: 320,
+  },
+  guestSignInButton: {
+    width: "100%",
+    maxWidth: 280,
+    height: 48,
+    borderRadius: 14,
+    overflow: "hidden",
+  },
+  guestSignInGradient: {
+    width: "100%",
+    height: "100%",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  guestSignInText: {
+    fontSize: 15,
+    fontFamily: getFontFamily("600"),
+    color: "#FFFFFF",
   },
 });

@@ -7,6 +7,7 @@ import { api } from "@/services/api";
 import { GradientText } from "@/components/ui/GradientText";
 import { TouchableOpacity } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
+import { trackPurchase, trackSubscriptionStarted } from "@/services/tracking";
 
 export default function PaymentCallback() {
   const router = useRouter();
@@ -23,10 +24,10 @@ export default function PaymentCallback() {
   const handlePaymentCallback = async () => {
     try {
       // Check if this is a success or cancelled callback
-      const url = params.url as string;
-      const sessionId = params.session_id as string;
+      const url = (params.url as string) || "";
+      const sessionId = (params.session_id || params.sessionId || params.checkout_session_id) as string;
 
-      if (url?.includes("payment-success") || sessionId) {
+      if (url?.includes("payment-success") || url?.includes("thank-you") || sessionId) {
         // Payment was successful
         if (user) {
           const token = await getToken();
@@ -48,12 +49,33 @@ export default function PaymentCallback() {
                 console.log("Payment verified and credits updated:", verifyResult.credits);
                 setStatus("success");
                 setMessage(`Payment successful! You now have ${verifyResult.credits || 0} credits.`);
+                trackPurchase({
+                  transaction_id: sessionId,
+                  price: verifyResult.amount || 0,
+                  currency: "USD",
+                  credits: verifyResult.creditsAdded || undefined,
+                  remaining_credits: verifyResult.credits,
+                });
+                if (verifyResult.isSubscription || url?.includes("subscription")) {
+                  trackSubscriptionStarted({
+                    transaction_id: sessionId,
+                    plan: verifyResult.plan || "subscription",
+                    price: verifyResult.amount || 0,
+                    currency: "USD",
+                  });
+                }
               } else {
                 // If verification fails, still check current credits (webhook might have processed)
                 console.log("Payment verification returned error, checking current credits...");
                 const result = await api.verifyUser(user, token);
                 setStatus("success");
                 setMessage(`Payment successful! You now have ${result.result?.credits || 0} credits.`);
+                trackPurchase({
+                  transaction_id: sessionId,
+                  price: 0,
+                  currency: "USD",
+                  remaining_credits: result.result?.credits,
+                });
               }
             } catch (verifyError: any) {
               console.error("Error verifying payment:", verifyError);
@@ -61,12 +83,24 @@ export default function PaymentCallback() {
               const result = await api.verifyUser(user, token);
               setStatus("success");
               setMessage(`Payment successful! You now have ${result.result?.credits || 0} credits.`);
+              trackPurchase({
+                transaction_id: sessionId,
+                price: 0,
+                currency: "USD",
+                remaining_credits: result.result?.credits,
+              });
             }
           } else {
             // No session ID, just check current credits
             const result = await api.verifyUser(user, token);
             setStatus("success");
             setMessage(`Payment successful! You now have ${result.result?.credits || 0} credits.`);
+            trackPurchase({
+              transaction_id: `session_${Date.now()}`,
+              price: 0,
+              currency: "USD",
+              remaining_credits: result.result?.credits,
+            });
           }
           
           // Redirect to credit screen after 2 seconds

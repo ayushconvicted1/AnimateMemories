@@ -79,19 +79,22 @@ export async function downloadToDevice({
     savedPath = await saveToLibrary();
     saved = true;
   } catch (error) {
-    // Older Android / iOS need the write permission — ask for it once.
-    console.warn("Automatic save failed, requesting media permission:", error);
-    try {
-      const permission = await MediaLibrary.requestPermissionsAsync(true, [
-        "photo",
-        "video",
-      ]);
-      if (permission.granted) {
-        savedPath = await saveToLibrary();
-        saved = true;
+    console.warn("Automatic save failed:", error);
+    // On iOS, request write-only photo library permission if needed.
+    // On Android, never request broad media storage permissions (banned by Google Play); fallback to share sheet.
+    if (Platform.OS === "ios") {
+      try {
+        const permission = await MediaLibrary.requestPermissionsAsync(true, [
+          "photo",
+          "video",
+        ]);
+        if (permission.granted) {
+          savedPath = await saveToLibrary();
+          saved = true;
+        }
+      } catch (saveError) {
+        console.warn("MediaLibrary save failed after permission granted:", saveError);
       }
-    } catch (saveError) {
-      console.warn("MediaLibrary save failed after permission granted:", saveError);
     }
   }
 
@@ -113,4 +116,53 @@ export async function downloadToDevice({
   }
 
   return { uri: destination.uri, saved, path: savedPath, fallbackUsed };
+}
+
+/**
+ * Shares a remote file (video or image) via the system share sheet.
+ * Downloads to temporary cache first if remote.
+ */
+export async function shareMedia({
+  url,
+  fileName,
+  mimeType,
+}: DownloadOptions): Promise<boolean> {
+  if (Platform.OS === "web") {
+    if (typeof navigator !== "undefined" && (navigator as any).share) {
+      try {
+        await (navigator as any).share({ url });
+        return true;
+      } catch {
+        return false;
+      }
+    }
+    if (await Linking.canOpenURL(url)) {
+      await Linking.openURL(url);
+      return true;
+    }
+    return false;
+  }
+
+  const isVideo =
+    mimeType === "video/mp4" || /\.mp4($|\?)/i.test(url) || /video/i.test(url);
+  const ext = isVideo ? "mp4" : "jpg";
+  const finalMime = mimeType || (isVideo ? "video/mp4" : "image/jpeg");
+  const name = `${sanitizeFileName(fileName || "animatememories")}-${Date.now()}.${ext}`;
+
+  try {
+    const destination = new File(Paths.cache, name);
+    await File.downloadFileAsync(url, destination);
+
+    if (await Sharing.isAvailableAsync()) {
+      await Sharing.shareAsync(destination.uri, {
+        mimeType: finalMime,
+        dialogTitle: isVideo ? "Share Animation Video" : "Share Image",
+        UTI: isVideo ? "public.mpeg-4" : "public.jpeg",
+      });
+      return true;
+    }
+  } catch (error) {
+    console.warn("shareMedia failed:", error);
+  }
+  return false;
 }

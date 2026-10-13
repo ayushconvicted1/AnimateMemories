@@ -13,10 +13,7 @@ export default function Index() {
     );
   }
 
-  if (isSignedIn) {
-    // The quick tour decides for itself whether to show on first open.
-    return <Redirect href="/(tabs)" />;
-  }
-
-  return <Redirect href="/(auth)" />;
+  // Always land on Home tab, matching the web flow.
+  // Auth is handled via the login modal triggered by protected actions.
+  return <Redirect href="/(tabs)" />;
 }
