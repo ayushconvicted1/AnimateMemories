@@ -74,21 +74,54 @@ interface ApiOptions {
   token?: string | null;
 }
 
+interface CacheEntry {
+  data: any;
+  timestamp: number;
+}
+
+const apiCache = new Map<string, CacheEntry>();
+const CACHE_TTL_MS = 3 * 60 * 1000; // 3 minutes cache for static presets, categories, models
+
+const CACHEABLE_ENDPOINTS = [
+  "/api/video-presets",
+  "/api/template-categories",
+  "/api/admin/video-presets",
+  "/api/admin/template-categories",
+  "/api/video-models",
+  "/api/feature-credits",
+  "/api/feature-costs",
+];
+
 export const apiRequest = async (
   endpoint: string,
   options: ApiOptions = {}
 ): Promise<any> => {
   const { method = "GET", body, headers = {}, token } = options;
 
+  // Serve from memory cache if static read endpoint
+  const isCacheable = method === "GET" && CACHEABLE_ENDPOINTS.some((ep) => endpoint.startsWith(ep));
+  if (isCacheable) {
+    const cached = apiCache.get(endpoint);
+    if (cached && Date.now() - cached.timestamp < CACHE_TTL_MS) {
+      return cached.data;
+    }
+  }
+
   try {
     const url = `${API_BASE_URL}${endpoint}`;
 
     const requestHeaders: Record<string, string> = {
+      "Accept": "application/json, text/plain, */*",
       ...headers,
     };
 
-    // Only set Content-Type for JSON, not for FormData
-    if (!(body instanceof FormData)) {
+    if (process.env.EXPO_PUBLIC_VERCEL_PROTECTION_BYPASS) {
+      requestHeaders["x-vercel-protection-bypass"] =
+        process.env.EXPO_PUBLIC_VERCEL_PROTECTION_BYPASS;
+    }
+
+    // Only set Content-Type for JSON requests with a body
+    if (body && !(body instanceof FormData)) {
       requestHeaders["Content-Type"] = "application/json";
     }
 
@@ -120,7 +153,9 @@ export const apiRequest = async (
           // Try to parse as JSON
           try {
             errorData = JSON.parse(text);
-            errorMessage = errorData.error || errorData.message || errorMessage;
+            const rawMsg = errorData.error || errorData.message || errorMessage;
+            // Ensure errorMessage is always a string (server may return objects)
+            errorMessage = typeof rawMsg === "string" ? rawMsg : JSON.stringify(rawMsg);
           } catch (jsonError) {
             // If JSON parsing fails, treat as text
             errorMessage = extractErrorMessageFromText(text, response.status);
@@ -142,8 +177,17 @@ export const apiRequest = async (
       throw apiError;
     }
 
-    return await response.json();
+    const json = await response.json();
+    if (isCacheable) {
+      apiCache.set(endpoint, { data: json, timestamp: Date.now() });
+    }
+    return json;
   } catch (error: any) {
+    const isVercelChallenge =
+      typeof error.message === "string" &&
+      (error.message.includes("Vercel Security Checkpoint") ||
+        error.message.includes("challenge"));
+
     // Handle network errors
     if (
       error.message === "Network request failed" ||
@@ -152,12 +196,19 @@ export const apiRequest = async (
       const networkError = new Error(
         "Network error: Please check your internet connection"
       );
-      console.error(`API Network Error (${endpoint}):`, networkError);
+      if (isCacheable) {
+        console.warn(`API Network Warning (${endpoint}):`, networkError.message);
+      } else {
+        console.error(`API Network Error (${endpoint}):`, networkError);
+      }
       throw networkError;
     }
 
-    // Re-throw API errors with status codes
-    if (error.status) {
+    // For background/cacheable endpoints (templates, categories, etc.) or firewall challenges,
+    // warn instead of error to avoid red LogBox / Metro error screens
+    if (isCacheable || isVercelChallenge) {
+      console.warn(`API Warning (${endpoint}):`, error.status || "", error.message);
+    } else if (error.status) {
       console.error(`API Error (${endpoint}):`, error.status, error.message);
     } else {
       console.error(`API Error (${endpoint}):`, error);
@@ -247,7 +298,10 @@ export const api = {
     token?: string | null,
     quality: string = "720p",
     modelId: string = "seedance-1-5-pro",
-    aspectRatio: string = "vertical"
+    aspectRatio: string = "vertical",
+    category?: string,
+    templateSlug?: string,
+    generateAudio?: boolean
   ) => {
     return apiRequest("/api/old-photo-animation", {
       method: "POST",
@@ -259,6 +313,9 @@ export const api = {
         quality,
         modelId,
         aspectRatio,
+        category,
+        templateSlug,
+        generateAudio: Boolean(generateAudio),
       },
       token,
     });
@@ -273,7 +330,10 @@ export const api = {
     token?: string | null,
     quality: string = "720p",
     modelId: string = "seedance-1-5-pro",
-    aspectRatio: string = "vertical"
+    aspectRatio: string = "vertical",
+    category?: string,
+    templateSlug?: string,
+    generateAudio?: boolean
   ) => {
     return apiRequest("/api/old-photo-animation/start", {
       method: "POST",
@@ -285,6 +345,9 @@ export const api = {
         quality,
         modelId,
         aspectRatio,
+        category,
+        templateSlug,
+        generateAudio: Boolean(generateAudio),
       },
       token,
     });
@@ -317,7 +380,10 @@ export const api = {
     token?: string | null,
     quality: string = "720p",
     modelId: string = "seedance-1-5-pro",
-    aspectRatio: string = "vertical"
+    aspectRatio: string = "vertical",
+    category?: string,
+    templateSlug?: string,
+    generateAudio?: boolean
   ) => {
     return api.animatePhoto(
       inputImageUrl,
@@ -327,7 +393,10 @@ export const api = {
       token,
       quality,
       modelId,
-      aspectRatio
+      aspectRatio,
+      category,
+      templateSlug,
+      generateAudio
     );
   },
 
@@ -503,9 +572,18 @@ export const api = {
 
   // Fetch video presets (animation templates)
   getVideoPresets: async () => {
-    return apiRequest("/api/admin/video-presets?activeOnly=true", {
-      method: "GET",
-    });
+    try {
+      return await apiRequest("/api/video-presets?activeOnly=true", {
+        method: "GET",
+      });
+    } catch (e: any) {
+      if (e?.status === 404) {
+        return await apiRequest("/api/admin/video-presets?activeOnly=true", {
+          method: "GET",
+        });
+      }
+      throw e;
+    }
   },
 
   // Fetch top 3 active video models
@@ -517,9 +595,18 @@ export const api = {
 
   // Fetch template categories
   getTemplateCategories: async () => {
-    return apiRequest("/api/admin/template-categories?activeOnly=true", {
-      method: "GET",
-    });
+    try {
+      return await apiRequest("/api/template-categories?activeOnly=true", {
+        method: "GET",
+      });
+    } catch (e: any) {
+      if (e?.status === 404) {
+        return await apiRequest("/api/admin/template-categories?activeOnly=true", {
+          method: "GET",
+        });
+      }
+      throw e;
+    }
   },
 
   // Fetch admin feature credits list

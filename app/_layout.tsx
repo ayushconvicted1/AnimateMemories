@@ -159,11 +159,14 @@ export default function RootLayout() {
         return;
       }
 
-      // Handle payment callbacks - check both path and full URL
+      // Handle payment callbacks - check both path and full URL (payment-success and thank-you)
       const isSuccess =
         parsed.path === "payment-success" ||
+        parsed.path === "thank-you" ||
         url.includes("payment-success") ||
-        parsed.hostname === "payment-success";
+        url.includes("thank-you") ||
+        parsed.hostname === "payment-success" ||
+        parsed.hostname === "thank-you";
       const isCancelled =
         parsed.path === "payment-cancelled" ||
         url.includes("payment-cancelled") ||
@@ -172,6 +175,7 @@ export default function RootLayout() {
       if (isSuccess) {
         const sessionId =
           (parsed.queryParams?.session_id as string) ||
+          (parsed.queryParams?.sessionId as string) ||
           (parsed.queryParams?.["session_id"] as string) ||
           "";
         console.log(

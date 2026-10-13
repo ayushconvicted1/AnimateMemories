@@ -13,6 +13,11 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { getFontFamily } from "@/constants/Fonts";
 import AnimatedTemplateThumb from "@/components/ui/AnimatedTemplateThumb";
+import {
+  templateAudioCoordinator,
+  isAudioTemplate as checkIsAudioTemplate,
+} from "@/services/templateAudioCoordinator";
+import { trackSearch, trackViewContent } from "@/services/tracking";
 
 const API_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL || "https://www.animatememories.com";
 
@@ -43,13 +48,20 @@ interface TemplateExplorerModalProps {
   onClose: () => void;
   templates: any[];
   onSelect: (id: string) => void;
+  initialCategory?: string;
 }
 
-export default function TemplateExplorerModal({ visible, onClose, templates, onSelect }: TemplateExplorerModalProps) {
+export default function TemplateExplorerModal({
+  visible,
+  onClose,
+  templates,
+  onSelect,
+  initialCategory = "all",
+}: TemplateExplorerModalProps) {
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const [query, setQuery] = useState("");
-  const [activeCategory, setActiveCategory] = useState("all");
+  const [activeCategory, setActiveCategory] = useState(initialCategory || "all");
   const visibleItemIdsRef = useRef<string[]>([]);
   const [activeVideoId, setActiveVideoId] = useState<string | null>(null);
   const isDraggingRef = useRef(false);
@@ -57,74 +69,13 @@ export default function TemplateExplorerModal({ visible, onClose, templates, onS
 
   const cardWidth = Math.floor((width - 48) / 2);
 
-  // Advance to the next visible card in continuous round-robin loop
-  const advanceToNextVideo = useCallback(() => {
-    const visible = visibleItemIdsRef.current;
-    if (!visible || visible.length === 0) return;
-    if (visible.length === 1) {
-      // Only 1 item visible: toggle to trigger replay of this single card
-      setActiveVideoId(null);
-      setTimeout(() => {
-        setActiveVideoId(visible[0]);
-      }, 50);
-      return;
-    }
-    setActiveVideoId((prevId) => {
-      const currentIndex = visible.indexOf(prevId || "");
-      if (currentIndex === -1) {
-        return visible[0];
-      }
-      const nextIndex = (currentIndex + 1) % visible.length;
-      return visible[nextIndex];
-    });
-  }, []);
-
-  // Video plays in full and advances naturally via onPlaybackFinished.
-  // 15s safety watchdog: only intervenes if a video stream hangs or disconnects.
+  // Sync initial category when modal opens
   useEffect(() => {
-    if (!visible || visibleItemIdsRef.current.length <= 1) return;
-    const watchdog = setTimeout(() => {
-      advanceToNextVideo();
-    }, 15000);
-    return () => clearTimeout(watchdog);
-  }, [activeVideoId, visible, advanceToNextVideo]);
-
-  // Clear active decoders when modal is hidden
-  useEffect(() => {
-    if (!visible) {
-      if (debounceTimerRef.current) {
-        clearTimeout(debounceTimerRef.current);
-      }
-      visibleItemIdsRef.current = [];
-      setActiveVideoId(null);
+    if (visible) {
+      setActiveCategory(initialCategory || "all");
+      setQuery("");
     }
-  }, [visible]);
-
-  const viewabilityConfig = useRef({
-    itemVisiblePercentThreshold: 60,
-    minimumViewTime: 150,
-  }).current;
-
-  const onViewableItemsChanged = useRef(
-    ({ viewableItems }: { viewableItems: any[] }) => {
-      if (debounceTimerRef.current) {
-        clearTimeout(debounceTimerRef.current);
-      }
-      // Debounce video activation so fast scrolling displays instant static posters without churning decoders
-      debounceTimerRef.current = setTimeout(() => {
-        if (!isDraggingRef.current && viewableItems && viewableItems.length > 0) {
-          const ids = viewableItems
-            .map((v: any) => String(v.item?.slug || v.item?.id))
-            .filter(Boolean);
-          visibleItemIdsRef.current = ids;
-          setActiveVideoId((prevId) => {
-            if (prevId && ids.includes(prevId)) return prevId;
-            return ids[0];
-          });
-        }
-      }, 150);
-    }
-  ).current;
+  }, [visible, initialCategory]);
 
   const categories = useMemo(() => {
     const unique = new Map<string, string>();
@@ -153,7 +104,142 @@ export default function TemplateExplorerModal({ visible, onClose, templates, onS
     });
   }, [activeCategory, query, templates]);
 
+  const visibleTemplateIds = useMemo(() => {
+    return visibleTemplates.map((t) => String(t.slug || t.id)).filter(Boolean);
+  }, [visibleTemplates]);
+
+  // Synchronize activeVideoId and visibleItemIdsRef whenever modal opens or filtered items change
+  useEffect(() => {
+    if (visible && visibleTemplateIds.length > 0) {
+      setActiveVideoId((prev) => {
+        if (prev && visibleTemplateIds.includes(prev)) return prev;
+        return visibleTemplateIds[0];
+      });
+      if (
+        visibleItemIdsRef.current.length === 0 ||
+        !visibleItemIdsRef.current.some((id) => visibleTemplateIds.includes(id))
+      ) {
+        visibleItemIdsRef.current = visibleTemplateIds.slice(0, 4);
+      }
+    }
+  }, [visible, visibleTemplateIds]);
+
+  // Advance to the next visible card in continuous round-robin loop
+  const advanceToNextVideo = useCallback(() => {
+    const visible =
+      visibleItemIdsRef.current.length > 0
+        ? visibleItemIdsRef.current
+        : visibleTemplateIds.slice(0, 4);
+    if (!visible || visible.length === 0) return;
+
+    // Stop audio on the card that just finished playing before advancing
+    const currentAudioId = templateAudioCoordinator.getActiveId();
+    if (currentAudioId) {
+      templateAudioCoordinator.stopAudio(currentAudioId);
+    }
+
+    if (visible.length === 1) {
+      // Only 1 item visible: toggle to trigger replay of this single card
+      setActiveVideoId(null);
+      setTimeout(() => {
+        setActiveVideoId(visible[0]);
+      }, 50);
+      return;
+    }
+    setActiveVideoId((prevId) => {
+      const currentIndex = visible.indexOf(prevId || "");
+      if (currentIndex === -1) {
+        return visible[0];
+      }
+      const nextIndex = (currentIndex + 1) % visible.length;
+      return visible[nextIndex];
+    });
+  }, [visibleTemplateIds]);
+
+  // Video plays in full and advances naturally via onPlaybackFinished.
+  // 15s safety watchdog: only intervenes if a video stream hangs or disconnects.
+  useEffect(() => {
+    const available =
+      visibleItemIdsRef.current.length > 0
+        ? visibleItemIdsRef.current
+        : visibleTemplateIds.slice(0, 4);
+    if (!visible || available.length <= 1) return;
+    const watchdog = setTimeout(() => {
+      advanceToNextVideo();
+    }, 15000);
+    return () => clearTimeout(watchdog);
+  }, [activeVideoId, visible, visibleTemplateIds, advanceToNextVideo]);
+
+  // Clear active decoders and stop audio when modal is hidden
+  useEffect(() => {
+    if (!visible) {
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current);
+      }
+      visibleItemIdsRef.current = [];
+      setActiveVideoId(null);
+      templateAudioCoordinator.stopAudio();
+    }
+  }, [visible]);
+
+  const viewabilityConfig = useRef({
+    itemVisiblePercentThreshold: 30,
+    waitForInteraction: false,
+  }).current;
+
+  const onViewableItemsChanged = useRef(
+    ({ viewableItems }: { viewableItems: any[] }) => {
+      if (viewableItems && viewableItems.length > 0) {
+        const ids = viewableItems
+          .map((v: any) => String(v.item?.slug || v.item?.id))
+          .filter(Boolean);
+        if (ids.length > 0) {
+          visibleItemIdsRef.current = ids;
+        }
+
+        // Stop template audio immediately if the playing card is scrolled out of view
+        const activeAudioId = templateAudioCoordinator.getActiveId();
+        if (activeAudioId && !ids.includes(activeAudioId)) {
+          templateAudioCoordinator.stopAudio(activeAudioId);
+        }
+      }
+
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current);
+      }
+      // Debounce video activation during rapid continuous scrolling to prevent decoder thrashing
+      debounceTimerRef.current = setTimeout(() => {
+        const ids = visibleItemIdsRef.current;
+        if (ids.length > 0) {
+          const activeAudioId = templateAudioCoordinator.getActiveId();
+          setActiveVideoId((prevId) => {
+            if (activeAudioId && ids.includes(activeAudioId)) return activeAudioId;
+            if (prevId && ids.includes(prevId)) return prevId;
+            return ids[0];
+          });
+        }
+      }, 120);
+    }
+  ).current;
+
+  useEffect(() => {
+    if (!query.trim()) return;
+    const timer = setTimeout(() => {
+      trackSearch({
+        search_term: query.trim(),
+        search_type: "templates",
+        results_count: visibleTemplates.length,
+      });
+    }, 600);
+    return () => clearTimeout(timer);
+  }, [query, visibleTemplates.length]);
+
   const selectTemplate = (template: any) => {
+    trackViewContent({
+      template_name: template.name || template.slug || template.id,
+      category: template.category || activeCategory || "All",
+    });
+    templateAudioCoordinator.stopAudio();
     onClose();
     onSelect(template.slug || template.id);
   };
@@ -230,7 +316,7 @@ export default function TemplateExplorerModal({ visible, onClose, templates, onS
             initialNumToRender={6}
             maxToRenderPerBatch={4}
             windowSize={5}
-            removeClippedSubviews={Platform.OS === "android"}
+            removeClippedSubviews={false}
             viewabilityConfig={viewabilityConfig}
             onViewableItemsChanged={onViewableItemsChanged}
             onScrollBeginDrag={() => {
@@ -238,25 +324,34 @@ export default function TemplateExplorerModal({ visible, onClose, templates, onS
             }}
             onScrollEndDrag={() => {
               isDraggingRef.current = false;
+              const ids = visibleItemIdsRef.current;
+              if (ids.length > 0) {
+                setActiveVideoId((prev) => (prev && ids.includes(prev) ? prev : ids[0]));
+              }
             }}
             onMomentumScrollEnd={() => {
               isDraggingRef.current = false;
+              const ids = visibleItemIdsRef.current;
+              if (ids.length > 0) {
+                setActiveVideoId((prev) => (prev && ids.includes(prev) ? prev : ids[0]));
+              }
             }}
             renderItem={({ item }) => {
               const itemId = String(item.slug || item.id);
+              const videoUrl = item.videoUrl || item.videourl || item.video_url || null;
+              const thumbnailUrl = item.thumbnailUrl || item.thumbnailurl || item.thumbnail_url || null;
               return (
-                <TouchableOpacity
-                  activeOpacity={0.86}
-                  onPress={() => selectTemplate(item)}
-                  style={[styles.card, { width: cardWidth }]}
-                >
+                <View style={[styles.card, { width: cardWidth }]}>
                   <View style={[styles.imageWrap, { height: cardWidth * 1.25 }]}>
                     <AnimatedTemplateThumb
-                      videoUrl={item.videoUrl ? formatImageUrl(item.videoUrl) : null}
-                      thumbnailUrl={item.thumbnailUrl ? formatImageUrl(item.thumbnailUrl) : null}
+                      id={itemId}
+                      hasAudio={Boolean(item.hasAudio || item.hasaudio || checkIsAudioTemplate(item) || itemId === "mic-drop-rap" || itemId === "groove-duo")}
+                      videoUrl={videoUrl ? formatImageUrl(videoUrl) : null}
+                      thumbnailUrl={thumbnailUrl ? formatImageUrl(thumbnailUrl) : null}
                       image={item.image || null}
                       autoPlay={activeVideoId === itemId}
                       onPlaybackFinished={activeVideoId === itemId ? advanceToNextVideo : undefined}
+                      onPressCard={() => selectTemplate(item)}
                       style={styles.image}
                     />
                     {!!item.category && (() => {
@@ -266,19 +361,23 @@ export default function TemplateExplorerModal({ visible, onClose, templates, onS
                         ? (cats.find(c => c.toLowerCase() !== "viral" && c.toLowerCase() !== "trending") || cats[0])
                         : cats[0];
                       return displayCat ? (
-                        <View style={styles.categoryBadgeWrap}>
+                        <View style={styles.categoryBadgeWrap} pointerEvents="none">
                           <Text style={styles.categoryBadgeText}>{displayCat}</Text>
                         </View>
                       ) : null;
                     })()}
                   </View>
-                  <View style={styles.cardFooter}>
+                  <TouchableOpacity
+                    style={styles.cardFooter}
+                    onPress={() => selectTemplate(item)}
+                    activeOpacity={0.8}
+                  >
                     <Text numberOfLines={1} style={styles.cardTitle}>
                       {item.name || "AI Template"}
                     </Text>
                     <Text style={styles.arrow}>›</Text>
-                  </View>
-                </TouchableOpacity>
+                  </TouchableOpacity>
+                </View>
               );
             }}
             ListEmptyComponent={

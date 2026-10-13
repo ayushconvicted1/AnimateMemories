@@ -65,11 +65,16 @@ export default function GeneratingModal({
   const ringAnim = useRef(new Animated.Value(0)).current;
   const shimmerAnim = useRef(new Animated.Value(0)).current;
 
-  const [simulatedProgress, setSimulatedProgress] = useState(0);
+  const [displayProgress, setDisplayProgress] = useState(0);
   const [elapsed, setElapsed] = useState(0);
   const [tipIndex, setTipIndex] = useState(0);
 
-  const hasRealProgress = typeof progress === "number";
+  // Sync with real progress if reported by backend (always moving forward, never backwards)
+  useEffect(() => {
+    if (typeof progress === "number" && progress > 0) {
+      setDisplayProgress((prev) => Math.max(prev, progress));
+    }
+  }, [progress]);
 
   useEffect(() => {
     if (!visible) {
@@ -79,7 +84,8 @@ export default function GeneratingModal({
       return;
     }
 
-    setSimulatedProgress(0);
+    const initial = typeof progress === "number" && progress > 2 ? progress : 3;
+    setDisplayProgress(initial);
     setElapsed(0);
     setTipIndex(0);
     scanAnim.setValue(0);
@@ -92,41 +98,33 @@ export default function GeneratingModal({
     Animated.loop(
       Animated.timing(ringAnim, { toValue: 1, duration: 3200, useNativeDriver: true })
     ).start();
+    // 100% native driver for 60fps shimmer on UI thread without blocking JS thread
     Animated.loop(
-      Animated.timing(shimmerAnim, { toValue: 1, duration: 1600, useNativeDriver: false })
+      Animated.timing(shimmerAnim, { toValue: 1, duration: 1600, useNativeDriver: true })
     ).start();
 
-    // Realistic Replicate duration baseline: ~70s for video generation, ~15s for image restoration
-    const expectedDuration = tool === "animate" ? 70 : 15;
-
+    // Ticker to smoothly advance progress without freezing or starving the JS thread
     const ticker = setInterval(() => {
-      setElapsed((prevElapsed) => {
-        const nextElapsed = prevElapsed + 1;
+      setElapsed((prevElapsed) => prevElapsed + 1);
 
-        if (!hasRealProgress) {
-          setSimulatedProgress(() => {
-            const ratio = nextElapsed / expectedDuration;
-            let targetPct = 0;
+      setDisplayProgress((prev) => {
+        // If external progress has completed, lock to 100
+        if (progress === 100 || prev >= 100) return 100;
 
-            if (ratio <= 0.15) {
-              // 0% -> 15% (Initial warm up / upload)
-              targetPct = (ratio / 0.15) * 15;
-            } else if (ratio <= 0.6) {
-              // 15% -> 62% (Active generation)
-              targetPct = 15 + ((ratio - 0.15) / 0.45) * 47;
-            } else if (ratio <= 1.0) {
-              // 62% -> 92% (Final frame synthesis)
-              targetPct = 62 + ((ratio - 0.6) / 0.4) * 30;
-            } else {
-              // Gentle overtime creep up to 98%
-              const overtime = nextElapsed - expectedDuration;
-              targetPct = 92 + Math.min(6, (overtime / 30) * 6);
-            }
-
-            return Math.min(98, Math.max(1, Math.round(targetPct)));
-          });
+        // If backend gave a higher progress, use that as floor
+        const floor = typeof progress === "number" && progress > prev ? progress : prev;
+        if (floor >= 97) {
+          return Math.min(98.5, floor + 0.1);
         }
-        return nextElapsed;
+
+        // Tool-aware asymptotic curve:
+        // Video generation ("animate") typically takes 50-80s, so smooth 0.035 rate ensures continuous, steady progress.
+        // Image tools ("restore", "enhance") take ~10-15s, so 0.08 rate gives snappy feedback.
+        const rate = tool === "animate" ? 0.035 : 0.08;
+        const minIncrement = tool === "animate" ? 0.2 : 0.4;
+        const remaining = 97 - floor;
+        const increment = Math.max(minIncrement, remaining * rate);
+        return Math.min(97, Math.round((floor + increment) * 10) / 10);
       });
     }, 1000);
 
@@ -136,11 +134,11 @@ export default function GeneratingModal({
       clearInterval(ticker);
       clearInterval(tipTimer);
     };
-  }, [visible, hasRealProgress, tool, scanAnim, ringAnim, shimmerAnim]);
+  }, [visible, tool, scanAnim, ringAnim, shimmerAnim]);
 
   const pct = Math.min(
     100,
-    Math.max(0, Math.round(hasRealProgress ? progress : simulatedProgress))
+    Math.max(1, Math.round(progress === 100 ? 100 : displayProgress))
   );
   let activePhase = PHASES[0];
   for (const phase of PHASES) {
@@ -156,9 +154,9 @@ export default function GeneratingModal({
     inputRange: [0, 1],
     outputRange: ["0deg", "360deg"],
   });
-  const shimmerLeft = shimmerAnim.interpolate({
+  const shimmerTranslateX = shimmerAnim.interpolate({
     inputRange: [0, 1],
-    outputRange: ["-60%", "100%"],
+    outputRange: [-180, 280],
   });
 
   return (
@@ -223,7 +221,12 @@ export default function GeneratingModal({
                   end={{ x: 1, y: 0 }}
                   style={[styles.fill, { width: `${pct}%` }]}
                 />
-                <Animated.View style={[styles.shimmer, { left: shimmerLeft }]}>
+                <Animated.View
+                  style={[
+                    styles.shimmer,
+                    { transform: [{ translateX: shimmerTranslateX }] },
+                  ]}
+                >
                   <LinearGradient
                     colors={["rgba(255,255,255,0)", "rgba(255,255,255,0.5)", "rgba(255,255,255,0)"]}
                     style={StyleSheet.absoluteFill}

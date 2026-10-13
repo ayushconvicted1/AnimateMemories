@@ -5,6 +5,7 @@ import { router } from "expo-router";
 import { getFontFamily } from "@/constants/Fonts";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { PendingAction } from "@/contexts/AuthGateContext";
+import { trackLogin } from "@/services/tracking";
 
 const PENDING_ACTION_STORAGE_KEY = "@auth_pending_action";
 
@@ -17,6 +18,7 @@ export default function AuthCallback() {
 
     if (isSignedIn) {
       setHasRedirected(true);
+      trackLogin("oauth");
 
       (async () => {
         try {

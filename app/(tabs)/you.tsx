@@ -31,6 +31,7 @@ import SkeletonLoader from "@/components/ui/SkeletonLoader";
 import { api } from "@/services/api";
 import SearchGradient from "@/components/reusable/SearchGradient";
 import { getFontFamily } from "@/constants/Fonts";
+import { trackUploadFailed } from "@/services/tracking";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 const CONTENT_WIDTH = SCREEN_WIDTH - 32;
@@ -275,21 +276,6 @@ export default function YouScreen() {
     }
   };
 
-  const requestImagePermission = async () => {
-    if (Platform.OS !== "web") {
-      const { status } =
-        await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (status !== "granted") {
-        Alert.alert(
-          "Permission needed",
-          "Please grant camera roll permissions to upload images."
-        );
-        return false;
-      }
-    }
-    return true;
-  };
-
   const requestCameraPermission = async () => {
     if (Platform.OS !== "web") {
       const { status } = await ImagePicker.requestCameraPermissionsAsync();
@@ -340,6 +326,12 @@ export default function YouScreen() {
       if (!result.canceled && result.assets && result.assets[0]) {
         const asset = result.assets[0];
         if (asset.fileSize && asset.fileSize > 20 * 1024 * 1024) {
+          trackUploadFailed({
+            error_type: "FILE_TOO_LARGE",
+            error_message: "Profile image size exceeds 20MB limit",
+            file_size_mb: asset.fileSize / (1024 * 1024),
+            mode: "profile",
+          });
           Alert.alert(
             "File Too Large",
             "The selected image exceeds the maximum allowed size of 20MB. Please choose a smaller image."
@@ -350,6 +342,11 @@ export default function YouScreen() {
       }
     } catch (error: any) {
       console.error("Error opening camera:", error);
+      trackUploadFailed({
+        error_type: "CAMERA_PICK_ERROR",
+        error_message: error?.message || "Failed to open camera",
+        mode: "profile",
+      });
       Alert.alert(
         "Error",
         error.message || "Failed to open camera. Please try again."
@@ -359,8 +356,6 @@ export default function YouScreen() {
 
   const openGallery = async () => {
     try {
-      const hasPermission = await requestImagePermission();
-      if (!hasPermission) return;
 
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
@@ -372,6 +367,12 @@ export default function YouScreen() {
       if (!result.canceled && result.assets && result.assets[0]) {
         const asset = result.assets[0];
         if (asset.fileSize && asset.fileSize > 20 * 1024 * 1024) {
+          trackUploadFailed({
+            error_type: "FILE_TOO_LARGE",
+            error_message: "Profile image size exceeds 20MB limit",
+            file_size_mb: asset.fileSize / (1024 * 1024),
+            mode: "profile",
+          });
           Alert.alert(
             "File Too Large",
             "The selected image exceeds the maximum allowed size of 20MB. Please choose a smaller image."
@@ -382,6 +383,11 @@ export default function YouScreen() {
       }
     } catch (error: any) {
       console.error("Error opening gallery:", error);
+      trackUploadFailed({
+        error_type: "GALLERY_PICK_ERROR",
+        error_message: error?.message || "Failed to open gallery",
+        mode: "profile",
+      });
       Alert.alert(
         "Error",
         error.message || "Failed to open gallery. Please try again."

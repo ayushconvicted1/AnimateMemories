@@ -11,8 +11,9 @@ import {
 } from "react-native";
 import { Image } from "expo-image";
 import { LinearGradient } from "expo-linear-gradient";
-import { router } from "expo-router";
+import { router, useFocusEffect } from "expo-router";
 import { useEffect, useState, useCallback, useRef, memo, useMemo } from "react";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as ImagePicker from "expo-image-picker";
 import { GradientText } from "@/components/ui/GradientText";
 import ScreenWrapper from "@/components/ui/ScreenWrapper";
@@ -29,6 +30,19 @@ import StarIcon from "@/components/images/StarIcon";
 import TemplateExplorerModal from "@/components/ui/TemplateExplorerModal";
 import AnimatedTemplateThumb from "@/components/ui/AnimatedTemplateThumb";
 import ChevronLeftIcon from "@/components/images/ChevronLeftIcon";
+import {
+  templateAudioCoordinator,
+  isAudioTemplate as checkIsAudioTemplate,
+} from "@/services/templateAudioCoordinator";
+import {
+  trackFreeCreditsGranted,
+  trackUploadFailed,
+  trackViewContent,
+} from "@/services/tracking";
+import {
+  FALLBACK_TEMPLATES,
+  FALLBACK_CATEGORIES,
+} from "@/constants/defaultPresets";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 const CONTENT_WIDTH = SCREEN_WIDTH - 32;
@@ -46,21 +60,21 @@ const formatImageUrl = (url?: string | null) => {
     formatted.startsWith("data:")
   ) {
     try {
-      return encodeURI(formatted);
+      return encodeURI(decodeURI(formatted));
     } catch {
       return formatted;
     }
   }
   const full = `${API_BASE_URL}${formatted.startsWith("/") ? "" : "/"}${formatted}`;
   try {
-    return encodeURI(full);
+    return encodeURI(decodeURI(full));
   } catch {
     return full;
   }
 };
 
 const DEFAULT_CATEGORIES = [
-  "Trending",
+  "Viral",
   "Family",
   "Funny",
   "Birthday",
@@ -73,6 +87,39 @@ const DEFAULT_CATEGORIES = [
 ];
 
 const DEFAULT_TEMPLATES = [
+  {
+    id: "groove-duo",
+    slug: "groove-duo",
+    name: "Groove Duo",
+    image: { uri: "https://pub-b01a35ccbe054425bacd868be6412477.r2.dev/templates/groove-duo.webp" },
+    thumbnailUrl: "https://pub-b01a35ccbe054425bacd868be6412477.r2.dev/templates/groove-duo.webp",
+    videoUrl: "https://pub-b01a35ccbe054425bacd868be6412477.r2.dev/templates/groove-duo.mp4",
+    isStar: true,
+    category: "Viral, Funny",
+    hasAudio: true,
+  },
+  {
+    id: "mic-drop-rap",
+    slug: "mic-drop-rap",
+    name: "Mic Drop Rap",
+    image: { uri: "https://pub-b01a35ccbe054425bacd868be6412477.r2.dev/templates/mic-drop-rap.webp" },
+    thumbnailUrl: "/templates/mic-drop-rap.webp",
+    videoUrl: "https://pub-b01a35ccbe054425bacd868be6412477.r2.dev/templates/mic-drop-rap.mp4",
+    isStar: true,
+    category: "Viral",
+    hasAudio: true,
+  },
+  {
+    id: "baby-dance",
+    slug: "baby-dance",
+    name: "Baby Dance",
+    image: { uri: "https://pub-b01a35ccbe054425bacd868be6412477.r2.dev/templates/baby-dance.webp" },
+    thumbnailUrl: "https://pub-b01a35ccbe054425bacd868be6412477.r2.dev/templates/baby-dance.webp",
+    videoUrl: "https://pub-b01a35ccbe054425bacd868be6412477.r2.dev/templates/baby-dance.mp4",
+    isStar: false,
+    category: "Kids, Viral",
+    hasAudio: false,
+  },
   {
     id: "family-photo-pose",
     slug: "family-photo-pose",
@@ -131,7 +178,7 @@ const DEFAULT_TEMPLATES = [
     thumbnailUrl: "/templates/Salute.jpeg",
     videoUrl: "https://pub-b01a35ccbe054425bacd868be6412477.r2.dev/templates/salute.mp4",
     isStar: true,
-    category: "Trending"
+    category: "Viral"
   },
 ];
 
@@ -139,41 +186,47 @@ const TemplateCard = memo(
   ({
     item,
     onSelect,
-    autoPlay,
+    isActive,
+    isPaused,
     onPlaybackFinished,
   }: {
     item: any;
     onSelect: (id: string) => void;
-    autoPlay?: boolean;
+    isActive?: boolean;
+    isPaused?: boolean;
     onPlaybackFinished?: () => void;
   }) => {
-    const id = item.slug || item.id;
+    const id = String(item.slug || item.id);
+    const videoUrl = item.videoUrl || item.videourl || item.video_url || null;
+    const thumbnailUrl = item.thumbnailUrl || item.thumbnailurl || item.thumbnail_url || null;
 
     return (
-      <TouchableOpacity
-        style={styles.templateCard}
-        onPress={() => onSelect(id)}
-        activeOpacity={0.85}
-      >
+      <View style={styles.templateCard}>
         <View style={styles.templateImageContainer}>
           <AnimatedTemplateThumb
-            videoUrl={item.videoUrl ? formatImageUrl(item.videoUrl) : null}
-            thumbnailUrl={item.thumbnailUrl ? formatImageUrl(item.thumbnailUrl) : null}
+            id={id}
+            hasAudio={Boolean(item.hasAudio || item.hasaudio || checkIsAudioTemplate(item) || id === "mic-drop-rap" || id === "groove-duo")}
+            videoUrl={videoUrl ? formatImageUrl(videoUrl) : null}
+            thumbnailUrl={thumbnailUrl ? formatImageUrl(thumbnailUrl) : null}
             image={item.image || null}
-            autoPlay={autoPlay}
+            autoPlay={isActive}
+            isPaused={isPaused}
             onPlaybackFinished={onPlaybackFinished}
+            onPressCard={() => onSelect(id)}
             style={styles.templateImage}
           />
           {(item.isStar || item.isFeatured || item.is_featured) && (
-            <View style={styles.starBadgeContainer}>
+            <View style={styles.starBadgeContainer} pointerEvents="none">
               <StarIcon width={11} height={11} color="#F59E0B" />
             </View>
           )}
         </View>
-        <Text style={styles.templateName} numberOfLines={1} ellipsizeMode="tail">
-          {item.name}
-        </Text>
-      </TouchableOpacity>
+        <TouchableOpacity onPress={() => onSelect(id)} activeOpacity={0.8}>
+          <Text style={styles.templateName} numberOfLines={1} ellipsizeMode="tail">
+            {item.name}
+          </Text>
+        </TouchableOpacity>
+      </View>
     );
   }
 );
@@ -182,66 +235,74 @@ TemplateCard.displayName = "TemplateCard";
 interface HomeTemplatesCarouselProps {
   templates: any[];
   onSelect: (id: string) => void;
+  isSectionVisible?: boolean;
 }
 
+const TEMPLATE_CARD_WIDTH = 116;
+const TEMPLATE_CARD_MARGIN = 12;
 const TEMPLATE_ITEM_PITCH = 128; // 116 card width + 12 right margin
+const TEMPLATE_LIST_PADDING = 16;
+
+const hasPlayableVideo = (item: any) => {
+  if (!item) return false;
+  const url = item.videoUrl || item.videourl || item.video_url;
+  return Boolean(url && typeof url === "string" && url.trim().length > 0);
+};
+
+const getVisibleIndicesInViewport = (offsetX: number, total: number) => {
+  if (total === 0) return [];
+  const vpLeft = Math.max(0, offsetX);
+  const vpRight = vpLeft + SCREEN_WIDTH;
+  const visible: number[] = [];
+
+  for (let i = 0; i < total; i++) {
+    const cardLeft = TEMPLATE_LIST_PADDING + i * TEMPLATE_ITEM_PITCH;
+    const cardRight = cardLeft + TEMPLATE_CARD_WIDTH;
+
+    // Calculate overlap with viewport [vpLeft, vpRight]
+    const overlapLeft = Math.max(cardLeft, vpLeft);
+    const overlapRight = Math.min(cardRight, vpRight);
+    const overlapWidth = Math.max(0, overlapRight - overlapLeft);
+
+    // Consider card visible if at least 45px (out of 116px, ~40%) is visible on screen
+    if (overlapWidth >= 45) {
+      visible.push(i);
+    }
+  }
+
+  // Fallback if no card met the threshold (e.g. extreme scroll boundary)
+  if (visible.length === 0) {
+    const fallbackIdx = Math.min(
+      total - 1,
+      Math.max(0, Math.round((vpLeft - TEMPLATE_LIST_PADDING) / TEMPLATE_ITEM_PITCH))
+    );
+    return [fallbackIdx];
+  }
+
+  return visible;
+};
+
+const getVisibleVideoIndices = (offsetX: number, items: any[]): number[] => {
+  if (!items || items.length === 0) return [];
+  const visibleAll = getVisibleIndicesInViewport(offsetX, items.length);
+  const withVideo = visibleAll.filter((i) => hasPlayableVideo(items[i]));
+  return withVideo.length > 0 ? withVideo : visibleAll;
+};
 
 const HomeTemplatesCarousel = memo(
-  ({ templates, onSelect }: HomeTemplatesCarouselProps) => {
+  ({ templates, onSelect, isSectionVisible = true }: HomeTemplatesCarouselProps) => {
     const listRef = useRef<FlatList>(null);
     const scrollXRef = useRef(0);
+    const isScrollingRef = useRef(false);
+    const isUserDraggingRef = useRef(false);
+    const isMomentumRef = useRef(false);
+    const settleTimerRef = useRef<any>(null);
+    const prevTemplateIdsRef = useRef<string>("");
+
+    const [isPaused, setIsPaused] = useState(false);
+    const [activeIndex, setActiveIndex] = useState(0);
     const [canScrollLeft, setCanScrollLeft] = useState(false);
     const [canScrollRight, setCanScrollRight] = useState(true);
-    const visibleIdsRef = useRef<string[]>([]);
-    const [activeVideoId, setActiveVideoId] = useState<string | null>(() => {
-      if (templates.length > 0) {
-        return String(templates[0].slug || templates[0].id);
-      }
-      return null;
-    });
-    const isScrollingRef = useRef(false);
-
-    useEffect(() => {
-      if (templates.length > 0 && !activeVideoId) {
-        const id = String(templates[0].slug || templates[0].id);
-        setActiveVideoId(id);
-        if (!visibleIdsRef.current.includes(id)) {
-          visibleIdsRef.current = [id];
-        }
-      }
-    }, [templates, activeVideoId]);
-
-    // Advance to next visible card in continuous round-robin loop
-    const advanceToNextVideo = useCallback(() => {
-      const visible = visibleIdsRef.current;
-      if (!visible || visible.length === 0) return;
-      if (visible.length === 1) {
-        // Only 1 item visible: toggle to trigger replay of this single card
-        setActiveVideoId(null);
-        setTimeout(() => {
-          setActiveVideoId(visible[0]);
-        }, 50);
-        return;
-      }
-      setActiveVideoId((prevId) => {
-        const currentIndex = visible.indexOf(prevId || "");
-        if (currentIndex === -1) {
-          return visible[0];
-        }
-        const nextIndex = (currentIndex + 1) % visible.length;
-        return visible[nextIndex];
-      });
-    }, []);
-
-    // Video plays in full and advances naturally via onPlaybackFinished.
-    // 15s safety watchdog: only intervenes if a video stream hangs or disconnects.
-    useEffect(() => {
-      if (visibleIdsRef.current.length <= 1) return;
-      const watchdog = setTimeout(() => {
-        advanceToNextVideo();
-      }, 15000);
-      return () => clearTimeout(watchdog);
-    }, [activeVideoId, advanceToNextVideo]);
 
     const updateArrows = useCallback(
       (offsetX: number) => {
@@ -255,59 +316,248 @@ const HomeTemplatesCarousel = memo(
       [templates.length]
     );
 
+    // Initial mount and when templates genuinely change (e.g. category filter switched):
+    // Only reset active index & scroll position if the templates collection actually changes!
+    useEffect(() => {
+      const currentIds = (templates || []).map((t: any) => t.slug || t.id).join(",");
+      if (prevTemplateIdsRef.current === currentIds) {
+        return;
+      }
+      prevTemplateIdsRef.current = currentIds;
+
+      if (settleTimerRef.current) {
+        clearTimeout(settleTimerRef.current);
+        settleTimerRef.current = null;
+      }
+      scrollXRef.current = 0;
+      isScrollingRef.current = false;
+      isUserDraggingRef.current = false;
+      isMomentumRef.current = false;
+
+      const initialVideos = getVisibleVideoIndices(0, templates);
+      const firstIdx = initialVideos[0] ?? 0;
+      setActiveIndex(firstIdx);
+      setIsPaused(false);
+      listRef.current?.scrollToOffset({ offset: 0, animated: false });
+      updateArrows(0);
+    }, [templates, updateArrows]);
+
+    // Cleanup settle timer on unmount
+    useEffect(() => {
+      return () => {
+        if (settleTimerRef.current) {
+          clearTimeout(settleTimerRef.current);
+        }
+      };
+    }, []);
+
+    // Advance to next video in current viewport in a continuous loop:
+    // Leftmost video plays until fully complete -> then 2nd -> then 3rd -> loops back to 1st!
+    const advanceToNext = useCallback(() => {
+      if (
+        isScrollingRef.current ||
+        isUserDraggingRef.current ||
+        isMomentumRef.current ||
+        !templates ||
+        templates.length === 0
+      ) {
+        return;
+      }
+
+      const currentAudioId = templateAudioCoordinator.getActiveId();
+      if (currentAudioId) {
+        templateAudioCoordinator.stopAudio(currentAudioId);
+      }
+
+      const currentOffset = scrollXRef.current;
+      const visibleVideos = getVisibleVideoIndices(currentOffset, templates);
+      if (visibleVideos.length === 0) return;
+
+      if (visibleVideos.length <= 1) {
+        // Only 1 video in viewport: momentarily toggle activeIndex to replay it smoothly
+        const soleIndex = visibleVideos[0] ?? 0;
+        setActiveIndex(-1);
+        setTimeout(() => {
+          if (!isScrollingRef.current && !isUserDraggingRef.current && !isMomentumRef.current) {
+            setActiveIndex(soleIndex);
+          }
+        }, 60);
+        return;
+      }
+
+      setActiveIndex((prev) => {
+        const currentPos = visibleVideos.indexOf(prev);
+        if (currentPos === -1 || currentPos >= visibleVideos.length - 1) {
+          // Loop back to the first (leftmost) video in the current viewport!
+          return visibleVideos[0];
+        }
+        // Advance to the next video in the viewport
+        return visibleVideos[currentPos + 1];
+      });
+    }, [templates]);
+
+    // Safety watchdog: auto-advance if video is stuck buffering
+    useEffect(() => {
+      if (
+        isPaused ||
+        !templates ||
+        templates.length === 0 ||
+        !isSectionVisible ||
+        isScrollingRef.current ||
+        isUserDraggingRef.current ||
+        isMomentumRef.current
+      ) {
+        return;
+      }
+      const currentItem = templates[activeIndex];
+      const hasVid = hasPlayableVideo(currentItem);
+      const timeoutMs = hasVid ? 14000 : 2500;
+      const watchdog = setTimeout(() => {
+        if (
+          !isPaused &&
+          !isScrollingRef.current &&
+          !isUserDraggingRef.current &&
+          !isMomentumRef.current
+        ) {
+          advanceToNext();
+        }
+      }, timeoutMs);
+      return () => clearTimeout(watchdog);
+    }, [activeIndex, isPaused, templates, advanceToNext, isSectionVisible]);
+
+    // 1-second settle timer: when horizontal scrolling stops, wait 1 second,
+    // determine newly visible viewport videos, and start playing the 1st video in that viewport.
+    const scheduleSettleTimer = useCallback(
+      (offsetX: number) => {
+        if (settleTimerRef.current) {
+          clearTimeout(settleTimerRef.current);
+        }
+        settleTimerRef.current = setTimeout(() => {
+          isScrollingRef.current = false;
+          isUserDraggingRef.current = false;
+          isMomentumRef.current = false;
+
+          const currentOffset = scrollXRef.current;
+          const newVisible = getVisibleVideoIndices(currentOffset, templates);
+          const firstVideoIdx = newVisible[0] ?? 0;
+
+          // Start playing the 1st video in the newly settled viewport
+          setActiveIndex(firstVideoIdx);
+          setIsPaused(false);
+        }, 1000);
+      },
+      [templates]
+    );
+
+    const handleScrollStart = useCallback(() => {
+      isScrollingRef.current = true;
+      setIsPaused(true);
+      templateAudioCoordinator.stopAudio();
+      if (settleTimerRef.current) {
+        clearTimeout(settleTimerRef.current);
+        settleTimerRef.current = null;
+      }
+    }, []);
+
+    // Passive scroll handler: updates offset and arrows, does NOT pause on passive layout passes
+    const handleScroll = useCallback(
+      (e: any) => {
+        const offsetX = Math.max(0, e.nativeEvent.contentOffset.x);
+        scrollXRef.current = offsetX;
+        updateArrows(offsetX);
+
+        // If user is actively dragging, keep resetting the settle timer until dragging stops
+        if (isUserDraggingRef.current || isMomentumRef.current) {
+          if (settleTimerRef.current) {
+            clearTimeout(settleTimerRef.current);
+            settleTimerRef.current = null;
+          }
+        }
+      },
+      [updateArrows]
+    );
+
+    const handleScrollBeginDrag = useCallback(() => {
+      isUserDraggingRef.current = true;
+      handleScrollStart();
+    }, [handleScrollStart]);
+
+    const handleScrollEndDrag = useCallback(
+      (e: any) => {
+        isUserDraggingRef.current = false;
+        const offsetX = Math.max(0, e.nativeEvent.contentOffset.x);
+        scrollXRef.current = offsetX;
+        updateArrows(offsetX);
+
+        // If momentum is not taking over (low velocity finger lift), start 1s settle timer
+        const velocityX = Math.abs(e.nativeEvent.velocity?.x || 0);
+        if (velocityX < 0.1) {
+          scheduleSettleTimer(offsetX);
+        }
+      },
+      [updateArrows, scheduleSettleTimer]
+    );
+
+    const handleMomentumScrollBegin = useCallback(() => {
+      isMomentumRef.current = true;
+      handleScrollStart();
+    }, [handleScrollStart]);
+
+    const handleMomentumScrollEnd = useCallback(
+      (e: any) => {
+        isMomentumRef.current = false;
+        const offsetX = Math.max(0, e.nativeEvent.contentOffset.x);
+        scrollXRef.current = offsetX;
+        updateArrows(offsetX);
+        scheduleSettleTimer(offsetX);
+      },
+      [updateArrows, scheduleSettleTimer]
+    );
+
     const handleScrollLeft = useCallback(() => {
+      handleScrollStart();
       const nextOffset = Math.max(0, scrollXRef.current - TEMPLATE_ITEM_PITCH * 2);
       listRef.current?.scrollToOffset({ offset: nextOffset, animated: true });
       scrollXRef.current = nextOffset;
       updateArrows(nextOffset);
-    }, [updateArrows]);
+      scheduleSettleTimer(nextOffset);
+    }, [handleScrollStart, updateArrows, scheduleSettleTimer]);
 
     const handleScrollRight = useCallback(() => {
-      const nextOffset = scrollXRef.current + TEMPLATE_ITEM_PITCH * 2;
+      handleScrollStart();
+      const maxScroll = Math.max(
+        0,
+        templates.length * TEMPLATE_ITEM_PITCH - (SCREEN_WIDTH - 32)
+      );
+      const nextOffset = Math.min(maxScroll, scrollXRef.current + TEMPLATE_ITEM_PITCH * 2);
       listRef.current?.scrollToOffset({ offset: nextOffset, animated: true });
       scrollXRef.current = nextOffset;
       updateArrows(nextOffset);
-    }, [updateArrows]);
+      scheduleSettleTimer(nextOffset);
+    }, [templates.length, handleScrollStart, updateArrows, scheduleSettleTimer]);
 
-    const viewabilityConfig = useRef({
-      itemVisiblePercentThreshold: 50,
-    }).current;
-
-    const onViewableItemsChanged = useRef(
-      ({ viewableItems }: { viewableItems: any[] }) => {
-        if (viewableItems && viewableItems.length > 0) {
-          const ids = viewableItems
-            .map((v: any) => String(v.item?.slug || v.item?.id))
-            .filter(Boolean);
-          visibleIdsRef.current = ids;
-          setActiveVideoId((prevId) => {
-            if (prevId && ids.includes(prevId)) return prevId;
-            return ids[0];
-          });
-        }
-      }
-    ).current;
+    const effectivePaused = isPaused || !isSectionVisible;
 
     const renderItem = useCallback(
-      ({ item }: { item: any }) => {
-        const id = String(item.slug || item.id);
-        const isCurrentActive = activeVideoId === id;
+      ({ item, index }: { item: any; index: number }) => {
+        const isCurrentActive = activeIndex === index;
         return (
           <TemplateCard
             item={item}
             onSelect={onSelect}
-            autoPlay={isCurrentActive}
-            onPlaybackFinished={isCurrentActive ? advanceToNextVideo : undefined}
+            isActive={isCurrentActive}
+            isPaused={effectivePaused}
+            onPlaybackFinished={isCurrentActive ? advanceToNext : undefined}
           />
         );
       },
-      [onSelect, activeVideoId, advanceToNextVideo]
+      [activeIndex, effectivePaused, onSelect, advanceToNext]
     );
 
     const getItemLayout = useCallback(
       (_: any, index: number) => ({
         length: TEMPLATE_ITEM_PITCH,
-        offset: TEMPLATE_ITEM_PITCH * index,
+        offset: TEMPLATE_LIST_PADDING + TEMPLATE_ITEM_PITCH * index,
         index,
       }),
       []
@@ -320,31 +570,25 @@ const HomeTemplatesCarousel = memo(
           horizontal
           data={templates}
           renderItem={renderItem}
-          keyExtractor={(item, index) => item.slug || item.id || `tpl-${index}`}
+          extraData={`${activeIndex}-${effectivePaused}-${templates.length}`}
+          keyExtractor={(item, index) =>
+            item.slug || item.id ? `${item.slug || item.id}-${index}` : `tpl-${index}`
+          }
           getItemLayout={getItemLayout}
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={{ paddingLeft: 16, paddingRight: 16 }}
-          initialNumToRender={4}
-          maxToRenderPerBatch={4}
-          windowSize={3}
+          initialNumToRender={5}
+          maxToRenderPerBatch={5}
+          windowSize={7}
           nestedScrollEnabled={true}
           overScrollMode="never"
-          removeClippedSubviews={Platform.OS === "android"}
-          viewabilityConfig={viewabilityConfig}
-          onViewableItemsChanged={onViewableItemsChanged}
-          onScrollBeginDrag={() => {
-            isScrollingRef.current = true;
-          }}
-          onScrollEndDrag={(e) => {
-            isScrollingRef.current = false;
-            scrollXRef.current = e.nativeEvent.contentOffset.x;
-            updateArrows(scrollXRef.current);
-          }}
-          onMomentumScrollEnd={(e) => {
-            isScrollingRef.current = false;
-            scrollXRef.current = e.nativeEvent.contentOffset.x;
-            updateArrows(scrollXRef.current);
-          }}
+          removeClippedSubviews={false}
+          scrollEventThrottle={16}
+          onScroll={handleScroll}
+          onScrollBeginDrag={handleScrollBeginDrag}
+          onScrollEndDrag={handleScrollEndDrag}
+          onMomentumScrollBegin={handleMomentumScrollBegin}
+          onMomentumScrollEnd={handleMomentumScrollEnd}
         />
 
         {/* Left Arrow Button */}
@@ -380,39 +624,25 @@ const HomeTemplatesCarousel = memo(
 );
 HomeTemplatesCarousel.displayName = "HomeTemplatesCarousel";
 
-// Step demo videos are always mounted with a poster frame (never an empty
-// tile) and play only while their section is on screen. Playback is driven
-// both by the shouldPlay prop and an explicit playAsync()/pauseAsync() call,
-// because expo-av's shouldPlay alone is unreliable on Android when the
-// visibility changes mid-scroll.
+// Step demo videos are mounted only when in viewport to conserve Android hardware decoders
 const StepVideo = memo(
   ({ source, poster, isVisible }: { source: any; poster: any; isVisible: boolean }) => {
-    const videoRef = useRef<Video>(null);
-
-    useEffect(() => {
-      const video = videoRef.current;
-      if (!video) return;
-      if (isVisible) {
-        video.playAsync().catch(() => {});
-      } else {
-        video.pauseAsync().catch(() => {});
-      }
-    }, [isVisible]);
-
-    return (
+    return isVisible ? (
       <Video
-        ref={videoRef}
         source={source}
         style={styles.stepVideo}
         resizeMode={ResizeMode.COVER}
-        shouldPlay={isVisible}
+        shouldPlay={true}
         isLooping
         isMuted
         useNativeControls={false}
-        usePoster
-        posterSource={poster}
-        posterStyle={{ resizeMode: "cover" }}
         onError={(error) => console.log("Step video failed to load:", error)}
+      />
+    ) : (
+      <Image
+        source={poster}
+        style={styles.stepVideo}
+        contentFit="cover"
       />
     );
   }
@@ -425,29 +655,30 @@ export default function HomeScreen() {
   const { requireAuth } = useAuthGate();
   const [userCredits, setUserCredits] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
-  const [animationTemplates, setAnimationTemplates] = useState<any[]>(DEFAULT_TEMPLATES);
-  const [categoriesList, setCategoriesList] = useState<string[]>(DEFAULT_CATEGORIES);
-  const [selectedCategory, setSelectedCategory] = useState("Trending");
+  const [animationTemplates, setAnimationTemplates] = useState<any[]>(FALLBACK_TEMPLATES);
+  const [categoriesList, setCategoriesList] = useState<string[]>(FALLBACK_CATEGORIES);
+  const [selectedCategory, setSelectedCategory] = useState("Viral");
   const [scrollOffset, setScrollOffset] = useState(0);
   const [isTemplateModalVisible, setTemplateModalVisible] = useState(false);
   const [isHeroVideoReady, setIsHeroVideoReady] = useState(false);
   const heroVideoRef = useRef<Video>(null);
 
   const filteredTemplates = useMemo(() => {
-    if (selectedCategory === "Trending") {
+    const activeLower = (selectedCategory || "Viral").toLowerCase();
+    if (activeLower === "viral" || activeLower === "trending") {
       // Show templates that have "Viral" or "Trending" in their categories
-      const trending = animationTemplates.filter((t) => {
+      const viral = animationTemplates.filter((t) => {
         const catStr = (t.category || t.categoryId || "").toLowerCase();
         const cats = catStr.split(/[\s,]+/).filter(Boolean);
         return cats.includes("viral") || cats.includes("trending");
       });
-      return (trending.length > 0 ? trending : animationTemplates).slice(0, 8);
+      return (viral.length > 0 ? viral : animationTemplates).slice(0, 8);
     }
     const filtered = animationTemplates.filter((t) => {
       const catStr = (t.category || t.categoryId || "").toLowerCase();
       // Split comma-separated categories (e.g., "Viral, Birthday")
       const cats = catStr.split(/[\s,]+/).filter(Boolean);
-      return cats.includes(selectedCategory.toLowerCase());
+      return cats.includes(activeLower);
     });
     // Fallback to all if category has no templates, capped to 8
     return (filtered.length > 0 ? filtered : animationTemplates).slice(0, 8);
@@ -473,6 +704,14 @@ export default function HomeScreen() {
     }
   }, [isHeroVisible]);
 
+  useFocusEffect(
+    useCallback(() => {
+      return () => {
+        templateAudioCoordinator.stopAudio();
+      };
+    }, [])
+  );
+
   useEffect(() => {
     const fetchUserCredits = async () => {
       if (!user) {
@@ -483,7 +722,23 @@ export default function HomeScreen() {
       try {
         const token = await getToken();
         const result = await api.verifyUser(user, token);
-        setUserCredits(result.result?.credits || 0);
+        const credits = result.result?.credits || 0;
+        setUserCredits(credits);
+
+        const email =
+          user.primaryEmailAddress?.emailAddress ||
+          user.emailAddresses?.[0]?.emailAddress;
+        if (email && credits >= 4 && !result?.result?.hasPaidTransaction) {
+          const flagKey = `@free_credits_granted_${email}`;
+          const alreadyTracked = await AsyncStorage.getItem(flagKey);
+          if (!alreadyTracked) {
+            await AsyncStorage.setItem(flagKey, "true");
+            trackFreeCreditsGranted({
+              credits_granted: credits,
+              remaining_credits: credits,
+            });
+          }
+        }
       } catch (error) {
         console.error("Error fetching credits:", error);
       } finally {
@@ -499,10 +754,15 @@ export default function HomeScreen() {
           response?.presets ||
           (Array.isArray(response) ? response : []);
         if (presets && presets.length > 0) {
-          setAnimationTemplates(presets);
+          const normalized = presets.map((item: any) => ({
+            ...item,
+            isStar: Boolean(item.sortOrder && item.sortOrder < 10) || item.views?.includes("M") || item.isStar,
+            hasAudio: Boolean(item.hasAudio || item.slug === "mic-drop-rap" || item.slug === "groove-duo"),
+          }));
+          setAnimationTemplates(normalized);
         }
-      } catch (error) {
-        console.error("Failed to fetch templates", error);
+      } catch (error: any) {
+        console.warn("Could not fetch remote templates, using defaults:", error?.message || error);
       }
     };
 
@@ -510,10 +770,18 @@ export default function HomeScreen() {
       try {
         const res = await api.getTemplateCategories();
         if (res?.result && Array.isArray(res.result) && res.result.length > 0) {
-          setCategoriesList(res.result.map((c: any) => c.name));
+          const names: string[] = res.result
+            .map((c: any) => c.name)
+            .filter((name: string) => name && name.toLowerCase() !== "trending");
+          if (names.length > 0) {
+            setCategoriesList(names);
+            if (!names.includes(selectedCategory)) {
+              setSelectedCategory(names.includes("Viral") ? "Viral" : names[0]);
+            }
+          }
         }
-      } catch (e) {
-        console.error("Failed to fetch template categories", e);
+      } catch (e: any) {
+        console.warn("Could not fetch template categories:", e?.message || e);
       }
     };
 
@@ -552,21 +820,6 @@ export default function HomeScreen() {
     router.push("/(tabs)/animate");
   };
 
-  const requestImagePermission = async () => {
-    if (Platform.OS !== "web") {
-      const { status } =
-        await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (status !== "granted") {
-        Alert.alert(
-          "Permission needed",
-          "Please grant camera roll permissions to upload images."
-        );
-        return false;
-      }
-    }
-    return true;
-  };
-
   const handleUploadImage = async () => {
     if (!isSignedIn) {
       requireAuth({ type: "upload" });
@@ -574,8 +827,6 @@ export default function HomeScreen() {
     }
 
     try {
-      const hasPermission = await requestImagePermission();
-      if (!hasPermission) return;
 
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
@@ -589,6 +840,12 @@ export default function HomeScreen() {
 
       const asset = result.assets[0];
       if (asset.fileSize && asset.fileSize > 20 * 1024 * 1024) {
+        trackUploadFailed({
+          error_type: "FILE_TOO_LARGE",
+          error_message: "Image size exceeds 20MB limit",
+          file_size_mb: asset.fileSize / (1024 * 1024),
+          mode: "animate",
+        });
         Alert.alert(
           "File Too Large",
           "The selected image exceeds the maximum allowed size of 20MB. Please choose a smaller image."
@@ -610,6 +867,11 @@ export default function HomeScreen() {
       });
     } catch (error: any) {
       console.error("Error picking image:", error);
+      trackUploadFailed({
+        error_type: "UPLOAD_PICK_ERROR",
+        error_message: error?.message || "Failed to pick image",
+        mode: "animate",
+      });
       Alert.alert(
         "Error",
         error.message || "Failed to pick image. Please try again."
@@ -618,6 +880,12 @@ export default function HomeScreen() {
   };
 
   const handleTemplateSelect = useCallback((templateId: string) => {
+    templateAudioCoordinator.stopAudio();
+    const matched = animationTemplates.find((t: any) => (t.slug || t.id) === templateId);
+    trackViewContent({
+      template_name: matched?.name || templateId,
+      category: matched?.category || "All",
+    });
     if (!isSignedIn) {
       setTemplateModalVisible(false);
       requireAuth({ type: "template", templateId });
@@ -643,6 +911,7 @@ export default function HomeScreen() {
         onScroll={handleScroll}
         scrollEventThrottle={32}
         scrollEnabled={!isTemplateModalVisible}
+        removeClippedSubviews={false}
         creditsText={
           user
             ? (userCredits !== null ? `${userCredits} Credits` : "Loading...")
@@ -776,6 +1045,7 @@ export default function HomeScreen() {
           <HomeTemplatesCarousel
             templates={filteredTemplates}
             onSelect={handleTemplateSelect}
+            isSectionVisible={scrollOffset < 1800}
           />
 
           {/* View All Link */}

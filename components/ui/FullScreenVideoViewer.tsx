@@ -18,6 +18,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import { StatusBar } from "expo-status-bar";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
+import { templateAudioCoordinator } from "@/services/templateAudioCoordinator";
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
 
@@ -27,6 +28,8 @@ interface FullScreenVideoViewerProps {
   posterUri?: string | null;
   onClose: () => void;
   onDownload: () => void;
+  onShare?: () => void;
+  isSharing?: boolean;
   onDelete?: () => void;
   isDeleting?: boolean;
   isDownloading?: boolean;
@@ -43,6 +46,8 @@ export default function FullScreenVideoViewer({
   posterUri,
   onClose,
   onDownload,
+  onShare,
+  isSharing = false,
   onDelete,
   isDeleting = false,
   isDownloading = false,
@@ -76,6 +81,7 @@ export default function FullScreenVideoViewer({
   // Reset loading state when video changes or opens
   useEffect(() => {
     if (visible) {
+      templateAudioCoordinator.stopAudio();
       hasLoadedOnceRef.current = false;
       setIsVideoLoading(true);
       setIsBuffering(false);
@@ -351,6 +357,29 @@ export default function FullScreenVideoViewer({
                 </LinearGradient>
               </TouchableOpacity>
 
+              {onShare && (
+                <TouchableOpacity
+                  style={[styles.modalButton, styles.shareModalButton]}
+                  onPress={onShare}
+                  disabled={isSharing}
+                  activeOpacity={0.85}
+                >
+                  <View style={styles.modalButtonContent}>
+                    {isSharing ? (
+                      <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                        <ActivityIndicator size="small" color="#fff" />
+                        <Text style={styles.modalButtonText}>Sharing...</Text>
+                      </View>
+                    ) : (
+                      <View style={styles.buttonInnerRow}>
+                        <Ionicons name="share-social-outline" size={19} color="#FFFFFF" style={{ marginRight: 6 }} />
+                        <Text style={styles.modalButtonText}>Share</Text>
+                      </View>
+                    )}
+                  </View>
+                </TouchableOpacity>
+              )}
+
               {showDelete && onDelete ? (
                 <TouchableOpacity
                   style={[styles.modalButton, styles.deleteModalButton]}
@@ -459,6 +488,15 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   downloadModalButton: {},
+  shareModalButton: {
+    backgroundColor: "rgba(147, 51, 234, 0.4)",
+    borderWidth: 1,
+    borderColor: "rgba(192, 132, 252, 0.5)",
+    paddingVertical: 14,
+    paddingHorizontal: 14,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   closeModalButton: {
     backgroundColor: "rgba(255, 255, 255, 0.15)",
     borderWidth: 1,

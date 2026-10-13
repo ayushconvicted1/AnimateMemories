@@ -29,7 +29,14 @@ import { api } from "@/services/api";
 import { useFocusEffect } from "expo-router";
 import * as WebBrowser from "expo-web-browser";
 import { iapService } from "@/services/iap-service";
-import { trackPurchase, trackInitiatedCheckout } from "@/services/tracking";
+import {
+  trackPurchase,
+  trackSubscriptionStarted,
+  trackViewPricing,
+  trackSelectPlan,
+  trackBeginCheckout,
+} from "@/services/tracking";
+import { templateAudioCoordinator } from "@/services/templateAudioCoordinator";
 import { IAP_PRODUCTS, IAP_SUBSCRIPTION_PRODUCTS } from "@/constants/iap-config";
 import CustomSlider from '@/components/ui/CustomSlider';
 
@@ -158,6 +165,28 @@ export default function CreditScreen() {
   };
 
   const [selectedSubPack, setSelectedSubPack] = useState<'basic' | 'standard' | 'premium'>('standard');
+
+  const handleSelectSub = (subKey: 'basic' | 'standard' | 'premium') => {
+    setSelectedSubPack(subKey);
+    const sub = SUBSCRIPTION_DETAILS[subKey];
+    trackSelectPlan({
+      plan: sub.id,
+      price: dynamicPricing[sub.id]?.amount ?? sub.price,
+      currency: "USD",
+      credits: dynamicPricing[sub.id]?.credits ?? sub.credits,
+    });
+  };
+
+  const handleSelectOneTimeAmount = (amount: number) => {
+    setCustomAmount(amount);
+    trackSelectPlan({
+      plan: amount === 30 ? "starter" : amount === 100 ? "popular" : amount === 200 ? "pro" : "custom",
+      price: getOneTimePrice(amount),
+      currency: "USD",
+      credits: amount,
+    });
+  };
+
   const [userCredits, setUserCredits] = useState<number | null>(null);
   const [userPlan, setUserPlan] = useState<{ packId: string; credits: number; amount: number; createdAt: string; } | null>(null);
   const [isProcessingIAP, setIsProcessingIAP] = useState(false);
@@ -272,10 +301,14 @@ export default function CreditScreen() {
 
   useFocusEffect(
     useCallback(() => {
+      trackViewPricing();
       if (user) {
         fetchUserCredits();
         fetchUserPlan();
       }
+      return () => {
+        templateAudioCoordinator.stopAudio();
+      };
     }, [user, fetchUserCredits, fetchUserPlan])
   );
 
@@ -371,6 +404,12 @@ export default function CreditScreen() {
 
       setIsProcessingIAP(true);
       try {
+        trackBeginCheckout({
+          plan: purchaseId || productId,
+          price: Number(purchasePrice) || 0,
+          currency: "USD",
+          credits: purchaseCredits,
+        });
         const token = await getToken();
         const result = await iapService.purchaseProduct(productId, userEmail, token);
         
@@ -380,11 +419,21 @@ export default function CreditScreen() {
             "Your credits have been added to your account."
           );
           trackPurchase({
-            amount: Number(purchasePrice) || 0,
+            transaction_id: (result as any)?.transactionId || productId || purchaseId,
+            plan: purchaseId || productId,
+            price: Number(purchasePrice) || 0,
             currency: "USD",
-            productId,
             credits: purchaseCredits,
+            remaining_credits: (userCredits ?? 0) + purchaseCredits,
           });
+          if (isSubscription) {
+            trackSubscriptionStarted({
+              transaction_id: (result as any)?.transactionId || productId || purchaseId,
+              plan: purchaseId || productId,
+              price: Number(purchasePrice) || 0,
+              currency: "USD",
+            });
+          }
           fetchUserCredits();
           fetchUserPlan();
         } else if (
@@ -456,10 +505,10 @@ export default function CreditScreen() {
 
         if (checkoutData?.url) {
           const initialCredits = userCredits;
-          trackInitiatedCheckout({
-            value: Number(purchasePrice) || 0,
+          trackBeginCheckout({
+            plan: purchaseId || productId,
+            price: Number(purchasePrice) || 0,
             currency: "USD",
-            productId,
             credits: purchaseCredits,
           });
           const browserResult = await WebBrowser.openAuthSessionAsync(
@@ -473,11 +522,21 @@ export default function CreditScreen() {
 
           if (latestCredits !== null && latestCredits > (initialCredits || 0)) {
             trackPurchase({
-              amount: Number(purchasePrice) || 0,
+              transaction_id: `stripe_${Date.now()}`,
+              plan: purchaseId || productId,
+              price: Number(purchasePrice) || 0,
               currency: "USD",
-              productId: productId || purchaseId,
               credits: purchaseCredits,
+              remaining_credits: latestCredits,
             });
+            if (billingType === "subscription") {
+              trackSubscriptionStarted({
+                transaction_id: `stripe_${Date.now()}`,
+                plan: purchaseId || productId,
+                price: Number(purchasePrice) || 0,
+                currency: "USD",
+              });
+            }
             Alert.alert(
               "Payment Successful! 🎉",
               "Your credits have been added to your account."
@@ -613,7 +672,7 @@ export default function CreditScreen() {
             
             <TouchableOpacity
               style={styles.packTab}
-              onPress={() => setSelectedSubPack('basic')}
+              onPress={() => handleSelectSub('basic')}
               onLayout={(event) => {
                 const { width, x } = event.nativeEvent.layout;
                 tabLayouts.current.basic = { x, width };
@@ -633,7 +692,7 @@ export default function CreditScreen() {
             </TouchableOpacity>
             <TouchableOpacity
               style={styles.packTab}
-              onPress={() => setSelectedSubPack('standard')}
+              onPress={() => handleSelectSub('standard')}
               onLayout={(event) => {
                 const { width, x } = event.nativeEvent.layout;
                 tabLayouts.current.standard = { x, width };
@@ -653,7 +712,7 @@ export default function CreditScreen() {
             </TouchableOpacity>
             <TouchableOpacity
               style={styles.packTab}
-              onPress={() => setSelectedSubPack('premium')}
+              onPress={() => handleSelectSub('premium')}
               onLayout={(event) => {
                 const { width, x } = event.nativeEvent.layout;
                 tabLayouts.current.premium = { x, width };
@@ -691,19 +750,19 @@ export default function CreditScreen() {
           <View style={styles.sliderPresets}>
             <TouchableOpacity 
               style={[styles.presetBtn, customAmount === 30 && styles.presetBtnActive]} 
-              onPress={() => setCustomAmount(30)}
+              onPress={() => handleSelectOneTimeAmount(30)}
             >
               <Text style={[styles.presetBtnText, customAmount === 30 && styles.presetBtnTextActive]}>Starter (30)</Text>
             </TouchableOpacity>
             <TouchableOpacity 
               style={[styles.presetBtn, customAmount === 100 && styles.presetBtnActive]} 
-              onPress={() => setCustomAmount(100)}
+              onPress={() => handleSelectOneTimeAmount(100)}
             >
               <Text style={[styles.presetBtnText, customAmount === 100 && styles.presetBtnTextActive]}>Popular (100)</Text>
             </TouchableOpacity>
             <TouchableOpacity 
               style={[styles.presetBtn, customAmount === 200 && styles.presetBtnActive]} 
-              onPress={() => setCustomAmount(200)}
+              onPress={() => handleSelectOneTimeAmount(200)}
             >
               <Text style={[styles.presetBtnText, customAmount === 200 && styles.presetBtnTextActive]}>Pro (200)</Text>
             </TouchableOpacity>

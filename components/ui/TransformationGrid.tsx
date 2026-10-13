@@ -48,18 +48,20 @@ export default function TransformationGrid({ isVisible = true }: TransformationG
           </View>
         </View>
       </View>
-      <View style={[styles.videoWrapper, { backgroundColor: "transparent", zIndex: 1 }]}>
-        <Video
-          ref={videoRef}
-          source={require("@/assets/videos/TransformationGridMaster.mp4")}
-          style={styles.masterVideo}
-          resizeMode={ResizeMode.CONTAIN}
-          isLooping={true}
-          shouldPlay={isVisible}
-          isMuted={true}
-          useNativeControls={false}
-        />
-      </View>
+      {isVisible ? (
+        <View style={[styles.videoWrapper, { backgroundColor: "transparent", zIndex: 1 }]}>
+          <Video
+            ref={videoRef}
+            source={require("@/assets/videos/TransformationGridMaster.mp4")}
+            style={styles.masterVideo}
+            resizeMode={ResizeMode.CONTAIN}
+            isLooping={true}
+            shouldPlay={true}
+            isMuted={true}
+            useNativeControls={false}
+          />
+        </View>
+      ) : null}
     </View>
   );
 }

@@ -21,6 +21,7 @@ import AppleIcon from "@/components/images/AppleIcon";
 import { useAuthGate } from "@/contexts/AuthGateContext";
 import { OAUTH_REDIRECT_URL } from "@/constants/OAuth";
 import { getFontFamily } from "@/constants/Fonts";
+import { trackLogin, trackSignUp } from "@/services/tracking";
 
 // Ensure WebBrowser session is handled
 WebBrowser.maybeCompleteAuthSession();
@@ -140,6 +141,7 @@ export default function LoginModal() {
         } else if (setSignInActive) {
           await setSignInActive({ session: createdSessionId });
         }
+        trackLogin("google");
         completedAuth();
       }
     } catch (err: any) {
@@ -152,6 +154,7 @@ export default function LoginModal() {
         err.errors?.[0]?.code === "session_exists" ||
         errMsg.toLowerCase().includes("session already exists")
       ) {
+        trackLogin("google");
         completedAuth();
         return;
       }
@@ -179,6 +182,7 @@ export default function LoginModal() {
         } else if (setSignInActive) {
           await setSignInActive({ session: createdSessionId });
         }
+        trackLogin("apple");
         completedAuth();
       }
     } catch (err: any) {
@@ -191,6 +195,7 @@ export default function LoginModal() {
         err.errors?.[0]?.code === "session_exists" ||
         errMsg.toLowerCase().includes("session already exists")
       ) {
+        trackLogin("apple");
         completedAuth();
         return;
       }
@@ -222,6 +227,7 @@ export default function LoginModal() {
 
       if (signInAttempt.status === "complete") {
         await setSignInActive({ session: signInAttempt.createdSessionId });
+        trackLogin("email");
         completedAuth();
       } else {
         setError("Sign-in incomplete. Please contact support.");
@@ -290,6 +296,7 @@ export default function LoginModal() {
 
       if (signUpAttempt.status === "complete") {
         await setSignUpActive({ session: signUpAttempt.createdSessionId });
+        trackSignUp("email");
         completedAuth();
       } else if (signUpAttempt.status === "missing_requirements") {
         // Send email verification code
@@ -336,6 +343,7 @@ export default function LoginModal() {
 
       if (completeSignUp.status === "complete") {
         await setSignUpActive({ session: completeSignUp.createdSessionId });
+        trackSignUp("email");
         completedAuth();
       } else {
         setError("Verification incomplete. Please check the code and try again.");

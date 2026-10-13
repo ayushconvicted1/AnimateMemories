@@ -27,9 +27,16 @@ import { useAuth as useAuthContext } from "@/contexts/AuthContext";
 import { useAuthGate } from "@/contexts/AuthGateContext";
 import { useAuth } from "@clerk/clerk-expo";
 import { api } from "@/services/api";
-import { downloadToDevice } from "@/lib/download";
+import { downloadToDevice, shareMedia } from "@/lib/download";
 import SavedToast from "@/components/ui/SavedToast";
+import ShareVideoModal from "@/components/ui/ShareVideoModal";
 import { getFontFamily } from "@/constants/Fonts";
+import {
+  trackViewAnimation,
+  trackDownloadAnimation,
+  trackShareAnimation,
+} from "@/services/tracking";
+import { templateAudioCoordinator } from "@/services/templateAudioCoordinator";
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
 const CONTENT_WIDTH = SCREEN_WIDTH - 32;
@@ -61,7 +68,9 @@ export default function GalleryScreen() {
     path: string | null;
   } | null>(null);
   const [selectedVideo, setSelectedVideo] = useState<GalleryItem | null>(null);
+  const [shareItem, setShareItem] = useState<GalleryItem | null>(null);
   const [userCredits, setUserCredits] = useState<number | null>(null);
+  const [isSharing, setIsSharing] = useState(false);
 
   if (!user) {
     return (
@@ -148,6 +157,9 @@ export default function GalleryScreen() {
         fetchGallery();
         fetchUserCredits();
       }
+      return () => {
+        templateAudioCoordinator.stopAudio();
+      };
     }, [user, fetchGallery, fetchUserCredits])
   );
 
@@ -233,6 +245,12 @@ export default function GalleryScreen() {
           title: isVideoItem ? "Video saved!" : "Image saved!",
           path: result.path,
         });
+        if (isVideoItem) {
+          trackDownloadAnimation({
+            animation_id: item.id?.toString(),
+            animation_type: item.designType || "video",
+          });
+        }
       } else if (!result.fallbackUsed) {
         Alert.alert(
           "Download failed",
@@ -244,6 +262,30 @@ export default function GalleryScreen() {
       Alert.alert("Error", "Failed to download file. Please try again.");
     } finally {
       setDownloadingId(null);
+    }
+  };
+
+  const handleShare = async (item: GalleryItem) => {
+    const isVideoItem = isVideo(item);
+    setIsSharing(true);
+    try {
+      const success = await shareMedia({
+        url: item.aiImage || item.orgImage,
+        fileName: isVideoItem
+          ? `animatememories-video-${item.id}`
+          : `animatememories-image-${item.id}`,
+        mimeType: isVideoItem ? "video/mp4" : "image/jpeg",
+      });
+      if (success && isVideoItem) {
+        trackShareAnimation({
+          animation_id: item.id?.toString(),
+          animation_type: item.designType || "video",
+        });
+      }
+    } catch (err) {
+      console.warn("Share failed:", err);
+    } finally {
+      setIsSharing(false);
     }
   };
 
@@ -274,6 +316,11 @@ export default function GalleryScreen() {
 
   const handleVideoPress = (item: GalleryItem) => {
     if (isVideo(item)) {
+      templateAudioCoordinator.stopAudio();
+      trackViewAnimation({
+        animation_id: item.id?.toString(),
+        animation_type: item.designType || "video",
+      });
       setSelectedVideo(item);
     }
   };
@@ -324,6 +371,11 @@ export default function GalleryScreen() {
     await handleDownload(selectedVideo);
   };
 
+  const handleShareFromModal = async () => {
+    if (!selectedVideo) return;
+    setShareItem(selectedVideo);
+  };
+
   const renderItem = ({ item }: { item: GalleryItem }) => {
     const isVideoItem = isVideo(item);
     const posterUrl = isVideoItem ? getVideoPosterUrl(item) : (item.aiImage || item.orgImage);
@@ -368,6 +420,16 @@ export default function GalleryScreen() {
           ) : (
             <Ionicons name="download-outline" size={18} color="#FFFFFF" />
           )}
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.actionButton}
+          onPress={(e) => {
+            e.stopPropagation();
+            setShareItem(item);
+          }}
+          activeOpacity={0.8}
+        >
+          <Ionicons name="share-social-outline" size={17} color="#FFFFFF" />
         </TouchableOpacity>
         <TouchableOpacity
           style={[styles.actionButton, styles.deleteButton]}
@@ -592,6 +654,8 @@ export default function GalleryScreen() {
         posterUri={selectedVideo ? getVideoPosterUrl(selectedVideo) : null}
         onClose={closeVideoModal}
         onDownload={handleDownloadFromModal}
+        onShare={handleShareFromModal}
+        isSharing={isSharing}
         onDelete={handleDeleteFromModal}
         isDeleting={deletingId === selectedVideo?.id}
         isDownloading={downloadingId !== null}
@@ -599,6 +663,16 @@ export default function GalleryScreen() {
         toastTitle={savedToast?.title ?? null}
         toastPath={savedToast?.path ?? null}
         onToastHide={() => setSavedToast(null)}
+      />
+
+      {/* Share Video Modal */}
+      <ShareVideoModal
+        visible={shareItem !== null}
+        onClose={() => setShareItem(null)}
+        videoUrl={shareItem?.aiImage || shareItem?.orgImage}
+        title={shareItem?.designType || shareItem?.roomType || "AI Animated Memory"}
+        templateSlug={shareItem?.designType || ""}
+        thumbnailUrl={getVideoPosterUrl(shareItem)}
       />
       </ScreenWrapper>
 

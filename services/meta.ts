@@ -151,6 +151,15 @@ export function logMetaSubscribe(params?: Record<string, unknown>): void {
   }
 }
 
+/** Meta predefined "ViewContent" event — fire when viewing content/template. */
+export function logMetaViewContent(params?: Record<string, unknown>): void {
+  try {
+    AppEventsLogger.logEvent("ViewContent", sanitizeParams(params));
+  } catch (e) {
+    console.warn("[meta] ViewContent", e);
+  }
+}
+
 /** Generic/custom Meta event (e.g. "video_created", "app_open", "tutorial_complete"). */
 export function logMetaEvent(event: string, params?: Record<string, unknown>): void {
   try {

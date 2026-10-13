@@ -1,197 +1,103 @@
-# Mobile Analytics & Attribution Setup — AnimateMemories
+# Mobile Analytics & Product-Event Tracking — AnimateMemories
 
-This wires **Google Analytics for Firebase** (mobile GA4) and **Meta (Facebook) App Events** into
-the Expo app at `AnimateMemories/`, plus **Firebase Crashlytics**. It reuses your existing Firebase
-project and keeps **mobile and web reports separate**, per your decisions.
-
-> Web GA4 (`G-0H1P9K2Y5F` in `animatememories-master/app/layout.js`) is **untouched**. Mobile gets its
-> own GA4 property — see the note below.
+This document covers the comprehensive **Google Analytics for Firebase** (mobile GA4) event tracking architecture implemented in the AnimateMemories mobile app (`AnimateMemories/`), perfectly synchronized with the web application (`AnimateMemories-1`), along with **Meta App Events** and **Firebase Crashlytics**.
 
 ---
 
-## 1. What was added
+## 1. Full Event Catalog (Mobile & Web GA4 Synchronized)
 
-| File | Purpose |
-|---|---|
-| `services/analytics.ts` | Firebase / mobile GA4 wrapper. Standard events: `purchase`, `sign_up`, `screen_view`, `video_generation`. **No raw PII.** |
-| `services/meta.ts` | Meta App Events wrapper: `logPurchase`, `CompleteRegistration`, `InitiatedCheckout`, `AddToCart`, custom events, `setUserData` Advanced Matching, advertiser-tracking toggle. |
-| `services/tracking.ts` | **The only module your screens import.** Orchestrates Firebase + Meta, App Tracking Transparency (iOS), user-identity sync (Clerk id), and a `sha256()` helper for server-side dedupe. |
-| `plugins/withFacebookAppEvents.js` | Expo config plugin that injects the Facebook/Meta keys into iOS `Info.plist` and Android `AndroidManifest.xml` (the Meta SDK doesn't ship its own). |
-| `app/_layout.tsx` | Initialize SDKs, request ATT, sync Clerk user id, auto-track `screen_view` on route change. |
-| `app/(tabs)/credit.tsx` | `trackPurchase` on iOS IAP success; `trackInitiatedCheckout` before the Android/web checkout opens. |
-| `app.json` | Config plugins + iOS privacy strings + Facebook keys. |
-| `package.json` | New dependencies. |
+Every event is strictly guarded to fire **only after the corresponding action succeeds** and carries all designated parameters:
+
+| # | Firebase Event Name | Web GTM/GA4 Alias | Trigger File / Function | Parameters Included | When It Fires |
+|---|---|---|---|---|---|
+| 1 | `sign_up` | — | `components/auth/LoginModal.tsx` | `method` (`"email"`, `"google"`, `"apple"`) | After user account registration succeeds |
+| 2 | `login` | — | `LoginModal.tsx`, `auth-callback.tsx` | `method` (`"email"`, `"google"`, `"apple"`, `"oauth"`) | After user signs in successfully |
+| 3 | `upload_photo` | — | `app/(tabs)/animate.tsx` (`uploadImageFromUri`) | `source`, `tool` | After photo is picked & uploaded to cloud |
+| 4 | `animation_generation_started` | `generate_start` | `animate.tsx` (`handleAnimate`, `handleRestore`, `handleEnhance`) | `animation_type`, `model_id`, `duration`, `quality`, `credits_used`, `has_audio` | Right after generation task is initiated |
+| 5 | `animation_generation_completed` | `animation_generated`, `generate_complete` | `animate.tsx` (`pollAnimationStatus`, `handleRestore`, `handleEnhance`) | `animation_type`, `model_id`, `duration`, `quality`, `generation_time_seconds`, `credits_used`, `remaining_credits`, `has_audio` | After video/restored image is confirmed & ready for preview |
+| 6 | `view_animation` | `view_content` | `animate.tsx`, `gallery.tsx`, `FullScreenVideoViewer.tsx` | `animation_id`, `animation_type` | When generated video or gallery video is viewed |
+| 7 | `download_animation` | — | `animate.tsx`, `gallery.tsx`, `FullScreenVideoViewer.tsx` | `animation_id`, `animation_type` | After video is successfully saved to device media library |
+| 8 | `share_animation` | — | `gallery.tsx`, `FullScreenVideoViewer.tsx`, `ShareVideoModal.tsx` | `animation_id`, `animation_type`, `method` | After video is shared via native system sheet |
+| 9 | `free_credits_granted` | — | `app/(tabs)/index.tsx` (`fetchUserCredits`) | `credits_granted` (`4`), `remaining_credits` (`4`) | When new user receives free signup bonus (fires once per account) |
+| 10 | `free_credit_used` | — | `animate.tsx` (`handleAnimate`, `handleRestore`, `handleEnhance`) | `credits_used`, `remaining_credits`, `animation_type` | When generation successfully completes & credits deduct |
+| 11 | `credits_exhausted` | — | `animate.tsx` (`handleAnimate`, `handleRestore`, `handleEnhance`) | `remaining_credits`, `required_credits` | When credits reach 0 or blocked for insufficient credits |
+| 12 | `view_pricing` | — | `app/(tabs)/credit.tsx` (`useFocusEffect`) | (none) | When user opens the Credits & Plans screen |
+| 13 | `select_plan` | — | `app/(tabs)/credit.tsx` (`onSelectPlan`) | `plan`, `price`, `currency` (`"USD"`), `credits` | When user taps a subscription tier or pack |
+| 14 | `begin_checkout` | — | `app/(tabs)/credit.tsx` | `plan`, `price`, `currency` (`"USD"`), `credits` | Right before opening Apple IAP or Stripe checkout |
+| 15 | `purchase` | `payment_success` | `credit.tsx`, `payment-callback.tsx` | `transaction_id`, `plan`, `price`, `currency`, `credits`, `remaining_credits` | Immediately after IAP receipt or payment succeeds |
+| 16 | `subscription_started` | `subscribe` | `credit.tsx`, `payment-callback.tsx` | `transaction_id`, `plan`, `price`, `currency` | Immediately after subscription activation succeeds |
+| 17 | `studio_view` | `studio_view` | `app/(tabs)/animate.tsx` (`useFocusEffect`) | `mode`, `template`, `screen_name` | When user opens or switches into the creation studio |
+| 18 | `select_tool` | `select_tool` | `app/(tabs)/animate.tsx` (`toolTextCard`) | `tool_name`, `previous_tool`, `template` | When switching between Animate, Restore, Enhance |
+| 19 | `upload_failed` | `upload_failed` | `index.tsx`, `you.tsx`, `animate.tsx` | `error_type`, `error_message`, `file_size_mb`, `mode` | When image pick, oversize (>20MB) or upload fails |
+| 20 | `search` | `search` | `TemplateExplorerModal.tsx` | `search_term`, `search_type`, `results_count` | Debounced (600ms) when user searches templates |
+| 21 | `view_content` | `view_content` | `TemplateExplorerModal.tsx`, `index.tsx`, `animate.tsx` | `template_name`, `category` | When user views or selects a specific template |
+| 22 | `generation_failed` | `generation_failed` | `animate.tsx` (catch blocks) | `mode`, `template`, `model`, `duration_s`, `quality`, `credits_attempted`, `error_type`, `error_message`, `is_regenerate` | When API or prediction polling returns an error |
+| 23 | `regenerate_click` | `regenerate_click` | `animate.tsx` (`handleAnimate`) | `mode`, `template`, `model`, `duration_s`, `quality`, `credits_used` | When user clicks Regenerate on an existing output |
 
 ---
 
-## 2. One-time Firebase setup (your existing project)
+## 2. Audio Templates & User End View Architecture
 
-You already have a Firebase project — reuse it rather than making a new one.
+Audio templates (`groove-duo`, `mic-drop-rap`, `baby-dance`, etc.) are managed in the mobile UI to match the web experience:
 
-1. Open [Firebase console](https://console.firebase.google.com) → your project.
-2. **Add an Android app** (package `com.hexerve.AnimateMemories`) → download **`google-services.json`**.
-3. **Add an iOS app** (bundle id `com.hexerve.AnimateMemories`) → download **`GoogleService-Info.plist`**.
-4. Place both files at the **project root of the mobile app**:
+1. **Top-Left "Sound" Badge**:
+   - Audio templates automatically display a purple translucent `Sound` badge with a speaker icon in template carousels and modal grids.
+   - Identified via database attributes (`hasAudio`, `hasaudio`), slug checks (`mic-drop-rap`, `groove-duo`), or backend preset configuration.
 
+2. **Interactive Sound Control ("Sound Off" / "Sound On")**:
+   - In accordance with mobile and web best practices, templates start in a muted state (`Sound Off`) so audio never blasts unexpectedly.
+   - Users can tap the bottom-right pill button to toggle audio (`Sound On` with purple highlight and speaker animation).
+   - Tapping "Sound On" un-mutes the video and ensures it stays playing in sync.
+
+3. **Strict Mutual Audio Exclusion**:
+   - Managed via `services/templateAudioCoordinator.ts`.
+   - **Only one template card can ever play sound at a time**.
+   - When a user turns sound on for Card B, Card A mutes immediately.
+   - When a card scrolls out of the viewport or unmounts, sound stops cleanly.
+   - When the user opens the full-screen player or completes generation, template preview sound stops immediately.
+
+4. **Studio Banner & Model Auto-Selection**:
+   - In `app/(tabs)/animate.tsx`, selecting an audio template auto-selects an audio-capable model (`seedance-1-5-pro` or `seedance-2-fast`) and displays the dedicated **Audio Motion Performance** banner:
+     - 🎤 / 🎵 icon and template title
+     - Purple **Audio Enabled** badge
+     - Full audio description explaining synchronized background audio, crowd cheering, rap cadence, or beat generation.
+   - Automatically passes `shouldGenerateAudio: true` to `api.startAnimatePhoto`.
+
+5. **Audio in Result Video & Full-Screen Player**:
+   - The generated video player in `animate.tsx` and the modal player in `FullScreenVideoViewer.tsx` play audio unmuted with full native playback controls.
+
+---
+
+## 3. How to Verify Every Event in Firebase DebugView
+
+Firebase Analytics events are batched to preserve device battery. To stream events in **real time** (within 2-5 seconds):
+
+### On Android
+1. Connect an Android device via USB or run an emulator with USB debugging enabled.
+2. Run in terminal:
+   ```bash
+   adb shell setprop debug.firebase.analytics.app com.hexerve.AnimateMemories
    ```
-   AnimateMemories/google-services.json
-   AnimateMemories/GoogleService-Info.plist
+3. Open **Firebase Console** → Project **Animate Memories** → **Analytics** → **DebugView**.
+4. Perform actions in the app:
+   - Sign up / sign in → watch `sign_up` / `login`
+   - Pick/upload photo → watch `upload_photo`
+   - Tap template → watch `view_content`
+   - Search templates → watch `search`
+   - Switch tab → watch `select_tool`
+   - Generate video → watch `animation_generation_started`, then `animation_generation_completed`, `free_credit_used`, and `view_animation`
+   - Open Credits tab → watch `view_pricing`
+   - Select plan / pack → watch `select_plan`
+   - Complete checkout → watch `purchase`, `payment_success`, `subscription_started`
+5. To disable debug mode after verification:
+   ```bash
+   adb shell setprop debug.firebase.analytics.app .none.
    ```
 
-   (`app.json` already points the `@react-native-firebase/app` plugin at `./google-services.json` and
-   `./GoogleService-Info.plist`.)
-
-5. **Enable Analytics**: In Firebase console → Project settings → your iOS/Android app →
-   enable "Firebase Analytics" / "Google Analytics". This auto-creates a **GA4 property** for the
-   project. Because your web GA4 (`G-0H1P9K2Y5F`) is a gtag/web property, mobile events land in the
-   Firebase project's GA4 property — a **different property**, so mobile and web stay in **separate
-   reports**.
-
-   > **If your existing Firebase project is already linked to the *same* GA4 property as the web
-   > `G-0H1P9K2Y5F`** (i.e. the web property was created *from* Firebase), then Android/iOS will join it
-   > as extra **data streams** in that one property. You can still view them separately with a
-   > platform/"stream" filter, or (for a hard split) create a second GA4 property and link the Firebase
-   > project to that instead.
-
-> **Crashlytics:** if iOS shows a Crashlytics "upload symbols" prompt in Xcode, accept it — it only
-> enables symbolication, not required for the native SDK to function.
-
----
-
-## 3. Install dependencies & build
-
-This is a **bare/prebuild** app (it has `ios/` and `android/`), so these native SDKs work — but you
-**must** rebuild the native app. Expo Go is not supported for `@react-native-firebase` / `react-native-fbsdk-next`.
-
-```bash
-cd AnimateMemories
-npm install                              # installs react-native-firebase, fbsdk-next (already in package.json)
-npx expo install expo-tracking-transparency   # ensures the Expo-compatible version
-npx expo prebuild                        # regenerates ios/ + android/ with the new native modules
-npx expo run:ios     # (or npx expo run:android)
-```
-
-If `expo prebuild` errors because the Firebase config files are missing, place them and re-run.
-
----
-
-## 4. Replace the placeholders
-
-Two values come from your **Meta** account and are currently placeholders in **three** places:
-
-1. `app.json` → `ios.infoPlist.FacebookAppID` = `REPLACE_WITH_META_APP_ID`
-2. `app.json` → `ios.infoPlist.FacebookClientToken` = `REPLACE_WITH_META_CLIENT_TOKEN`
-3. `app.json` → `plugins` → `./plugins/withFacebookAppEvents` → `facebookAppId` / `facebookClientToken`
-
-Get them from [Meta Business Suite → Events Manager → Data sources → your app](https://business.facebook.com/events_manager/)
-(the **App ID** on the app's settings page, and the **App Secret/Client Token** under
-App Settings → Basic). Optional: if you only fire app events (no Audience Network / ads we need server
-token), the **Client Token can be omitted** — remove the `facebookClientToken` key and the
-`FacebookClientToken` infoPlist line.
-
-`FacebookDisplayName` / meta-data already default to "AnimateMemories".
-
----
-
-## 5. iOS: App Tracking Transparency (ATT)
-
-Already wired in `app/_layout.tsx` via `services/tracking.ts`:
-
-- **`requestTrackingPermissionAndInit()`** calls `expo-tracking-transparency` on iOS; on **granted**
-  it calls `Settings.setAdvertiserTrackingEnabled(true)` so Meta can read IDFA for ad attribution.
-  On **denied** it still logs standard app events (they just aren't attributed to an ad).
-- Android auto-enables advertiser tracking (no ATT prompt).
-
-The prompt text comes from `NSUserTrackingUsageDescription` (already set in `app.json`). Change the
-wording to match your privacy policy if needed.
-
-> **Privacy compliance:** asking for tracking **before** the user has value is against store policy.
-> Best practice is to request it on first entry to the value moment (e.g. first "Create" tap) — see the
-> "Requesting consent at the right moment" section in `META_EXTENSION_GUIDE.md`.
-
----
-
-## 6. iOS build gotcha — RN 0.81 + Firebase modular headers
-
-On **React Native 0.81 / New Architecture** the Firebase pods (Analytics/Crashlytics) can fail to build
-with Swift-pod/modular-header errors. If you hit it, add this to `AnimateMemories/ios/Podfile` inside the
-`target ... do` block:
-
-```ruby
-# in ios/Podfile
-use_frameworks!
-# or, if use_frameworks conflicts with other pods, scope the fix:
-pod 'FirebaseCore', :modular_headers => true
-```
-
-Then `cd ios && pod install`. This is the documented workaround for the RN 0.81 + Firebase build issue
-([issue #8827](https://github.com/invertase/react-native-firebase/issues/8827)). If `use_frameworks!`
-already exists, prefer the `:modular_headers => true` per-pod option.
-
----
-
-## 7. Event call sites (already wired vs. where to add)
-
-Already wired:
-
-- **Purchase (iOS IAP)** — `app/(tabs)/credit.tsx`, in `if (result.success)`:
-  `trackPurchase({ amount, currency: 'USD', productId, credits })`
-- **Initiated checkout (Android/web hosted flow)** — same file, before `WebBrowser.openAuthSessionAsync`:
-  `trackInitiatedCheckout({ value, currency: 'USD', productId, credits })`
-
-Still to add (copy-paste):
-
-### Sign-up / registration (`app/(auth)/signup.tsx`)
-After a successful account creation / OAuth callback:
-```ts
-import { trackSignUp } from "@/services/tracking";
-// ...
-trackSignUp("email"); // or "google" / "apple"
-```
-
-### Video completion (`app/(tabs)/animate.tsx`)
-Where the animation finishes rendering / is generated successfully:
-```ts
-import { trackVideoCreated } from "@/services/tracking";
-// ...
-trackVideoCreated({ videoId, templateId, creditsCost, durationSeconds });
-```
-
----
-
-## 8. Verify your events
-
-**Google / GA4 (Firebase):**
-1. Build & run → open the app, trigger a `sign_up` / `purchase`.
-2. In Firebase console → **Analytics → DebugView** (turn on "Debug mode" in the app by long-pressing
-   the log in Expo dev / or add `analytics().setAnalyticsCollectionEnabled(true)` and use a debug build).
-3. Confirm `purchase`, `sign_up`, `screen_view` appear.
-
-**Meta:**
-1. In **Events Manager → your app → "Test events"**, open the app and trigger the event. It should
-   appear as a **test event** (isMetaEvent) with `_eventName`, `_value`, `_currency`.
-2. Check **App Events** under the app's Insights for the live (non-test) count after a real run.
-
-**Crashlytics:**
-1. Force a crash (or temporarily `throw` in dev) → confirm it appears in Firebase → **Crashlytics**.
-
----
-
-## 9. Consent & privacy notes
-
-- **No raw PII is sent.** GA4 gets the pseudonymous Clerk user id (`user_id`). Meta gets the Clerk id as
-  `external_id` + the email, which Meta **hashes on-device** for Advanced Matching (raw names are never
-  sent; `setUserData` has no name-based matching anyway).
-- **If you ever do GA4/Meta server-side** (Conversions API dedupe), use `sha256()` from
-  `services/tracking.ts` to hash the email yourself, and pass the same Clerk id so it dedupes.
-- To respect GDPR/consent, gate `setAnalyticsConsent(true)` / `setAdvertiserTracking(true)` on your
-  consent state. The plumbing is exposed in `services/tracking.ts`.
-
----
-
-## 10. Files-to-change during the store review / privacy labels
-
-When submitting, Apple asks for **tracking** — you now use App Tracking Transparency, so declare
-"Tracking" = **Yes** ("Data Used to Track You": Purchases, User ID, Product Interaction is the norm for
-ad attribution). Google Play requires a **Data safety** form: declare "App activity", "App info and
-performance" (Crashlytics), and "Device or other IDs" for advertising.
+### On iOS
+1. In Xcode: **Product** → **Scheme** → **Edit Scheme...** → **Run** → **Arguments** tab.
+2. In **Arguments Passed On Launch**, add:
+   ```
+   -FIRDebugEnabled
+   ```
+3. Run the app and monitor **Firebase Console** → **Analytics** → **DebugView**.
