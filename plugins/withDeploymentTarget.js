@@ -31,6 +31,11 @@ function withDeploymentTarget(config, { deploymentTarget = "15.1" } = {}) {
           if config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'].nil? || config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'].to_f < ${deploymentTarget}
             config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '${deploymentTarget}'
           end
+
+          # Fix fmt compilation failure with Clang consteval in C++20
+          if target.name == 'fmt'
+            config.build_settings['CLANG_CXX_LANGUAGE_STANDARD'] = 'c++17'
+          end
         end
       end
     end`;
