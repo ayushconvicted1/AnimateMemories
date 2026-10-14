@@ -104,6 +104,12 @@
           "facebookClientToken": "bab4efd647ec14508d5070e35c0f9599",
           "facebookDisplayName": "AnimateMemories"
         }
+      ],
+      [
+        "./plugins/withDeploymentTarget",
+        {
+          "deploymentTarget": "15.1"
+        }
       ]
     ],
     "experiments": {
