@@ -3316,6 +3316,7 @@ const styles = StyleSheet.create({
   },
   modelChip: {
     flex: 1,
+    minHeight: 80,
     borderRadius: 10,
     overflow: "hidden",
     borderWidth: 1.5,
@@ -3324,7 +3325,7 @@ const styles = StyleSheet.create({
   },
   modelChipSelected: {
     borderColor: "#D229FF",
-    backgroundColor: "#FFFFFF",
+    backgroundColor: "transparent",
     shadowColor: "#D229FF",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.18,
@@ -3332,12 +3333,16 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   modelChipGradient: {
+    flex: 1,
+    width: "100%",
     paddingVertical: 10,
     paddingHorizontal: 4,
     alignItems: "center",
     justifyContent: "center",
   },
   modelChipInner: {
+    flex: 1,
+    width: "100%",
     paddingVertical: 10,
     paddingHorizontal: 4,
     alignItems: "center",
@@ -3390,6 +3395,8 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   aspectRatioCardInner: {
+    flex: 1,
+    width: "100%",
     paddingVertical: 10,
     paddingHorizontal: 4,
     alignItems: "center",
@@ -3884,12 +3891,16 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   qualityCardGradient: {
+    flex: 1,
+    width: "100%",
     paddingVertical: 8,
     paddingHorizontal: 6,
     alignItems: "center" as const,
     justifyContent: "center" as const,
   },
   qualityCardInner: {
+    flex: 1,
+    width: "100%",
     paddingVertical: 8,
     paddingHorizontal: 6,
     alignItems: "center" as const,
