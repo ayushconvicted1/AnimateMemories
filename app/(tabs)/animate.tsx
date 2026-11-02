@@ -726,7 +726,10 @@ export default function AnimateScreen() {
 
         if (templatesRes.status === "fulfilled") {
           const response = templatesRes.value;
-          const presetsList = response?.result || response?.presets || (Array.isArray(response) ? response : []);
+          const rawPresetsList = response?.result || response?.presets || (Array.isArray(response) ? response : []);
+          const presetsList = Platform.OS === "ios"
+            ? rawPresetsList.filter((item: any) => !item.hideFromIos && !item.hidefromios)
+            : rawPresetsList;
           if (presetsList.length > 0) {
             setAnimationTemplates(presetsList);
             if (!selectedTemplate) {

@@ -14,6 +14,7 @@ export interface TemplatePresetItem {
   sortOrder?: number;
   isActive?: boolean;
   hasAudio?: boolean;
+  hideFromIos?: boolean;
   isStar?: boolean;
   image?: any;
 }

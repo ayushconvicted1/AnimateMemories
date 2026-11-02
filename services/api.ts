@@ -596,13 +596,19 @@ export const api = {
   // Fetch video presets (animation templates)
   getVideoPresets: async () => {
     try {
-      return await apiRequest("/api/video-presets?activeOnly=true", {
+      return await apiRequest(`/api/video-presets?activeOnly=true&platform=${Platform.OS}`, {
         method: "GET",
+        headers: {
+          "x-platform": Platform.OS,
+        },
       });
     } catch (e: any) {
       if (e?.status === 404) {
-        return await apiRequest("/api/admin/video-presets?activeOnly=true", {
+        return await apiRequest(`/api/admin/video-presets?activeOnly=true&platform=${Platform.OS}`, {
           method: "GET",
+          headers: {
+            "x-platform": Platform.OS,
+          },
         });
       }
       throw e;

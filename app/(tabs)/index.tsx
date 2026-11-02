@@ -749,10 +749,13 @@ export default function HomeScreen() {
     const fetchTemplates = async () => {
       try {
         const response = await api.getVideoPresets();
-        const presets =
+        const rawPresets =
           response?.result ||
           response?.presets ||
           (Array.isArray(response) ? response : []);
+        const presets = Platform.OS === "ios"
+          ? rawPresets.filter((item: any) => !item.hideFromIos && !item.hidefromios)
+          : rawPresets;
         if (presets && presets.length > 0) {
           const normalized = presets.map((item: any) => ({
             ...item,
