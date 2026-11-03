@@ -42,7 +42,7 @@ import { useTour } from "@/contexts/TourContext";
 import TourStepWrapper from "@/components/tour/TourStepWrapper";
 import { getFontFamily } from "@/constants/Fonts";
 import ShareVideoModal from "@/components/ui/ShareVideoModal";
-import { validatePromptSafety } from "@/lib/safetyFilter";
+import { validatePromptSafety, filterTemplatesForPlatform, isObjectionableTemplate } from "@/lib/safetyFilter";
 import {
   trackUploadPhoto,
   trackAnimationGenerationStarted,
@@ -366,9 +366,12 @@ export default function AnimateScreen() {
   const [isSurpriseLoading, setIsSurpriseLoading] = useState<boolean>(false);
   const [uploadHighlighted, setUploadHighlighted] = useState<boolean>(false);
   const [surpriseSubject, setSurpriseSubject] = useState<string>("");
-  const [selectedTemplate, setSelectedTemplate] = useState<string | null>(
-    (params.templateId as string) || "jump-scare"
-  );
+  const initialTemplateParam = params.templateId as string | undefined;
+  const safeInitialTemplate =
+    Platform.OS === "ios" && initialTemplateParam && isObjectionableTemplate({ slug: initialTemplateParam })
+      ? "baby-dance"
+      : initialTemplateParam || "baby-dance";
+  const [selectedTemplate, setSelectedTemplate] = useState<string | null>(safeInitialTemplate);
   const [activeTabMode, setActiveTabMode] = useState<"template" | "custom">("template");
   const [enhanceOptions, setEnhanceOptions] = useState({
     upscale: true,
@@ -511,6 +514,9 @@ export default function AnimateScreen() {
     const seen = new Set(["all"]);
     categories.forEach((cat: any) => {
       const slug = (cat.slug || cat.name || cat.id || "").toLowerCase();
+      if (Platform.OS === "ios" && (slug === "wedding" || slug === "couples" || slug === "romance")) {
+        return;
+      }
       if (slug && !seen.has(slug)) {
         seen.add(slug);
         list.push(cat);
@@ -533,8 +539,12 @@ export default function AnimateScreen() {
     templatePagerRef.current?.scrollTo({ x: 0, animated: false });
   }, []);
 
+  const safeAnimationTemplates = useMemo(() => {
+    return filterTemplatesForPlatform(animationTemplates, Platform.OS);
+  }, [animationTemplates]);
+
   const filteredTemplates = useMemo(() => {
-    let result = animationTemplates.filter((t) => isCategoryMatch(t, selectedCategory));
+    let result = safeAnimationTemplates.filter((t) => isCategoryMatch(t, selectedCategory));
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
       result = result.filter(
@@ -545,7 +555,7 @@ export default function AnimateScreen() {
       );
     }
     return result;
-  }, [animationTemplates, selectedCategory, searchQuery, isCategoryMatch]);
+  }, [safeAnimationTemplates, selectedCategory, searchQuery, isCategoryMatch]);
 
   const templatePages = useMemo(() => {
     const chunks: any[][] = [];
@@ -727,9 +737,7 @@ export default function AnimateScreen() {
         if (templatesRes.status === "fulfilled") {
           const response = templatesRes.value;
           const rawPresetsList = response?.result || response?.presets || (Array.isArray(response) ? response : []);
-          const presetsList = Platform.OS === "ios"
-            ? rawPresetsList.filter((item: any) => !item.hideFromIos && !item.hidefromios)
-            : rawPresetsList;
+          const presetsList = filterTemplatesForPlatform(rawPresetsList, Platform.OS);
           if (presetsList.length > 0) {
             setAnimationTemplates(presetsList);
             if (!selectedTemplate) {
@@ -740,7 +748,14 @@ export default function AnimateScreen() {
         }
 
         if (categoriesRes.status === "fulfilled" && categoriesRes.value?.result) {
-          setCategories(categoriesRes.value.result);
+          const rawCats = categoriesRes.value.result || [];
+          const safeCats = Platform.OS === "ios"
+            ? rawCats.filter((c: any) => {
+                const s = (c.slug || c.name || "").toLowerCase();
+                return s !== "wedding" && s !== "couples" && s !== "romance";
+              })
+            : rawCats;
+          setCategories(safeCats);
         }
 
         if (modelsRes.status === "fulfilled") {
@@ -807,6 +822,9 @@ export default function AnimateScreen() {
     const templateId = params.templateId as string | undefined;
 
     if (templateId) {
+      if (Platform.OS === "ios" && isObjectionableTemplate({ slug: templateId })) {
+        return;
+      }
       setSelectedTemplate(templateId);
       if (animationTemplates.length > 0) {
         const template = animationTemplates.find((t) => (t.slug || t.id) === templateId);

@@ -43,6 +43,7 @@ import {
   FALLBACK_TEMPLATES,
   FALLBACK_CATEGORIES,
 } from "@/constants/defaultPresets";
+import { filterTemplatesForPlatform, isObjectionableTemplate } from "@/lib/safetyFilter";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 const CONTENT_WIDTH = SCREEN_WIDTH - 32;
@@ -73,7 +74,7 @@ const formatImageUrl = (url?: string | null) => {
   }
 };
 
-const DEFAULT_CATEGORIES = [
+const ALL_DEFAULT_CATEGORIES = [
   "Viral",
   "Family",
   "Funny",
@@ -85,6 +86,10 @@ const DEFAULT_CATEGORIES = [
   "Holiday",
   "Graduation",
 ];
+
+const DEFAULT_CATEGORIES = Platform.OS === "ios"
+  ? ALL_DEFAULT_CATEGORIES.filter((c) => c.toLowerCase() !== "wedding" && c.toLowerCase() !== "couples")
+  : ALL_DEFAULT_CATEGORIES;
 
 const DEFAULT_TEMPLATES = [
   {
@@ -139,26 +144,6 @@ const DEFAULT_TEMPLATES = [
     videoUrl: "https://pub-b01a35ccbe054425bacd868be6412477.r2.dev/templates/fighting-pose.mp4",
     isStar: true,
     category: "Funny"
-  },
-  {
-    id: "head-lean",
-    slug: "head-lean",
-    name: "Head Lean",
-    image: require("@/assets/images/Home3.webp"),
-    thumbnailUrl: "/templates/Head Lean.webp",
-    videoUrl: "https://pub-b01a35ccbe054425bacd868be6412477.r2.dev/templates/head-lean.mp4",
-    isStar: true,
-    category: "Tribute"
-  },
-  {
-    id: "classic-wedding",
-    slug: "classic-wedding",
-    name: "Classic Wedding",
-    image: require("@/assets/images/ClassicWedding.jpg"),
-    thumbnailUrl: "/templates/first-dance.webp",
-    videoUrl: "https://pub-b01a35ccbe054425bacd868be6412477.r2.dev/templates/first-dance.mp4",
-    isStar: true,
-    category: "Wedding"
   },
   {
     id: "family-memories",
@@ -663,26 +648,30 @@ export default function HomeScreen() {
   const [isHeroVideoReady, setIsHeroVideoReady] = useState(false);
   const heroVideoRef = useRef<Video>(null);
 
+  const safeTemplates = useMemo(() => {
+    return filterTemplatesForPlatform(animationTemplates, Platform.OS);
+  }, [animationTemplates]);
+
   const filteredTemplates = useMemo(() => {
     const activeLower = (selectedCategory || "Viral").toLowerCase();
     if (activeLower === "viral" || activeLower === "trending") {
       // Show templates that have "Viral" or "Trending" in their categories
-      const viral = animationTemplates.filter((t) => {
+      const viral = safeTemplates.filter((t) => {
         const catStr = (t.category || t.categoryId || "").toLowerCase();
         const cats = catStr.split(/[\s,]+/).filter(Boolean);
         return cats.includes("viral") || cats.includes("trending");
       });
-      return (viral.length > 0 ? viral : animationTemplates).slice(0, 8);
+      return (viral.length > 0 ? viral : safeTemplates).slice(0, 8);
     }
-    const filtered = animationTemplates.filter((t) => {
+    const filtered = safeTemplates.filter((t) => {
       const catStr = (t.category || t.categoryId || "").toLowerCase();
       // Split comma-separated categories (e.g., "Viral, Birthday")
       const cats = catStr.split(/[\s,]+/).filter(Boolean);
       return cats.includes(activeLower);
     });
     // Fallback to all if category has no templates, capped to 8
-    return (filtered.length > 0 ? filtered : animationTemplates).slice(0, 8);
-  }, [animationTemplates, selectedCategory]);
+    return (filtered.length > 0 ? filtered : safeTemplates).slice(0, 8);
+  }, [safeTemplates, selectedCategory]);
 
   const handleScroll = useCallback((event: any) => {
     const y = event.nativeEvent?.contentOffset?.y || 0;
@@ -753,9 +742,7 @@ export default function HomeScreen() {
           response?.result ||
           response?.presets ||
           (Array.isArray(response) ? response : []);
-        const presets = Platform.OS === "ios"
-          ? rawPresets.filter((item: any) => !item.hideFromIos && !item.hidefromios)
-          : rawPresets;
+        const presets = filterTemplatesForPlatform(rawPresets, Platform.OS);
         if (presets && presets.length > 0) {
           const normalized = presets.map((item: any) => ({
             ...item,
@@ -775,7 +762,13 @@ export default function HomeScreen() {
         if (res?.result && Array.isArray(res.result) && res.result.length > 0) {
           const names: string[] = res.result
             .map((c: any) => c.name)
-            .filter((name: string) => name && name.toLowerCase() !== "trending");
+            .filter((name: string) => {
+              if (!name) return false;
+              const n = name.toLowerCase();
+              if (n === "trending") return false;
+              if (Platform.OS === "ios" && (n === "wedding" || n === "couples" || n === "romance")) return false;
+              return true;
+            });
           if (names.length > 0) {
             setCategoriesList(names);
             if (!names.includes(selectedCategory)) {
@@ -1244,7 +1237,7 @@ export default function HomeScreen() {
         <TemplateExplorerModal 
           visible={isTemplateModalVisible} 
           onClose={() => setTemplateModalVisible(false)} 
-          templates={animationTemplates} 
+          templates={safeTemplates} 
           onSelect={handleTemplateSelect} 
         />
       </ScreenWrapper>

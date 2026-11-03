@@ -33,6 +33,42 @@ export default function PrivacyLegalScreen() {
     }
   };
 
+  const handleReportContent = async () => {
+    const email = "support@animatememories.com";
+    const subject = "[Report] Objectionable Content Notice - Guideline 1.1";
+    const body =
+      "Please describe the objectionable content, template, or issue you wish to report:\n\n- Template/Prompt:\n- Date & Time:\n- Details:\n\nOur safety team investigates all reports within 24 hours.";
+    const mailtoUrl = `mailto:${email}?subject=${encodeURIComponent(
+      subject
+    )}&body=${encodeURIComponent(body)}`;
+
+    try {
+      await Linking.openURL(mailtoUrl);
+    } catch (error) {
+      console.error("Error opening email:", error);
+      Alert.alert(
+        "Report Objectionable Content",
+        "Please email our safety moderation team directly at support@animatememories.com with subject '[Report] Objectionable Content Notice'."
+      );
+    }
+  };
+
+  const handleOpenPrivacyPolicy = async () => {
+    try {
+      await Linking.openURL("https://www.animatememories.com/privacy-policy");
+    } catch (e) {
+      Alert.alert("Link", "Visit https://www.animatememories.com/privacy-policy in your browser.");
+    }
+  };
+
+  const handleOpenTermsOfService = async () => {
+    try {
+      await Linking.openURL("https://www.animatememories.com/terms-of-service");
+    } catch (e) {
+      Alert.alert("Link", "Visit https://www.animatememories.com/terms-of-service in your browser.");
+    }
+  };
+
   return (
     <ScreenWrapper addBottomPadding={true}>
       <View style={styles.container}>
@@ -52,6 +88,82 @@ export default function PrivacyLegalScreen() {
           style={styles.scrollView}
           showsVerticalScrollIndicator={false}
         >
+          {/* Quick Action Links */}
+          <View style={styles.actionButtonsContainer}>
+            <TouchableOpacity
+              style={styles.reportActionButton}
+              onPress={handleReportContent}
+            >
+              <Text style={styles.reportActionText}>
+                ⚠️ Report Objectionable Content
+              </Text>
+            </TouchableOpacity>
+
+            <View style={styles.webLinksRow}>
+              <TouchableOpacity
+                style={styles.webLinkButton}
+                onPress={handleOpenPrivacyPolicy}
+              >
+                <Text style={styles.webLinkText}>Web Privacy Policy ↗</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.webLinkButton}
+                onPress={handleOpenTermsOfService}
+              >
+                <Text style={styles.webLinkText}>Terms of Service ↗</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          {/* Safety & Content Moderation Policy */}
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>
+              Content Safety & Moderation (Guideline 1.1)
+            </Text>
+
+            <View style={styles.contentItem}>
+              <Text style={styles.contentSubtitle}>
+                Zero-Tolerance for Objectionable Content
+              </Text>
+              <Text style={styles.contentText}>
+                Animate Memories maintains a strict zero-tolerance policy against
+                objectionable, intimate, or harmful content. Users are strictly
+                prohibited from generating, uploading, or requesting content that
+                depicts non-consensual physical intimacy, intimate contact (such
+                as kissing, hugging, or romantic/sexual embraces), sexually
+                suggestive material, nudity, hate speech, violence, or harassment.
+              </Text>
+            </View>
+            <View style={styles.divider} />
+
+            <View style={styles.contentItem}>
+              <Text style={styles.contentSubtitle}>
+                Automated AI Pre-Generation Moderation
+              </Text>
+              <Text style={styles.contentText}>
+                All photo uploads and user-crafted prompt texts are automatically
+                scanned by real-time safety moderation filters prior to processing.
+                Any prompt or request containing intimate physical contact or
+                objectionable terms is rejected immediately.
+              </Text>
+            </View>
+            <View style={styles.divider} />
+
+            <View style={styles.contentItem}>
+              <Text style={styles.contentSubtitle}>
+                Reporting & 24-Hour Moderation Action
+              </Text>
+              <Text style={styles.contentText}>
+                Users can report any objectionable content directly by tapping
+                the &quot;Report Objectionable Content&quot; button above or emailing
+                support@animatememories.com. Our safety team investigates every
+                report within 24 hours. Offending content will be deleted
+                immediately, and the responsible user account will be permanently
+                terminated without refund.
+              </Text>
+            </View>
+          </View>
+
           {/* Privacy Policy */}
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Privacy Policy</Text>
@@ -190,11 +302,11 @@ export default function PrivacyLegalScreen() {
 
           {/* Contact */}
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Contact Us</Text>
+            <Text style={styles.sectionTitle}>Contact & Safety Support</Text>
             <View style={styles.contactCard}>
               <Text style={styles.contactText}>
-                For questions about privacy, legal matters, or data protection,
-                please contact us:
+                For questions about privacy, content safety, report investigations,
+                or data protection, please contact our team:
               </Text>
               <TouchableOpacity onPress={handleContactUs}>
                 <Text style={styles.contactEmail}>
@@ -241,6 +353,44 @@ const styles = StyleSheet.create({
   scrollView: {
     flex: 1,
   },
+  actionButtonsContainer: {
+    paddingHorizontal: 16,
+    marginBottom: 20,
+    gap: 10,
+  },
+  reportActionButton: {
+    backgroundColor: "#FEF2F2",
+    borderWidth: 1,
+    borderColor: "#FCA5A5",
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    alignItems: "center",
+  },
+  reportActionText: {
+    color: "#DC2626",
+    fontSize: 15,
+    fontFamily: getFontFamily("600"),
+  },
+  webLinksRow: {
+    flexDirection: "row",
+    gap: 10,
+  },
+  webLinkButton: {
+    flex: 1,
+    backgroundColor: "#F8FAFC",
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+    borderRadius: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    alignItems: "center",
+  },
+  webLinkText: {
+    color: "#475569",
+    fontSize: 13,
+    fontFamily: getFontFamily("500"),
+  },
   section: {
     paddingHorizontal: 16,
     marginBottom: 24,
@@ -262,7 +412,7 @@ const styles = StyleSheet.create({
   },
   contentText: {
     fontSize: 15,
-    color: "#979797",
+    color: "#64748b",
     lineHeight: 22,
     fontFamily: getFontFamily("400"),
   },
@@ -281,7 +431,7 @@ const styles = StyleSheet.create({
   },
   contactText: {
     fontSize: 16,
-    color: "#979797",
+    color: "#64748b",
     textAlign: "center",
     marginBottom: 16,
     lineHeight: 22,

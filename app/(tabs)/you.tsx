@@ -374,6 +374,25 @@ export default function YouScreen() {
     }
   };
 
+  const handleReportContent = async () => {
+    const email = "support@animatememories.com";
+    const subject = "[Report] Objectionable Content Notice - Guideline 1.1";
+    const body =
+      "Please describe the objectionable content, template, or issue you wish to report:\n\n- Template/Prompt:\n- Details:\n\nOur safety team investigates all reports within 24 hours.";
+    const mailtoUrl = `mailto:${email}?subject=${encodeURIComponent(
+      subject
+    )}&body=${encodeURIComponent(body)}`;
+
+    try {
+      await Linking.openURL(mailtoUrl);
+    } catch (error) {
+      Alert.alert(
+        "Report Objectionable Content",
+        "Please email our safety team at support@animatememories.com."
+      );
+    }
+  };
+
   const updateProfileImage = async (imageUri: string) => {
     if (!clerkUser) {
       Alert.alert("Error", "User not found. Please sign in again.");
@@ -678,6 +697,20 @@ export default function YouScreen() {
               <PrivacyIcon />
             </View>
             <Text style={styles.menuText}>Privacy & Legal</Text>
+          </View>
+          <Text style={styles.menuArrow}>›</Text>
+        </TouchableOpacity>
+        <View style={styles.divider} />
+
+        <TouchableOpacity
+          style={styles.menuItem}
+          onPress={handleReportContent}
+        >
+          <View style={styles.menuItemLeft}>
+            <View style={[styles.iconContainer, { backgroundColor: "#FEF2F2" }]}>
+              <Text style={{ fontSize: 16 }}>⚠️</Text>
+            </View>
+            <Text style={[styles.menuText, { color: "#DC2626" }]}>Report Objectionable Content</Text>
           </View>
           <Text style={styles.menuArrow}>›</Text>
         </TouchableOpacity>

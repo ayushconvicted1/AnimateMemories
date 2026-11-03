@@ -33,7 +33,7 @@ export default function TransformationGrid({ isVisible = true }: TransformationG
       <View style={[styles.gridRowContainer, StyleSheet.absoluteFillObject, { zIndex: 0 }]}>
         <View style={styles.gridRow}>
           <View style={styles.cardContainer}>
-            <Image source={require("@/assets/images/ClassicWedding.jpg")} style={styles.cardImage} contentFit="cover" />
+            <Image source={require("@/assets/images/HomePhoto.jpeg")} style={styles.cardImage} contentFit="cover" />
           </View>
           <View style={styles.cardContainer}>
             <Image source={require("@/assets/images/FamilyPhoto.jpg")} style={styles.cardImage} contentFit="cover" />
