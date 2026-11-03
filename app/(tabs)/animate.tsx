@@ -110,51 +110,67 @@ interface VideoModelConfig {
   minDuration: number;
   maxDuration: number;
   durationStep?: number;
-  supportedResolutions: ("480p" | "720p" | "1080p")[];
+  supportedResolutions: ("480p" | "720p" | "768p" | "1080p")[];
   costPerSecond: number;
-  creditsPerSecond: Partial<Record<"480p" | "720p" | "1080p", number>>;
+  creditsPerSecond: Partial<Record<"480p" | "720p" | "768p" | "1080p", number>>;
   allowedDurations?: number[];
   supportsAudio?: boolean;
 }
 
 const VIDEO_MODELS: VideoModelConfig[] = [
   {
-    id: "seedance-1-5-pro",
-    name: "✨ Seedance 1.5 Pro",
+    id: "kling-v2-5-turbo",
+    name: "🎬 Kling v2.5 Turbo Pro",
     badge: "Default",
-    desc: "Realistic facial expressions, lifelike motion & memory preservation",
-    minDuration: 4,
+    desc: "Industry benchmark for choreography, Michael Jackson dance & costume transfer",
+    minDuration: 5,
     maxDuration: 10,
     durationStep: 1,
+    allowedDurations: [5, 10],
     supportedResolutions: ["720p", "1080p"],
-    costPerSecond: 0.026,
-    creditsPerSecond: { "720p": 0.8, "1080p": 1.6 },
-    supportsAudio: true,
-  },
-  {
-    id: "seedance-1-pro-fast",
-    name: "⚡ Seedance 1 Pro Fast",
-    badge: "Fast",
-    desc: "Fast generation with smooth, natural motion",
-    minDuration: 4,
-    maxDuration: 10,
-    durationStep: 1,
-    supportedResolutions: ["720p", "1080p"],
-    costPerSecond: 0.025,
-    creditsPerSecond: { "720p": 0.8, "1080p": 1.6 },
+    costPerSecond: 0.07,
+    creditsPerSecond: { "720p": 1.6, "1080p": 2.0 },
     supportsAudio: false,
   },
   {
-    id: "seedance-2-fast",
-    name: "🚀 Seedance 2.0 Fast",
+    id: "minimax-h3-turbo",
+    name: "⚡ MiniMax H3 Turbo",
+    badge: "Fast",
+    desc: "Lightning-fast 8s execution, realistic human anatomy & dynamic dance moves",
+    minDuration: 5,
+    maxDuration: 5,
+    durationStep: 1,
+    allowedDurations: [5],
+    supportedResolutions: ["720p", "1080p"],
+    costPerSecond: 0.026,
+    creditsPerSecond: { "720p": 0.8, "1080p": 1.2 },
+    supportsAudio: false,
+  },
+  {
+    id: "kling-v3-audio",
+    name: "🎵 Kling v3.0 Native Audio",
     badge: "Ultra",
-    desc: "Next-gen detail & multimodal synthesis",
+    desc: "Hollywood visual fidelity with synchronized sound effects, music & ambient audio",
+    minDuration: 5,
+    maxDuration: 10,
+    durationStep: 1,
+    allowedDurations: [5, 10],
+    supportedResolutions: ["720p", "1080p"],
+    costPerSecond: 0.126,
+    creditsPerSecond: { "720p": 2.0, "1080p": 2.5 },
+    supportsAudio: true,
+  },
+  {
+    id: "seedance-1-5-pro",
+    name: "✨ Seedance 1.5 Pro",
+    badge: "Memories",
+    desc: "Preserves facial geometry 100% for vintage photos with natural smiles & breathing",
     minDuration: 4,
     maxDuration: 10,
     durationStep: 1,
-    supportedResolutions: ["720p"],
-    costPerSecond: 0.15,
-    creditsPerSecond: { "720p": 2.0 },
+    supportedResolutions: ["720p", "1080p"],
+    costPerSecond: 0.052,
+    creditsPerSecond: { "720p": 0.8, "1080p": 1.6 },
     supportsAudio: true,
   },
 ];
@@ -227,11 +243,20 @@ const DEFAULT_ANIMATION_TEMPLATES = [
 ];
 
 function calculateCreditCost(modelId: string, quality: string, duration: number, featureCosts?: any, modelsList?: VideoModelConfig[]) {
-  // Gracefully remap discontinued kling-v2-1 to seedance-1-5-pro
+  // Gracefully remap discontinued models to default kling-v2-5-turbo
   const models = modelsList || VIDEO_MODELS;
-  const effectiveModelId = (!modelId || modelId === "kling-v2-1") ? (models[0]?.id || "seedance-1-5-pro") : modelId;
+  const effectiveModelId = (!modelId || modelId === "kling-v2-1" || modelId === "seedance-1-pro-fast" || modelId === "seedance-2-fast")
+    ? (models[0]?.id || "kling-v2-5-turbo")
+    : modelId;
   const model = models.find((m) => m.id === effectiveModelId) || models[0] || VIDEO_MODELS[0];
   const dur = Number(duration) || 5;
+
+  if (model?.creditsPerSecond) {
+    const res = quality === "1080p" ? "1080p" : quality === "768p" ? "768p" : "720p";
+    // @ts-ignore
+    const rate = model.creditsPerSecond[res] ?? model.creditsPerSecond["720p"] ?? model.creditsPerSecond["768p"] ?? 1.6;
+    return Math.round(dur * rate);
+  }
 
   if (featureCosts) {
     const key = `model_${effectiveModelId.replace(/-/g, "_")}_${quality}`;
@@ -253,12 +278,8 @@ function calculateCreditCost(modelId: string, quality: string, duration: number,
     }
   }
 
-  if (model?.creditsPerSecond) {
-    const perSec = (model.creditsPerSecond as any)[quality] || Object.values(model.creditsPerSecond)[0];
-    if (perSec) return Math.ceil(perSec * dur);
-  }
-
-  return 4;
+  const baseCredits = quality === "1080p" ? 10 : 8;
+  return Math.round((dur / 5) * baseCredits);
 }
 
 export default function AnimateScreen() {
@@ -393,7 +414,7 @@ export default function AnimateScreen() {
   const previewVideoRef = useRef<Video>(null);
   const [featureCosts, setFeatureCosts] = useState<any>(null);
   const [selectedQuality, setSelectedQuality] = useState<"480p" | "720p" | "1080p">("720p");
-  const [selectedModel, setSelectedModel] = useState<string>("seedance-1-5-pro");
+  const [selectedModel, setSelectedModel] = useState<string>("kling-v2-5-turbo");
   const [videoModels, setVideoModels] = useState<VideoModelConfig[]>(VIDEO_MODELS);
   const [selectedDuration, setSelectedDuration] = useState<number>(5);
   const [selectedAspectRatio, setSelectedAspectRatio] = useState<"vertical" | "horizontal" | "square">("vertical");
@@ -632,13 +653,13 @@ export default function AnimateScreen() {
       }
     }
 
-    const targetModelId = item?.modelId || item?.modelid || (templateId === "burj-khalifa-birthday" ? "seedance-2-fast" : null);
+    const targetModelId = item?.modelId || item?.modelid || (templateId === "burj-khalifa-birthday" ? "kling-v2-5-turbo" : null);
     const modelToLock = targetModelId ? videoModels.find((m) => m.id === targetModelId) : null;
     if (modelToLock) {
       handleSelectModel(modelToLock.id);
     } else {
       const prevPreset = animationTemplates.find((t) => (t.slug || t.id) === prevTemplate);
-      const prevTargetId = prevPreset?.modelId || prevPreset?.modelid || (prevTemplate === "burj-khalifa-birthday" ? "seedance-2-fast" : null);
+      const prevTargetId = prevPreset?.modelId || prevPreset?.modelid || (prevTemplate === "burj-khalifa-birthday" ? "kling-v2-5-turbo" : null);
       if (prevTargetId && videoModels.length > 0) {
         handleSelectModel(videoModels[0].id);
       }
@@ -769,17 +790,20 @@ export default function AnimateScreen() {
                 name: m.displayName || fallbackConfig?.name || m.name,
                 badge: idx === 0 ? "Default" : (m.displayName || "").includes("Fast") ? "Fast" : "Ultra",
                 desc: m.description || fallbackConfig?.desc || "",
-                minDuration: m.minDuration ?? fallbackConfig?.minDuration ?? 4,
+                minDuration: m.minDuration ?? fallbackConfig?.minDuration ?? 5,
                 maxDuration: m.maxDuration ?? fallbackConfig?.maxDuration ?? 10,
                 durationStep: m.durationStep ?? fallbackConfig?.durationStep ?? 1,
                 allowedDurations: m.supportedDurations || fallbackConfig?.allowedDurations,
-                supportedResolutions: m.supportedResolutions || fallbackConfig?.supportedResolutions || ["720p"],
-                costPerSecond: m.costPerSecond ?? fallbackConfig?.costPerSecond ?? 0.026,
-                creditsPerSecond: m.creditsPerSecond || fallbackConfig?.creditsPerSecond || { "720p": 0.8 },
+                supportedResolutions: m.supportedResolutions || fallbackConfig?.supportedResolutions || ["720p", "1080p"],
+                costPerSecond: m.costPerSecond ?? fallbackConfig?.costPerSecond ?? 0.07,
+                creditsPerSecond: m.creditsPerSecond || fallbackConfig?.creditsPerSecond || { "720p": 1.6, "1080p": 2.0 },
                 supportsAudio: Boolean(m.supportsAudio ?? fallbackConfig?.supportsAudio),
               };
             });
             setVideoModels(mapped);
+            if (response?.defaultModelId && mapped.some((m) => m.id === response.defaultModelId)) {
+              setSelectedModel(response.defaultModelId);
+            }
           }
         }
       } catch (err) {
@@ -1437,7 +1461,16 @@ export default function AnimateScreen() {
       const result = await pollAnimationStatus(
         predictionId,
         userEmail,
-        startResult?.creditCost || 0
+        startResult?.creditCost || 0,
+        {
+          category: startResult?.category || selectedCategory || undefined,
+          templateSlug: startResult?.templateSlug || selectedTemplate || matchedPreset?.slug || undefined,
+          model: startResult?.model || selectedModel || undefined,
+          sourceImage: imageToAnimate || undefined,
+          duration: selectedDuration,
+          statusUrl: startResult?.statusUrl || undefined,
+          responseUrl: startResult?.responseUrl || undefined,
+        }
       );
       const genDurationSec = Math.max(1, (Date.now() - genStartTime) / 1000);
       setGenProgress(100);
@@ -1622,8 +1655,21 @@ export default function AnimateScreen() {
   // Poll the backend until the video prediction finishes, feeding real
   // progress back into the generating modal.
   const pollAnimationStatus = useCallback(
-    async (predictionId: string, userEmail: string, creditCost: number) => {
-      const POLL_INTERVAL = 3000;
+    async (
+      predictionId: string,
+      userEmail: string,
+      creditCost: number,
+      options?: {
+        category?: string;
+        templateSlug?: string;
+        model?: string;
+        sourceImage?: string;
+        duration?: number;
+        statusUrl?: string;
+        responseUrl?: string;
+      }
+    ) => {
+      const POLL_INTERVAL = 2500;
       const MAX_DURATION = 10 * 60 * 1000; // 10 minutes
       const startedAt = Date.now();
 
@@ -1633,7 +1679,8 @@ export default function AnimateScreen() {
           data = await api.getAnimationStatus(
             predictionId,
             userEmail,
-            creditCost
+            creditCost,
+            options
           );
         } catch (err: any) {
           // Transient network error — keep polling
@@ -1651,7 +1698,7 @@ export default function AnimateScreen() {
           );
         }
 
-        // Real progress from Replicate (only update if meaningful > 2)
+        // Real progress from fal.ai (only update if meaningful > 2)
         if (typeof data?.progress === "number" && data.progress > 2) {
           setGenProgress(data.progress);
         }

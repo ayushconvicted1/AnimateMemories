@@ -329,7 +329,7 @@ export const api = {
     duration: number = 5,
     token?: string | null,
     quality: string = "720p",
-    modelId: string = "seedance-1-5-pro",
+    modelId: string = "kling-v2-5-turbo",
     aspectRatio: string = "vertical",
     category?: string,
     templateSlug?: string,
@@ -357,18 +357,32 @@ export const api = {
   getAnimationStatus: async (
     predictionId: string,
     userEmail: string,
-    creditCost: number = 0
+    creditCost: number = 0,
+    options?: {
+      category?: string;
+      templateSlug?: string;
+      model?: string;
+      sourceImage?: string;
+      duration?: number;
+      statusUrl?: string;
+      responseUrl?: string;
+    }
   ) => {
-    return apiRequest(
-      `/api/old-photo-animation/status?predictionId=${encodeURIComponent(
-        predictionId
-      )}&userEmail=${encodeURIComponent(
-        userEmail
-      )}&creditCost=${creditCost}`,
-      {
-        method: "GET",
-      }
-    );
+    const params = new URLSearchParams();
+    params.append("predictionId", predictionId);
+    params.append("userEmail", userEmail);
+    params.append("creditCost", creditCost.toString());
+    if (options?.category) params.append("category", options.category);
+    if (options?.templateSlug) params.append("templateSlug", options.templateSlug);
+    if (options?.model) params.append("model", options.model);
+    if (options?.sourceImage) params.append("sourceImage", options.sourceImage);
+    if (options?.duration) params.append("duration", options.duration.toString());
+    if (options?.statusUrl) params.append("statusUrl", options.statusUrl);
+    if (options?.responseUrl) params.append("responseUrl", options.responseUrl);
+
+    return apiRequest(`/api/old-photo-animation/status?${params.toString()}`, {
+      method: "GET",
+    });
   },
 
   // Alias for animatePhoto
@@ -379,7 +393,7 @@ export const api = {
     duration: number = 5,
     token?: string | null,
     quality: string = "720p",
-    modelId: string = "seedance-1-5-pro",
+    modelId: string = "kling-v2-5-turbo",
     aspectRatio: string = "vertical",
     category?: string,
     templateSlug?: string,
